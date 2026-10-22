@@ -26,7 +26,11 @@ REQUESTED_PC_OFFSET	EQU 2  ; 16 bits
 INACTIVE_THREAD		EQU 0FFFFh
 DELETE_THIS_THREAD	EQU 0FFFEh
 NO_REQUEST 			EQU 0FFFFh
+	ifdef TARGET_CNV
+TICKS_PER_SLICE		EQU 10		; ~20ms on the firmware's Timer 1 counter (0x0409, ~488 Hz)
+	else
 TICKS_PER_SLICE		EQU 250		; ~20ms at 12500 Hz tick rate (80 µs/tick)
+	endif
 
 CURRENT_STATE	EQU 0  ; boolean stored as a byte
 REQUESTED_STATE	EQU 1  ; boolean stored as a byte
@@ -37,6 +41,7 @@ NOT_FROZEN EQU 1
 ; These off-screen video pages are stored in external RAM:
 ; MAINCPU: in DRAM at 0x020000-0x05FFFF
 ; EXTENSION: in extension board SRAM at 0x240000-0x27FFFF
+; CNV: in the sequencer's song memory, DRAM 0x0B0000-0x0EFFFF (kn5000cnv/README.md)
 	ifdef TARGET_MAINCPU
 PAGE_BITMAP_0 EQU 020000h
 PAGE_BITMAP_1 EQU 030000h
@@ -48,6 +53,12 @@ PAGE_BITMAP_0 EQU 240000h
 PAGE_BITMAP_1 EQU 250000h
 PAGE_BITMAP_2 EQU 260000h
 PAGE_BITMAP_3 EQU 270000h
+	endif
+	ifdef TARGET_CNV
+PAGE_BITMAP_0 EQU 0B0000h
+PAGE_BITMAP_1 EQU 0C0000h
+PAGE_BITMAP_2 EQU 0D0000h
+PAGE_BITMAP_3 EQU 0E0000h
 	endif
 
 ; VM variable indices (used by the game engine)
@@ -269,6 +280,9 @@ VIDEO_START:
 ; Input: WA = partId
 initForPart:
 	LD (CURRENT_PART_ID), WA
+	ifdef TARGET_CNV
+	CALL CNV_LOAD_PART		; read this part's resources from the floppy (WA = partId)
+	endif
 
 	; Reset VM state
 	LD XIX, VM_STACK
@@ -412,7 +426,7 @@ _setup_threads__loop:
 ENTRY:
 	EI 0 ; Enable interrupts (INTT1 timer ISR)
 
-	ifdef TARGET_MAINCPU
+	ifdef HAS_CPANEL
 	CALL _cpanel_init		; Initialize control panel serial protocol
 	endif
 
@@ -1246,7 +1260,7 @@ _write_vm_var:
 	RET
 
 
-	ifdef TARGET_MAINCPU
+	ifdef HAS_CPANEL
 ; _cpanel_send_byte: Send/receive one byte via SC1 synchronous I/O
 ; In sync mode, writing SC1BUF simultaneously sends and receives.
 ; Polls INTRX1 (RX complete) flag in INTES1 to know when the byte
@@ -1344,7 +1358,7 @@ _cpanel_delay:
 	POP DE
 	RET
 
-	endif ; TARGET_MAINCPU
+	endif ; HAS_CPANEL
 
 ; =============================================================================
 ; HELP_SCREEN — Pause VM and display help/codes overlay
@@ -1354,7 +1368,7 @@ _cpanel_delay:
 ; Navigation: PAGE UP/DOWN to change pages, EXIT to return to game.
 ; Draws to PAGE_BITMAP_0, restores game display on exit.
 ; =============================================================================
-	ifdef TARGET_MAINCPU
+	ifdef HAS_CPANEL
 
 HELP_SCREEN:
 	; Save all registers
@@ -2067,10 +2081,10 @@ _str_level_lfck:	DB "The grand finale", 0
 _str_url1:			DB "github.com/felipesanches/", 0
 _str_url2:			DB "technics-anotherworld", 0
 
-	endif ; TARGET_MAINCPU (HELP_SCREEN)
+	endif ; HAS_CPANEL (HELP_SCREEN)
 
 INPUT_UPDATE_PLAYER:
-	ifdef TARGET_MAINCPU
+	ifdef HAS_CPANEL
 
 	; Query CPR_SEG4 (right panel segment 4) for direction buttons
 	; CPR_SEG4: bit1=UP(PART:RIGHT2), bit4=LEFT(CONDUCTOR:LEFT),
@@ -2194,7 +2208,7 @@ _input_no_action:
 
 	RET
 
-	else ; TARGET_EXTENSION
+	else ; no panel (TARGET_EXTENSION)
 	RET
 	endif
 
@@ -3282,6 +3296,13 @@ INSTRUCTION_IS_NOT_PLAY_SOUND:
 	JP _end_of_EXECUTE_INSTRUCTION
 
 _load_check_screen:
+	ifdef TARGET_CNV
+	; The screen is read from the floppy into the one screen buffer (kn5000cnv/src/cnv_platform.asm).
+	CALL CNV_LOAD_SCREEN		; WA = resourceId -> XHL = its 32000 bytes, 0 if it is not a screen
+	CP XHL, 0
+	JP EQ, _end_of_EXECUTE_INSTRUCTION
+	JP _load_screen_common
+	else
 	; Check if resourceId matches a known screen bitmap resource.
 	; Screen resources serve dual purpose:
 	;   1. 4bpp planar bitmap copied to PAGE_BITMAP_0 (for direct display)
@@ -3350,6 +3371,7 @@ _load_not_0x90:
 _load_unknown:
 	; Unknown resource - ignore
 	JP _end_of_EXECUTE_INSTRUCTION
+	endif
 
 _load_screen_common:
 	; XHL = pointer to 32000-byte screen resource data
@@ -3391,6 +3413,7 @@ STRING_INDEX:
 STRING_DATA:
 	binclude "hardcoded_data/str_data.rom"
 
+	ifndef TARGET_CNV
 ; =============================================================================
 ; Game Resources — Part data (palette, bytecode, video1, video2)
 ; =============================================================================
@@ -3506,4 +3529,4 @@ SCREEN_BITMAP_0x90:
 
 SCREEN_BITMAP_0x91:
 	binclude "resources/resource-0x91.bin"
-
+	endif ; TARGET_CNV
