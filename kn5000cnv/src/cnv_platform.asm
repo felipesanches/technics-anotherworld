@@ -18,7 +18,8 @@
 ; =============================================================================
 
 CNV_MAILBOX	EQU 0FFC00h	; request byte; text from +1
-CNV_REQ_TEXT	EQU 5		; show the text at CNV_MAILBOX+1
+CNV_REQ_TEXT	EQU 5		; show the text at CNV_MAILBOX+1 (the firmware calls again at once)
+CNV_TEXT_TICKS	EQU 1953	; a message stays up 4 s (488 Hz counter)
 CNV_REQ_END	EQU 0FEh	; stop calling; "Continue Next?"
 
 ; The sequencer's song memory: 1240 blocks of 256 bytes, chained at every power-on
@@ -48,7 +49,9 @@ CNV_CALL:
 	LD A, (CNV_STATE)
 	CP A, 0
 	JP EQ, CNV_FIRST
-	JP CNV_END_RUN		; after a message, or YES on "Continue Next?": stop
+	CP A, 2
+	JP EQ, CNV_TEXT_AGAIN
+	JP CNV_END_RUN		; after the game, or YES on "Continue Next?": stop
 
 CNV_FIRST:
 	LDB (CNV_STATE), 1
@@ -91,8 +94,16 @@ CNV_RETURN:
 	POP XWA
 	RET
 
-; CNV_SHOW_TEXT - XHL = text: ask the firmware to show it, then end on the next call
+; CNV_SHOW_TEXT - XHL = text: ask the firmware to show it. The firmware's text screen calls the
+; converter again as soon as it is up (StylCnvTxtTtlFunc), so the request is repeated for 4 s
+; (CNV_TEXT_AGAIN); then the run ends.
 CNV_SHOW_TEXT:
+	LDB (CNV_STATE), 2
+	LD (CNV_TEXT_PTR), XHL
+	LD XWA, (SYSTEM_TICKS)
+	LD (CNV_TEXT_SINCE), XWA
+CNV_TEXT_POST:
+	LD XHL, (CNV_TEXT_PTR)
 	LD XDE, CNV_MAILBOX + 1
 _cnv_text_loop:
 	LD A, (XHL)
@@ -103,6 +114,15 @@ _cnv_text_loop:
 	JR NZ, _cnv_text_loop
 	LDB (CNV_MAILBOX), CNV_REQ_TEXT
 	JP CNV_RETURN
+
+CNV_TEXT_AGAIN:
+	LD XWA, (SYSTEM_TICKS)
+	LD XBC, (CNV_TEXT_SINCE)
+	SUB XWA, XBC
+	CP XWA, CNV_TEXT_TICKS
+	JP ULT, CNV_TEXT_POST
+	LDB (CNV_STATE), 1
+	JP CNV_END_RUN
 
 CNV_TXT_FIRMWARE:	DB "AW: UNKNOWN FIRMWARE", 0
 CNV_TXT_SONG:		DB "AW: SAVE SONGS, SWITCH OFF+ON", 0

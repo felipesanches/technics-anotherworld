@@ -418,7 +418,11 @@ _setup_threads__loop:
 	; protection screen (Part 0). Part 1 bytecode at PC=0 does its own
 	; initialization (video init, display loop, sound loads, etc.).
 	LDW (REQUESTED_NEXT_PART), 0
+	ifdef START_PART
+	LD WA, START_PART		; test builds only (kn5000cnv: make START_PART=...)
+	else
 	LD WA, GAME_PART_INTRO
+	endif
 	CALL initForPart
 
 	RET
@@ -1295,14 +1299,46 @@ _cpanel_send_byte:
 ; Output: A = button bitmap
 ; Clobbers: A only (B, C preserved)
 _cpanel_query_segment:
+	ifdef TARGET_CNV
+	; Under the firmware the panels also push button changes on their own; one may arrive in
+	; the middle of this exchange. Accept a reply only when its header names the panel and
+	; segment asked for (0xC0 left / 0 right, the segment in bits 3:0, bits 5:4 ignored);
+	; retry, then report no buttons.
+	PUSH DE
+	LD D, 4
+_cpanel_query_retry:
+	endif
 	LD A, B					; Send command byte
 	CALL _cpanel_send_byte
 	LD A, C					; Send segment byte
 	CALL _cpanel_send_byte
 	LD A, 0FFh				; Send dummy (clock in header)
 	CALL _cpanel_send_byte	; A = header (discard)
+	ifdef TARGET_CNV
+	LD (CNV_Q_HEADER), A
+	endif
 	LD A, 0FFh				; Send dummy (clock in bitmap)
 	CALL _cpanel_send_byte	; A = button bitmap
+	ifdef TARGET_CNV
+	LD (CNV_Q_BITS), A
+	LD A, C
+	CP B, 020h
+	JR NZ, _cpanel_query_right
+	OR A, 0C0h
+_cpanel_query_right:
+	LD E, A					; E = the header this segment's reply carries
+	LD A, (CNV_Q_HEADER)
+	AND A, 0CFh				; panel and segment only
+	CP A, E
+	JR Z, _cpanel_query_ok
+	DJNZ D, _cpanel_query_retry
+	LD A, 0
+	POP DE
+	RET
+_cpanel_query_ok:
+	LD A, (CNV_Q_BITS)
+	POP DE
+	endif
 	RET
 
 ; _cpanel_init: Initialize control panel serial protocol
