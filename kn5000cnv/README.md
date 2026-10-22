@@ -101,8 +101,37 @@ the `KEYS` line below); earlier binaries named every key an octave higher.
 | song memory after leaving (`songsame.lua`, v5 v6 v7 v10) | byte-identical to before OK in all four                                                                                                  |
 | a song in memory (`poke.lua` changes one byte)           | "AW: SAVE SONGS, SWITCH OFF+ON" for 4 s, then "Continue Next?"; the memory untouched                                                     |
 
-Not checked: the real instrument; the game past the water part's opening on a converter build (it is the
-same VM and data as the standalone build).
+Not checked: the real instrument; the game past the beast's first chase on a converter build.
+
+### The lake froze the game (fixed 2026-10-22)
+
+From the intro, at the lake, the game froze when Lester died (a black screen) and when he climbed out
+(the lake in the next scene's colours). Both run bytecode that was no longer the part's own:
+
+- **Cause.** `CHECK_THREAD_REQUESTS` (`../src/another_world_vm.asm`) walks the 64 threads with `LD A, 0` and
+  indexes the thread table with `WA`. On the frame a part switch runs, `W` still held `0x4A` from the
+  palette pointer `initForPart` leaves in `XWA` (`PALETTE_BUF`, `0x84A00`). That frame's 64 thread updates
+  went to `THREADS_DATA + 0x2800` (the index wraps at 16 bits): the new part's bytecode, offsets
+  `0x1A08`-`0x1B07` for the water part, the code for dying and leaving the lake. Drawing from the broken
+  code recursed without end until the stack ran into the firmware's memory. The `START_PART` builds never
+  switch parts, so they did not show it. Fix: `LD WA, 0`.
+- **The standalone ROM builds** have the same bug (their writes land elsewhere in DRAM); the fix changes one
+  byte in each: maincpu `0b2b6ca2` -> `0c1f2d21`, extension `2f4ac1cb` -> `ba0f8582`.
+
+| check (v10, ACTION in the intro, binary `34596546`)                 | before the fix                                                                                                       | after                                                                                                    |
+|---------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| the water part's bytecode in RAM against `AW1B.BIN` (`bcwatch.lua`) | 243 bytes differ from `0x1A09`, from 53.05 s, written by `_dont_delete_this_thread` (`0x3608`, `0xFFFF` at `0x1A08`) | identical at 57, 100 and 150 s                                                                           |
+| no input (`frames.lua`, `cpupc.lua`)                                | at 66.2 s, VM PC `0x1AF9`: the stack grows past `0x1A9A8`, the CPU ends in the firmware at `0xEF086A`                | Lester dies; "PRESS BUTTON OR RETURN TO CONTINUE", "ACCESS CODE: LDKD"; ACTION restarts the lake (twice) |
+| UP (A#4) held from 56.5 s for 30 s                                  | not run: the pre-fix run held UP from 66 s and froze first; the freeze on climbing out was seen by hand              | Lester surfaces, climbs out, the beast comes; it catches him; the continue screen                        |
+
+```sh
+# the bytecode check and the run on (the KN5000 emulator folder; P = kn5000cnv/probes, R = a new scratch folder)
+SYM=$P/../build/aw_cnv.sym PROBES="$P/seq.lua $P/keys.lua $P/awstate.lua $P/bcwatch.lua" BC_FILE=$P/../build/files/AW1B.BIN \
+    BW_CHECK=57,100,150 PERIOD=8 AS_FROM=56 KEYS="45:C2*0.5" SEQ="25:DISK;28:L3;33:R4;80:snap;158:quit" DISPLAY=:0 \
+    ./kn7000 kn5000 -rompath ./roms -pluginspath ./plugins -skip_gameinfo -window -nothrottle -sound none \
+    -flop $R/disk.img -nvram_directory $R/nv -cfg_directory $R/cfg -snapshot_directory $R/snap -autoboot_script $P/multi.lua
+# who writes there: add BW_LO=1a08 BW_HI=1a0b BW_FROM=44 (on a floppy built before the fix)
+```
 
 ### After any converter
 
@@ -147,3 +176,7 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/notering.lua`                              | the keybed note ring: each byte written, its indices, AW.CNV's held-key map                                    |
 | `probes/subpkt.lua`                                | the sub CPU's packets to the main CPU (header and payload)                                                     |
 | `tools/find_noterng.py`                            | the keybed note ring's address in each firmware version, found as AW.CNV finds it                              |
+| `probes/bcwatch.lua`                               | the part's bytecode in RAM against its file at given times; writes to a range of it, with PC                   |
+| `probes/bcread.lua`                                | the VM's bytecode reads (offset, byte) in a time window: the instructions it ran                               |
+| `probes/foreign.lua`                               | writes into AW.CNV's memory and buffers from code outside AW.CNV                                               |
+| `probes/cpupc.lua`, `frames.lua`                   | the main CPU's PC by AW.CNV symbol every few seconds; every frame with the stack pointer and VM PC             |

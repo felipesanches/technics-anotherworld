@@ -2316,7 +2316,7 @@ _invalid_part_switch:
 	LDW (REQUESTED_NEXT_PART), 0
 _no_part_switch:
 
-	LD A, 0
+	LD WA, 0			; W too: the loop indexes with WA, and after a part switch W holds what initForPart left
 _check_thread_reqs__loop:
 
 	; thread->state = thread->requested_state;
