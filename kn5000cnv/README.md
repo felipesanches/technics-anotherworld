@@ -82,7 +82,8 @@ does after any converter that ends; NO returns to the main screen. There is no s
 ### Measured in MAME
 
 Published `kn7000` binary md5 `3e9ee312330a64cbec3a0c458caec32c` (with the KN5000 panel fixes these runs
-led to, kn7000_mame `802d189`, `b2e0e3e`: `notes/kn5000-panel-race-2026-10-22/`).
+led to, kn7000_mame `802d189`, `b2e0e3e`: `notes/kn5000-panel-race-2026-10-22/`); the keybed rows on
+`44828eab2e95a2d3b6b3bd33baacf074`, which adds the port A fix (`0d0649e`).
 
 | check                                                    | result                                                                                                                                   |
 |----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
