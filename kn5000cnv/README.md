@@ -87,19 +87,20 @@ led to, kn7000_mame `802d189`, `b2e0e3e`: `notes/kn5000-panel-race-2026-10-22/`)
 (kn7000_mame `89fcd6b`, binary `345965464b9431f7f9c307420a85b388`, on which the keybed row was re-run with
 the `KEYS` line below); earlier binaries named every key an octave higher.
 
-| check                                                    | result                                                                                                                                   |
-|----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| start, v5 v6 v7 v10 (`ex_*` runs)                        | each finds its own routines (open `0xF883B8`, `0xF886C5`, `0xF887BA`, `0xF88BC7`) and runs the intro                                     |
-| loading                                                  | the intro's three files (77 KB) about 7 s after OK; the water part's four (105 KB) about 10 s                                            |
-| the intro to the water part (v10, no input)              | the part switches at about 292 s, 250 s after the intro starts (the standalone ROM build: at about 240 s from boot); "ACCESS CODE: LDKD" |
-| controls (`vmvars.lua`)                                  | UP: up/down -1, mask `0x08`; RIGHT: left/right 1, mask `0x01`; LEFT: -1, `0x02`; ACTION: action 1, mask `0x80`; HELP opens help          |
-| play (`START_PART=03E82h` build)                         | UP held through the fall: Lester surfaces, climbs out, the beast appears, RIGHT walks him right                                          |
-| keybed (`keys.lua`, `vmvars.lua`, `notering.lua`)        | C5: left/right 1; F4: -1; A4: up/down 1; G#4, A#4: -1; C1, C2, C3: action; C5 held, then F4 too: right until C5 is released, then left   |
-| ACTION or C2 in the intro                                | the water part (`3E82`) starts: about 5 s of loading, then the game; the keys pressed meanwhile arrive together                          |
-| HELP, page 1                                             | a KEYBED column beside the buttons: G#4/A#4, A4, F4, C5, C1-C3                                                                           |
-| EXIT held 1.5 s, then NO, then DISK                      | "Continue Next?", the main screen, the DISK MENU: the panel works again                                                                  |
-| song memory after leaving (`songsame.lua`, v5 v6 v7 v10) | byte-identical to before OK in all four                                                                                                  |
-| a song in memory (`poke.lua` changes one byte)           | "AW: SAVE SONGS, SWITCH OFF+ON" for 4 s, then "Continue Next?"; the memory untouched                                                     |
+| check                                                                                          | result                                                                                                                                   |
+|------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| start, v5 v6 v7 v10 (`ex_*` runs)                                                              | each finds its own routines (open `0xF883B8`, `0xF886C5`, `0xF887BA`, `0xF88BC7`) and runs the intro                                     |
+| loading                                                                                        | the intro's three files (77 KB) about 7 s after OK; the water part's four (105 KB) about 10 s                                            |
+| the intro to the water part (v10, no input)                                                    | the part switches at about 292 s, 250 s after the intro starts (the standalone ROM build: at about 240 s from boot); "ACCESS CODE: LDKD" |
+| controls (`vmvars.lua`)                                                                        | UP: up/down -1, mask `0x08`; RIGHT: left/right 1, mask `0x01`; LEFT: -1, `0x02`; ACTION: action 1, mask `0x80`; HELP opens help          |
+| play (`START_PART=03E82h` build)                                                               | UP held through the fall: Lester surfaces, climbs out, the beast appears, RIGHT walks him right                                          |
+| keybed (`keys.lua`, `vmvars.lua`, `notering.lua`)                                              | C5: left/right 1; F4: -1; A4: up/down 1; G#4, A#4: -1; C1, C2, C3: action; C5 held, then F4 too: right until C5 is released, then left   |
+| ACTION or C2 in the intro                                                                      | the water part (`3E82`) starts: about 5 s of loading, then the game; the keys pressed meanwhile arrive together                          |
+| HELP, page 1                                                                                   | a KEYBED column beside the buttons: G#4/A#4, A4, F4, C5, C1-C3                                                                           |
+| out of the lake (UP 56.5-70.5 s), then C5 or F4 with C3 held, A#4 at 73.6 s (`jumpR`, `jumpL`) | a running jump to the right, and the same to the left (to the cliff); the VM's inputs `0x89` / `0x8A`                                    |
+| EXIT held 1.5 s, then NO, then DISK                                                            | "Continue Next?", the main screen, the DISK MENU: the panel works again                                                                  |
+| song memory after leaving (`songsame.lua`, v5 v6 v7 v10)                                       | byte-identical to before OK in all four                                                                                                  |
+| a song in memory (`poke.lua` changes one byte)                                                 | "AW: SAVE SONGS, SWITCH OFF+ON" for 4 s, then "Continue Next?"; the memory untouched                                                     |
 
 Not checked: the real instrument; the game past the beast's first chase on a converter build.
 
@@ -180,3 +181,4 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/bcread.lua`                                | the VM's bytecode reads (offset, byte) in a time window: the instructions it ran                               |
 | `probes/foreign.lua`                               | writes into AW.CNV's memory and buffers from code outside AW.CNV                                               |
 | `probes/cpupc.lua`, `frames.lua`                   | the main CPU's PC by AW.CNV symbol every few seconds; every frame with the stack pointer and VM PC             |
+| `probes/hostkeys.lua`                              | which PC keys MAME sees held, on every change: does the keyboard report a combination at all?                  |
