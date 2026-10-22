@@ -68,7 +68,11 @@ CUR_ZOOM: DW ?					; uint16_t zoom for polygon scaling (default 0x40)
 
 STRING_X0: DW ?
 
+	ifndef TARGET_CNV
 SYSTEM_TICKS:        DD ?		; 32-bit tick counter (ISR-incremented, 12500 Hz)
+	else
+SYSTEM_TICKS		EQU 0409h	; the firmware's Timer 1 counter (its INTT1 handler, ~488 Hz)
+	endif
 FRAME_START_TICKS:   DD ?		; Tick count at frame start
 LAST_FRAME_TICKS:    DW ?		; Elapsed ticks of last frame (for diagnostics)
 FRAME_OVERRAN:       DB ?		; 1 if last frame exceeded budget, 0 otherwise

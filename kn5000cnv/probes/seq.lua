@@ -1,8 +1,9 @@
 -- seq.lua -- drive the KN5000 panel on a timed schedule; snapshot; report the converter's state.
 --
 -- SEQ (environment) is a list of "time:action" separated by ';'. Actions:
---   a button name below (held for 0.3 s), "snap" (a screenshot), "quit".
--- Example: SEQ="40:DISK;42:snap;44:R3;46:snap;60:quit"
+--   a button name below, held for 0.3 s, or NAME*SECONDS to hold it longer (EXIT*4);
+--   "snap" (a screenshot), "quit".
+-- Example: SEQ="40:DISK;42:snap;44:R3;46:snap;50:EXIT*4;60:quit"
 -- At every snap and at quit it prints a CNV line: the converter signature at 0xA0000 (hello.asm
 -- writes "CNV5"), its call count at 0xA0004, the mailbox byte at 0xFFC00 and the current title
 -- (DRAM 0x8D36, CURRENT_TITLE in the v7 disassembly).
@@ -17,6 +18,10 @@ local BUTTONS = {
 	L3 = { "CPL_SEG9", 0x04 }, L4 = { "CPL_SEG9", 0x02 }, L5 = { "CPL_SEG9", 0x01 },
 	R1 = { "CPL_SEG8", 0x04 }, R2 = { "CPL_SEG8", 0x02 }, R3 = { "CPL_SEG8", 0x01 },
 	R4 = { "CPL_SEG7", 0x02 }, R5 = { "CPL_SEG7", 0x01 },
+	EXIT = { "CPL_SEG7", 0x08 }, HELP = { "CPL_SEG10", 0x04 },
+	-- Another World's controls (kn5000-docs another-world-vm.md)
+	UP = { "CPR_SEG4", 0x02 }, LEFT = { "CPR_SEG4", 0x10 }, DOWN = { "CPR_SEG4", 0x20 },
+	RIGHT = { "CPR_SEG4", 0x40 }, ACTION = { "CPL_SEG4", 0x08 },
 }
 local function field(tag, mask)
 	local p = mac.ioport.ports[":cpanel:" .. tag] or mac.ioport.ports[":" .. tag]
@@ -52,10 +57,12 @@ _G.SQ.h = emu.add_machine_frame_notifier(function()
 	elseif st.a == "quit" then
 		report("quit"); mac:exit()
 	else
-		local b = BUTTONS[st.a]
+		local name, secs = st.a:match("^(%w+)%*([%d%.]+)$")
+		name = name or st.a
+		local b = BUTTONS[name]
 		local f = b and field(b[1], b[2])
 		if not f then log("SEQ unknown button " .. st.a) return end
-		f:set_value(1); S.held = f; S.release = t + 0.3
+		f:set_value(1); S.held = f; S.release = t + (tonumber(secs) or 0.3)
 		log(string.format("SEQ %.2f press %s", t, st.a))
 	end
 end)

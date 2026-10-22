@@ -2085,6 +2085,9 @@ _str_url2:			DB "technics-anotherworld", 0
 
 INPUT_UPDATE_PLAYER:
 	ifdef HAS_CPANEL
+	ifdef TARGET_CNV
+	CALL CNV_CHECK_EXIT		; EXIT held for 1.5 s leaves the game (kn5000cnv/src/cnv_platform.asm)
+	endif
 
 	; Query CPR_SEG4 (right panel segment 4) for direction buttons
 	; CPR_SEG4: bit1=UP(PART:RIGHT2), bit4=LEFT(CONDUCTOR:LEFT),
