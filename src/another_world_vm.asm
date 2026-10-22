@@ -1799,6 +1799,40 @@ _help_draw_page_0:
 	LD XIY, _str_exit_btn
 	CALL _help_draw_text
 
+	ifdef TARGET_CNV
+	; The converter also reads the keybed (kn5000cnv/src/cnv_platform.asm, CNV_KEYS_POLL)
+	LD DE, 248
+	LD HL, 40
+	LD B, 1
+	LD XIY, _str_kb_head
+	CALL _help_draw_text
+	LD DE, 248
+	LD HL, 56
+	LD B, 1
+	LD XIY, _str_kb_up
+	CALL _help_draw_text
+	LD DE, 248
+	LD HL, 68
+	LD B, 1
+	LD XIY, _str_kb_down
+	CALL _help_draw_text
+	LD DE, 248
+	LD HL, 80
+	LD B, 1
+	LD XIY, _str_kb_left
+	CALL _help_draw_text
+	LD DE, 248
+	LD HL, 92
+	LD B, 1
+	LD XIY, _str_kb_right
+	CALL _help_draw_text
+	LD DE, 248
+	LD HL, 104
+	LD B, 1
+	LD XIY, _str_kb_action
+	CALL _help_draw_text
+	endif
+
 	; Page indicator
 	LD DE, 104
 	LD HL, 180
@@ -2080,6 +2114,14 @@ _str_page_btn:		DB "Page Up / Page Down", 0
 _str_exit_key:		DB "EXIT", 0
 _str_exit_btn:		DB "Exit this screen", 0
 _str_page_1_3:		DB "Page 1/3", 0
+	ifdef TARGET_CNV
+_str_kb_head:		DB "KEYBED:", 0
+_str_kb_up:		DB "G#4/A#4", 0
+_str_kb_down:		DB "A4", 0
+_str_kb_left:		DB "F4", 0
+_str_kb_right:		DB "C5", 0
+_str_kb_action:		DB "C1-C3", 0
+	endif
 _str_page_2_3:		DB "Page 2/3", 0
 _str_page_3_3:		DB "Page 3/3", 0
 _str_level_codes:	DB "LEVEL CODES:", 0

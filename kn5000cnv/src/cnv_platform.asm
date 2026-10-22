@@ -36,13 +36,14 @@ CNV_SONG_END	EQU 0FE000h
 CNV_INTA_VECTOR	EQU 0FFFF48h	; interrupt vector 18, INTA (the panels' data line, PE.5)
 CNV_DISPATCH2	EQU 0E0001Ah	; SeqRingBuf_WriteDispatch_Table entry 2 (SeqDMA_WriteMidi_NoteOn)
 
-; The keybed's controls, as on the KN7000 port (technics-anotherworld kn7000/README-CNV.md)
-CNV_NOTE_LEFT	EQU 77		; F5
-CNV_NOTE_UP1	EQU 80		; Ab5
-CNV_NOTE_DOWN	EQU 81		; A5
-CNV_NOTE_UP2	EQU 82		; Bb5
-CNV_NOTE_RIGHT	EQU 84		; C6
-CNV_NOTE_ACTION	EQU 60		; C4 and every key below it: action
+; The keybed's controls, as on the KN7000 port (technics-anotherworld kn7000/README-CNV.md), as MIDI
+; notes; the names are the KN5000's own (its SPLIT POINT screen: middle C, MIDI 60, is C3)
+CNV_NOTE_LEFT	EQU 77		; F4
+CNV_NOTE_UP1	EQU 80		; Ab4
+CNV_NOTE_DOWN	EQU 81		; A4
+CNV_NOTE_UP2	EQU 82		; Bb4
+CNV_NOTE_RIGHT	EQU 84		; C5
+CNV_NOTE_ACTION	EQU 60		; C3 and every key below it: action
 CNV_EXIT_HOLD	EQU 732		; ticks of the 488 Hz counter EXIT is held before the game ends (1.5 s)
 
 ; -----------------------------------------------------------------------------

@@ -19,7 +19,7 @@ local BUTTONS = {
 	L3 = { "CPL_SEG9", 0x04 }, L4 = { "CPL_SEG9", 0x02 }, L5 = { "CPL_SEG9", 0x01 },
 	R1 = { "CPL_SEG8", 0x04 }, R2 = { "CPL_SEG8", 0x02 }, R3 = { "CPL_SEG8", 0x01 },
 	R4 = { "CPL_SEG7", 0x02 }, R5 = { "CPL_SEG7", 0x01 },
-	EXIT = { "CPL_SEG7", 0x08 }, HELP = { "CPL_SEG10", 0x04 },
+	EXIT = { "CPL_SEG7", 0x08 }, HELP = { "CPL_SEG10", 0x04 }, SPLIT = { "CPL_SEG4", 0x20 },
 	-- Another World's controls (kn5000-docs another-world-vm.md)
 	UP = { "CPR_SEG4", 0x02 }, LEFT = { "CPR_SEG4", 0x10 }, DOWN = { "CPR_SEG4", 0x20 },
 	RIGHT = { "CPR_SEG4", 0x40 }, ACTION = { "CPL_SEG4", 0x08 },
