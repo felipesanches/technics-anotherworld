@@ -7,6 +7,7 @@ CNV_STATE:		DB ?		; 0 before the first call, 1 after it, 2 while a message is up
 CNV_EXIT_COUNT:		DB ?		; 1 while EXIT is held
 CNV_VIDEO2_LOADED:	DB ?		; the shared polygons are in VIDEO2_BUF
 CNV_CUR_ID:		DB ?		; resource being read
+CNV_SONG_KIND:		DB ?		; the empty song memory found: 1 = the firmware's chain, 2 = all 0
 CNV_Q_HEADER:		DB ?		; the panel query's reply header and bitmap (another_world_vm.asm)
 CNV_Q_BITS:		DB ?
 CNV_SAVE_INTEAB:	DB ?

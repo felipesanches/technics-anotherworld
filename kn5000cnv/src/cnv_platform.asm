@@ -27,7 +27,8 @@ CNV_REQ_END	EQU 0FEh	; stop calling; "Continue Next?"
 ;   block n (1..1240) at 0xB0000 + (n-1)*256: byte 0 = 0x80 for n <= 2, else 0;
 ;   bytes 1-2 = previous block (0 for n <= 3, else n-1); bytes 3-4 = next block
 ;   (0xFFFF for n <= 2 and for the last, else n+1); byte 5 = 0x82; the rest 0;
-;   and 0xFD800-0xFDFFF all 0. (Measured: kn5000cnv/README.md.)
+;   and 0xFD800-0xFDFFF all 0. (Measured: kn5000cnv/README.md.) v5 builds the chain later, not at
+;   boot: there the empty state is all 0. Both count as empty; the one found is put back.
 CNV_SONG_BASE	EQU 0B0000h
 CNV_SONG_BLOCKS	EQU 04D8h
 CNV_SONG_END	EQU 0FE000h
@@ -233,8 +234,23 @@ _cnv_sh_n1:
 _cnv_sh_n2:
 	RET
 
-; CNV_SONG_CHECK - Z when 0xB0000-0xFDFFF is exactly as the firmware leaves it with no song
+; CNV_SONG_CHECK - Z when 0xB0000-0xFDFFF holds no song: all 0 (CNV_SONG_KIND = 2) or exactly the
+; chain the firmware builds (CNV_SONG_KIND = 1)
 CNV_SONG_CHECK:
+	LD XHL, CNV_SONG_BASE
+_cnv_sc_allzero:
+	LD XWA, (XHL)
+	CP XWA, 0
+	JR NE, _cnv_sc_chain
+	ADD XHL, 4
+	CP XHL, CNV_SONG_END
+	JR NE, _cnv_sc_allzero
+	LDB (CNV_SONG_KIND), 2
+	LD A, 0
+	CP A, 0			; Z
+	RET
+_cnv_sc_chain:
+	LDB (CNV_SONG_KIND), 1
 	LD XHL, CNV_SONG_BASE
 	LD IX, 1
 _cnv_sc_block:
@@ -282,7 +298,7 @@ _cnv_sc_bad:
 	CP A, 0			; NZ
 	RET
 
-; CNV_SONG_RESTORE - write the no-song state back over 0xB0000-0xFDFFF
+; CNV_SONG_RESTORE - write the empty state CNV_SONG_CHECK found back over 0xB0000-0xFDFFF
 CNV_SONG_RESTORE:
 	LD XHL, CNV_SONG_BASE
 	LD XWA, 0
@@ -291,6 +307,9 @@ _cnv_sr_zero:
 	ADD XHL, 4
 	CP XHL, CNV_SONG_END
 	JR NE, _cnv_sr_zero
+	LD A, (CNV_SONG_KIND)
+	CP A, 2
+	RET EQ			; all 0: done
 	LD XHL, CNV_SONG_BASE
 	LD IX, 1
 _cnv_sr_block:
