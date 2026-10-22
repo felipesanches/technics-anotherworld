@@ -123,12 +123,44 @@ drawLineN:
 	LD HL, (LINE_XMAX)
 	SUB HL, (LINE_XMIN)
 	INC HL				; inclusive range: xmax-xmin+1 pixels
+	CP HL, 8
+	JR LT, drawLineN_loop
+
+	; A long span: bytes up to a 4-byte boundary, then 4 bytes a store (14 states, against 12 a byte),
+	; then the rest. At most 3 bytes go to the alignment, so at least one dword is left.
+	PUSH XWA
+	PUSH XDE
+drawLineN_align:
+	LD WA, IX
+	AND A, 3
+	JR Z, drawLineN_aligned
+	LDB (XIX), C
+	INC XIX
+	DEC 1, HL
+	JR drawLineN_align
+drawLineN_aligned:
+	LD A, C
+	LD W, C
+	PUSH WA
+	PUSH WA
+	POP XWA				; the colour in all four bytes
+	LD DE, HL
+	SRL 2, DE			; dwords
+	AND HL, 3			; bytes after them
+drawLineN_dwords:
+	LD (XIX), XWA
+	INC 4, XIX
+	DJNZ DE, drawLineN_dwords
+	POP XDE
+	POP XWA
+	CP HL, 0
+	JR Z, drawLineN_done
 
 drawLineN_loop:
 	LDB (XIX), C
 	INC XIX
 	DJNZ HL, drawLineN_loop
-	
+drawLineN_done:
 	POP XHL
 	POP XIX
 	RET
@@ -164,12 +196,15 @@ drawLineP:
 	SUB HL, (LINE_XMIN)
 	INC HL				; inclusive range: xmax-xmin+1 pixels
 
-drawLineP_loop:
-	LD C, (XIY)			; color = page_bitmap_0[y][x]
-	LDB (XIX), C			; curPagePtr1[y][x] = color
-	INC XIX
-	INC XIY
-	DJNZ HL, drawLineP_loop
+	; LDIR copies (XHL) -> (XDE), BC bytes: 7 states a byte, against 18 for a load/store loop
+	PUSH XBC
+	PUSH XDE
+	LD BC, HL
+	LD XDE, XIX			; curPagePtr1[y][xmin..]
+	LD XHL, XIY			; page_bitmap_0[y][xmin..]
+	LDIR
+	POP XDE
+	POP XBC
 
 	POP XHL
 	POP XIY
@@ -500,11 +535,16 @@ _pause_wait:
 _pause_done_ok:
 	LD (LAST_FRAME_TICKS), WA
 	LDB (FRAME_OVERRAN), 0
-	RET
+	JR _pause_stamp
 
 _pause_overrun:
 	LD (LAST_FRAME_TICKS), WA
 	LDB (FRAME_OVERRAN), 1
+_pause_stamp:
+	; The next frame is timed from here, as the reference does after its sleep: the whole frame's
+	; work then counts toward the pause, not only the part before this blit
+	LD XWA, (SYSTEM_TICKS)
+	LD (FRAME_START_TICKS), XWA
 	RET
 
 readAndDrawPolygon:
@@ -2374,14 +2414,9 @@ _next_thread__do_loop:
 	LDB (CURRENT_THREAD), 0
 	CALL INPUT_UPDATE_PLAYER		; Once per frame (matches reference HLE)
 	CALL CHECK_THREAD_REQUESTS
-	LD A, 0FEh
-	CALL UPDATE_DISPLAY
+	; The screen changes only on BLIT_FRAMEBUFFER, which also paces the frames (PAUSE)
 
-	; Record frame start time for next frame
-	LD XWA, (SYSTEM_TICKS)
-	LD (FRAME_START_TICKS), XWA
-
-	LD WA, 0			; Must clear W (clobbered by LD XWA above); thread scan uses W=0
+	LD WA, 0			; Must clear W (the calls above clobber it); thread scan uses W=0
 _not_end_of_frame:
 
 ;	while(current->state == FROZEN || current->PC == INACTIVE_THREAD);
@@ -3027,10 +3062,13 @@ INSTRUCTION_IS_NOT_SELECT_VIDEO_PAGE:
 	LD A, B
 	SLA 8, WA
 	LD A, B
-	LD BC, 320 * 200 / 2
+	PUSH WA
+	PUSH WA
+	POP XWA			; the colour in all four bytes of XWA
+	LD BC, 320 * 200 / 4
 _fill_videopage_loop:
-	LD (XDE), WA
-	INC 2, XDE
+	LD (XDE), XWA		; 14 states for 4 bytes, against 12 for 2
+	INC 4, XDE
 	DJNZ BC, _fill_videopage_loop
 	JP _end_of_EXECUTE_INSTRUCTION
 INSTRUCTION_IS_NOT_FILL_VIDEO_PAGE:
@@ -3116,18 +3154,20 @@ _copypage_vscroll_positive:
 _copypage_do_scroll:
 	; Copy h scanlines (BC = h, XDE = src, stack top = dst)
 	POP XHL			; XHL = dst pointer
-	; Convert h scanlines to dword count: h * 320 / 4 = h * 80
+	; Convert h scanlines (1..200) to a word count: h * 320 / 2 = h * 160
 	LD WA, BC		; WA = h
 	EXTZ XWA
-	LD BC, 80
-	MUL XWA, BC		; XWA = h * 80
-	LD BC, WA		; BC = dword count
-_copypage_scroll_loop:
-	LD XWA, (XDE)
-	LD (XHL), XWA
-	INC 4, XDE
-	INC 4, XHL
-	DJNZ BC, _copypage_scroll_loop
+	LD BC, 160
+	MUL XWA, BC		; XWA = h * 160
+	LD BC, WA		; BC = word count
+	JP _copypage_ldirw
+
+_copypage_ldirw:
+	; LDIRW copies (XHL) -> (XDE): 7 states a word, against 22 for each dword of a load/store loop
+	PUSH XDE
+	LD XDE, XHL		; XDE = dst
+	POP XHL			; XHL = src
+	LDIRW
 	JP _end_of_EXECUTE_INSTRUCTION
 
 _copypage_scroll_skip:
@@ -3148,14 +3188,8 @@ _copypage_simple:
 
 _copypage_do_simple:
 	POP XHL			; XHL = dst page pointer (from stack)
-	LD BC, 320 * 200 / 4
-_copy_videopage_loop:
-	LD XWA, (XDE)
-	LD (XHL), XWA
-	INC 4, XDE
-	INC 4, XHL
-	DJNZ BC, _copy_videopage_loop
-	JP _end_of_EXECUTE_INSTRUCTION
+	LD BC, 320 * 200 / 2
+	JP _copypage_ldirw
 INSTRUCTION_IS_NOT_COPY_VIDEO_PAGE:
 
 
@@ -3183,9 +3217,13 @@ INSTRUCTION_IS_NOT_COPY_VIDEO_PAGE:
 	LD DE, 021h
 	CALL _write_vm_var
 _blit_no_hack:
+	; As the reference: wait out the frame first, then show the page, then var[0xF7] = 0
+	CALL PAUSE			; Frame timing delay
 	POP WA			; restore pageId (A = pageId)
 	CALL UPDATE_DISPLAY
-	CALL PAUSE			; Frame timing delay
+	LD A, 0F7h
+	LD DE, 0
+	CALL _write_vm_var
 
 	; Overrun visual indicator: white pixel at top-right for overrun, black otherwise
 	LD A, (FRAME_OVERRAN)

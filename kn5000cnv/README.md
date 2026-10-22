@@ -104,6 +104,44 @@ the `KEYS` line below); earlier binaries named every key an octave higher.
 
 Not checked: the real instrument; the game past the beast's first chase on a converter build.
 
+### Speed (2026-10-23)
+
+Frames took about 1.5 times what the script asks for (`var[0xFF]` slices of 20 ms), in emulated time:
+
+- **Pacing.** The VM showed the page, then paused, and timed the next frame from the end of the thread loop, so
+  the work after the pause never counted. As the reference does, `BLIT_FRAMEBUFFER` now pauses, stamps the
+  time, then shows the page (and sets `var[0xF7]` = 0). The end of each frame also copied the page to VRAM a
+  second time; the reference does not, and the help screen redraws the game itself.
+- **Copies and fills.** `COPY_VIDEO_PAGE` (both forms) is one `LDIRW` (7 states a word, against 22 for each
+  dword of the old loop); `FILL_VIDEO_PAGE` stores 4 bytes at a time; `drawLineN` stores 4 bytes at a time on
+  spans of 8 pixels or more; `drawLineP` is one `LDIR` (7 states a byte, against 18). Cycle costs are those of
+  MAME's TLCS-900/H tables (`900htbl.hxx`), which match the datasheet for `LDIRW`.
+
+Mean frame length against the script's request (v10, binary `34596546`; `probes/frametime.lua`, `tools/ftsum.py`;
+the same input: ACTION in the intro, UP out of the lake, a running jump):
+
+| frames                   | asked | before   | pacing fixed | and copies/fills |
+|--------------------------|-------|----------|--------------|------------------|
+| intro, 3 slices          | 60 ms | 104.7 ms | 72.9 ms      | 64.0 ms          |
+| intro, 4 slices          | 80 ms | 120.8 ms | 81.8 ms      | 81.9 ms          |
+| lake and chase, 4 slices | 80 ms | 124.3 ms | 86.4 ms      | 85.0 ms          |
+
+The pause polls a 488 Hz tick, so a frame of 4 slices is at least 82 ms. Before the copy changes, a profile of
+the chase (`probes/profile.lua`, one PC sample a video frame) gave the page copy 24.8 % of the main CPU, the
+VRAM copy 16.8 %, the pause 24.0 %, polygon drawing about 20 %.
+
+**Same pictures.** `probes/pagehash.lua` hashes every page shown; `tools/pagehash_cmp.py` compares two runs'
+sequences, repeats dropped. Against the build before these changes (`1310a76`): the intro with no input, 566
+pages identical (the new build showed 859 in the same 77 s); a `START_PART=03E82h` build with no input, 104
+pages identical.
+
+**MAME's own speed** is the larger limit on this machine: unthrottled, the KN5000 emulation runs at about 63 % of
+real time here (no probes, during the game), so a frame of 80 ms emulated takes about 127 ms of yours. That is
+in the emulator, not the game.
+
+The standalone ROM builds change too (maincpu `a2a7bb2b`, extension `428b8d3b`); they assemble, and have not been
+run.
+
 ### The lake froze the game (fixed 2026-10-22)
 
 From the intro, at the lake, the game froze when Lester died (a black screen) and when he climbed out
@@ -182,3 +220,6 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/foreign.lua`                               | writes into AW.CNV's memory and buffers from code outside AW.CNV                                               |
 | `probes/cpupc.lua`, `frames.lua`                   | the main CPU's PC by AW.CNV symbol every few seconds; every frame with the stack pointer and VM PC             |
 | `probes/hostkeys.lua`                              | which PC keys MAME sees held, on every change: does the keyboard report a combination at all?                  |
+| `probes/frametime.lua`, `tools/ftsum.py`           | each VM frame's pause request, length and overrun; summarised per part and request                             |
+| `probes/pagehash.lua`, `tools/pagehash_cmp.py`     | a hash of every page shown; do two builds show the same pages in the same order?                               |
+| `probes/profile.lua`                               | the main CPU's PC once a video frame, counted by AW.CNV routine                                                |
