@@ -2139,6 +2139,9 @@ INPUT_UPDATE_PLAYER:
 	; C still = 004h
 	CALL _cpanel_query_segment
 	LD L, A					; L = CPL_SEG4 bitmap
+	ifdef TARGET_CNV
+	CALL CNV_KEYS_POLL		; the keybed's controls, ORed into H and L (kn5000cnv/src/cnv_platform.asm)
+	endif
 
 	; Query CPL_SEG10 (left panel segment 10) for HELP and OTHER PARTS/TR
 	; CPL_SEG10: bit2=HELP, bit3=OTHER PARTS/TR

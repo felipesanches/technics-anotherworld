@@ -34,6 +34,15 @@ CNV_SONG_BLOCKS	EQU 04D8h
 CNV_SONG_END	EQU 0FE000h
 
 CNV_INTA_VECTOR	EQU 0FFFF48h	; interrupt vector 18, INTA (the panels' data line, PE.5)
+CNV_DISPATCH2	EQU 0E0001Ah	; SeqRingBuf_WriteDispatch_Table entry 2 (SeqDMA_WriteMidi_NoteOn)
+
+; The keybed's controls, as on the KN7000 port (technics-anotherworld kn7000/README-CNV.md)
+CNV_NOTE_LEFT	EQU 77		; F5
+CNV_NOTE_UP1	EQU 80		; Ab5
+CNV_NOTE_DOWN	EQU 81		; A5
+CNV_NOTE_UP2	EQU 82		; Bb5
+CNV_NOTE_RIGHT	EQU 84		; C6
+CNV_NOTE_ACTION	EQU 60		; C4 and every key below it: action
 CNV_EXIT_HOLD	EQU 732		; ticks of the 488 Hz counter EXIT is held before the game ends (1.5 s)
 
 ; -----------------------------------------------------------------------------
@@ -60,6 +69,7 @@ CNV_FIRST:
 	JP NZ, CNV_NO_FIRMWARE
 	CALL CNV_SONG_CHECK	; Z = no song in memory
 	JP NZ, CNV_SONG_IN_USE
+	CALL CNV_FIND_NOTERING	; the keybed, if this firmware's note ring is found
 	PUSH SR
 	LD (CNV_SAVED_SP), XSP
 	CALL CNV_HW_TAKE
@@ -608,3 +618,223 @@ _cnv_hex_num:
 	RET
 
 CNV_MODE_RB:	DB "rb", 0
+
+; -----------------------------------------------------------------------------
+; The keybed
+; -----------------------------------------------------------------------------
+; The sub CPU sends each keybed note as a packet with header 0x42 (slot 2, 3 bytes): 90 note velocity,
+; velocity 0 for a release. The firmware's interrupt handlers put note and velocity into a 256-byte ring
+; (SeqDMA_WriteMidi_NoteOn -> SeqBuf_NoteEvent_WriteByte -> Seq_RingBuf_WriteByte_Small), which its main
+; loop empties -- and which, with the main loop stopped, would fill after 127 notes and then drop them.
+; So AW.CNV reads it as the main loop does (Seq_RingBuf_ReadByte: X-8 read index, X-2 free count;
+; X-4 is the writer's index). X is 0x202CB in v5..v10 (tools/find_noterng.py).
+
+; CNV_FIND_NOTERING - CNV_NOTERING = X, found by the walk find_noterng.py describes, or 0 (no keybed);
+; any notes already in the ring are dropped
+CNV_FIND_NOTERING:
+	LD XHL, (CNV_DISPATCH2)
+	LD B, 040h
+_cnv_fn_call:
+	LD A, (XHL)
+	CP A, 028h		; push wa
+	JR NE, _cnv_fn_call_next
+	LD A, (XHL + 1)
+	CP A, 01Dh		; call abs24
+	JR EQ, _cnv_fn_call_found
+_cnv_fn_call_next:
+	INC 1, XHL
+	DJNZ B, _cnv_fn_call
+	JR _cnv_fn_none
+_cnv_fn_call_found:
+	LD XWA, (XHL + 2)
+	AND XWA, 0FFFFFFh
+	LD XHL, XWA		; SeqBuf_NoteEvent_WriteByte
+	LD B, 020h
+_cnv_fn_lda:
+	LD A, (XHL)
+	CP A, 0F2h		; lda xde,abs24: F2 lo mid hi 32
+	JR NE, _cnv_fn_lda_next
+	LD A, (XHL + 4)
+	CP A, 032h
+	JR EQ, _cnv_fn_lda_found
+_cnv_fn_lda_next:
+	INC 1, XHL
+	DJNZ B, _cnv_fn_lda
+	JR _cnv_fn_none
+_cnv_fn_lda_found:
+	LD XWA, (XHL + 1)
+	AND XWA, 0FFFFFFh
+	LD (CNV_NOTERING), XWA
+	LD XIX, XWA
+	PUSH SR
+	DI
+	LD WA, (XIX - 4)
+	LD (XIX - 8), WA	; read index = write index: nothing pending
+	LDW (XIX - 2), 0FFh	; all 255 free, as Seq_RingBuf_Init_256 leaves it
+	POP SR
+	RET
+_cnv_fn_none:
+	LD XWA, 0
+	LD (CNV_NOTERING), XWA
+	RET
+
+; CNV_KEYS_POLL - from the VM's input routine, once per frame: take the keybed's notes out of the ring,
+; and OR its controls into H (right panel segment 4: 0x40 right, 0x10 left, 0x20 down, 0x02 up) and
+; L (left panel segment 4: 0x08 action), the panel bits the VM reads. Of two opposing directions held
+; at once, the one already in use stays until it is released.
+CNV_KEYS_POLL:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XIX
+	PUSH XIY
+	LD XIX, (CNV_NOTERING)
+	CP XIX, 0
+	JP EQ, _cnv_kp_done
+_cnv_kp_next:
+	LD WA, (XIX - 4)
+	SUB WA, (XIX - 8)
+	AND WA, 0FFh
+	CP WA, 2		; a note and its velocity
+	JR ULT, _cnv_kp_apply
+	LD BC, (XIX - 8)
+	LD D, (XIX + BC)	; note
+	INC 1, BC
+	AND BC, 0FFh
+	LD E, (XIX + BC)	; velocity (0 = released)
+	INC 1, BC
+	AND BC, 0FFh
+	LD (XIX - 8), BC
+	INCW 1, (XIX - 2)
+	INCW 1, (XIX - 2)
+	CALL _cnv_key_store
+	JR _cnv_kp_next
+_cnv_kp_apply:
+	; left / right
+	LD D, CNV_NOTE_LEFT
+	CALL _cnv_key_held	; A = 1 if held
+	LD B, A
+	LD D, CNV_NOTE_RIGHT
+	CALL _cnv_key_held
+	LD C, A
+	LD A, (CNV_LR)		; 0 none, 1 right, 2 left
+	CALL _cnv_pick_dir
+	LD (CNV_LR), A
+	CP A, 1
+	JR NE, _cnv_kp_notright
+	OR H, 040h
+_cnv_kp_notright:
+	CP A, 2
+	JR NE, _cnv_kp_notleft
+	OR H, 010h
+_cnv_kp_notleft:
+	; up / down
+	LD D, CNV_NOTE_UP1
+	CALL _cnv_key_held
+	LD B, A
+	LD D, CNV_NOTE_UP2
+	CALL _cnv_key_held
+	OR B, A
+	LD D, CNV_NOTE_DOWN
+	CALL _cnv_key_held
+	LD C, A
+	LD A, (CNV_UD)		; 0 none, 1 down, 2 up
+	CALL _cnv_pick_dir
+	LD (CNV_UD), A
+	CP A, 1
+	JR NE, _cnv_kp_notdown
+	OR H, 020h
+_cnv_kp_notdown:
+	CP A, 2
+	JR NE, _cnv_kp_notup
+	OR H, 002h
+_cnv_kp_notup:
+	; action: any key up to CNV_NOTE_ACTION (bytes 0-6 = notes 0-55, byte 7 bits 0-4 = notes 56-60)
+	LD XIY, CNV_KEYS
+	LD B, 7
+	LD A, 0
+_cnv_kp_bass:
+	OR A, (XIY)
+	INC 1, XIY
+	DJNZ B, _cnv_kp_bass
+	LD B, (XIY)
+	AND B, 01Fh
+	OR A, B
+	JR Z, _cnv_kp_done
+	OR L, 008h
+_cnv_kp_done:
+	POP XIY
+	POP XIX
+	POP XDE
+	POP XBC
+	POP XWA
+	RET
+
+; _cnv_pick_dir: A = the direction in use (0 none, 1 = C's key, 2 = B's key), B = 1 if the "2" key is
+; held, C = 1 if the "1" key is held -> A = the direction now: both held keeps the one in use (or takes
+; 1 if none was), one held takes it, none gives 0
+_cnv_pick_dir:
+	CP B, 0
+	JR Z, _cnv_pd_no2
+	CP C, 0
+	JR Z, _cnv_pd_only2
+	CP A, 0			; both held
+	RET NZ
+	LD A, 1
+	RET
+_cnv_pd_only2:
+	LD A, 2
+	RET
+_cnv_pd_no2:
+	LD A, 0
+	CP C, 0
+	RET Z
+	LD A, 1
+	RET
+
+; _cnv_key_store: D = note, E = velocity -> CNV_KEYS bit for the note set (E != 0) or cleared
+_cnv_key_store:
+	CALL _cnv_key_addr	; XIY = the byte, B = the bit mask
+	LD A, (XIY)
+	CP E, 0
+	JR Z, _cnv_ks_off
+	OR A, B
+	LD (XIY), A
+	RET
+_cnv_ks_off:
+	CPL B
+	AND A, B
+	LD (XIY), A
+	RET
+
+; _cnv_key_held: D = note -> A = 1 if it is held, else 0 (B, C kept)
+_cnv_key_held:
+	PUSH XBC
+	CALL _cnv_key_addr
+	LD A, (XIY)
+	AND A, B
+	JR Z, _cnv_kh_out
+	LD A, 1
+_cnv_kh_out:
+	POP XBC
+	RET
+
+; _cnv_key_addr: D = note -> XIY = its byte in CNV_KEYS, B = its bit
+_cnv_key_addr:
+	LD A, D
+	AND A, 07Fh
+	LD C, A
+	SRL 3, A
+	LD XIY, CNV_KEYS
+	EXTZ WA
+	AND WA, 0FFh
+	EXTZ XWA
+	ADD XIY, XWA
+	LD A, C
+	AND A, 07h
+	LD B, 1
+	JR Z, _cnv_ka_out	; `sll A,r' with A = 0 shifts by 16, not 0
+	SLL A, B
+_cnv_ka_out:
+	RET
+

@@ -31,4 +31,8 @@ CNV_TEXT_PTR:		DD ?		; the message being shown
 CNV_TEXT_SINCE:		DD ?		; SYSTEM_TICKS when it was first shown
 CNV_SAVE_DAC:		DB 48 DUP (?)	; DAC entries 0-15 (R, G, B) as the firmware set them
 CNV_NAME:		DB 16 DUP (?)	; "AWnn.BIN"
+CNV_NOTERING:		DD ?		; the keybed note ring's buffer address (0 = no keybed)
+CNV_KEYS:		DB 16 DUP (?)	; held keybed notes, one bit per MIDI note
+CNV_LR:			DB ?		; direction in use: 0 none, 1 right, 2 left
+CNV_UD:			DB ?		; 0 none, 1 down, 2 up
 CNV_DBG_REPLY:		DB 4 DUP (?)	; the last EXIT query's four reply bytes (probes)
