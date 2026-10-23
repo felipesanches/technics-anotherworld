@@ -75,11 +75,13 @@ CNV_FIRST:
 	LD (CNV_SAVED_SP), XSP
 	CALL CNV_HW_TAKE
 	CALL CNV_SND_INIT	; the game's sound on the instrument's voices (cnv_sound.asm)
-	ifdef DSND_TEST
+	ifdef DSND
 	CALL CNV_DSND_INSTALL	; the DSP sound's streamer into the sub CPU (cnv_dspsnd.asm)
+	ifdef DSND_TEST
 	JR NZ, _no_dsnd
 	CALL CNV_DSND_TEST
 _no_dsnd:
+	endif
 	endif
 	JP ENTRY		; the VM; it leaves through CNV_EXIT
 
@@ -96,7 +98,9 @@ CNV_EXIT:
 	DI
 	LD XSP, (CNV_SAVED_SP)
 	CALL CNV_SND_END	; the parts the game used, as the firmware set them
+	ifdef DSND
 	CALL CNV_DSND_REMOVE	; the sub CPU's trampolines as they were (cnv_dspsnd.asm)
+	endif
 	CALL CNV_HW_GIVE_BACK
 	CALL CNV_SONG_RESTORE
 	POP SR
@@ -516,6 +520,10 @@ _cnv_lp_parts:
 	LD A, (XIY + 2)
 	LD XDE, VIDEO1_BUF
 	CALL CNV_READ_RES
+	ifdef DSND
+	LD WA, (CNV_LOADED_PART)
+	CALL CNV_SBANK_LOAD	; its sounds, for the DSP sound (cnv_dspsnd.asm)
+	endif
 _cnv_lp_done:
 	POP XIY
 	POP XIX

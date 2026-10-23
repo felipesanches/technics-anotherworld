@@ -59,3 +59,12 @@ DSND_ORIG5:		DD ?
 DSND_HDR:		DB 6 DUP (?)	; an E1 header: destination, count
 DSND_SEQ:		DB 4 DUP (?)	; each channel's last sequence byte
 DSND_REC:		DB 20 DUP (?)	; a channel record being sent (+1 vol, +4 start, +8 end, +12 loop, +16 step)
+			ALIGN 4
+DSND_PRED:		DD ?		; the ADPCM decoder's predictor (CNV_ADPCM)
+DSND_LEFT:		DD ?		; samples of the sound being loaded still to send
+DSND_DEST:		DD ?		; where they go in the sub CPU's DRAM
+DSND_LIST:		DD ?		; the loaded part's CNV_SPARTS list
+DSND_CUR:		DD ?		; CNV_SBANK_LOAD's place in it
+DSND_SRC:		DD ?		; the ADPCM bytes it decodes next
+DSND_BANK_PART:		DW ?		; the part whose sounds are in the sub CPU (0: none)
+DSND_IDX:		DB ?		; the ADPCM decoder's step index

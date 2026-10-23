@@ -76,12 +76,21 @@ MUSIC_END	EQU MUSIC_BUF + CNV_MAX_MUSIC
 VIDEO2_BUF	EQU PAGE_BITMAP_3 + 64000
 SCREEN_BUF	EQU (VIDEO2_BUF + CNV_SIZE_VIDEO2 + 0FFh) & 0FFFF00h
 SCREEN_END	EQU SCREEN_BUF + 32000
+SB_CHUNK	EQU 8192				; the DSP sound's samples, decoded and sent this many at a time
+SB_OUT		EQU (MUSIC_END + 0FFh) & 0FFFF00h	; (cnv_dspsnd.asm CNV_SBANK_LOAD)
+SB_END		EQU SB_OUT + SB_CHUNK
 
 	if CNV_IMAGE_END > 0B0000h
 	error "AW.CNV is larger than the 192 KB the firmware loads"
 	endif
-	if MUSIC_END > PAGE_BITMAP_0
-	error "the part and music buffers run into the page buffers"
+	if SB_END > PAGE_BITMAP_0
+	error "the part, music and sample buffers run into the page buffers"
+	endif
+	if CNV_SFILE_MAX > 32000
+	error "a coded sound does not fit the screen buffer"
+	endif
+	if SUB_BANK + CNV_SBANK_MAX > SUB_BASE
+	error "the largest part's sounds run into the DSP sound's streamer in the sub CPU"
 	endif
 	if SCREEN_END > CNV_SONG_END
 	error "the screen buffer runs past the song memory"

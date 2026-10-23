@@ -2,10 +2,12 @@
 """aw_sbank.py -- the game's own sounds for the DSP sound (src/awsub.asm, src/cnv_dspsnd.asm).
 
 Library for make_awdisk.py:
-  files(resdir)  -> {name: bytes}: AWSnn.BIN, every sound some part plays, once, as 4-bit IMA ADPCM
-  table(resdir)  -> the ASL text of CNV_SLEN (each sound's length and loop length, bytes), CNV_SPARTS (each
-                    part's sounds: id and offset in that part's bank in sub DRAM, 0FFh-terminated) and
-                    CNV_SBANK_MAX (the largest part's bank)
+  files(resdir)  -> {name: bytes}: AWSND.BIN, every sound some part plays, once, as 4-bit IMA ADPCM, one after
+                    the other by id: one file, because opening a file costs the firmware about 1.5 s
+  table(resdir)  -> the ASL text of CNV_SLEN (each sound's length and loop length, bytes), CNV_SOFF (where its
+                    ADPCM starts in AWSND.BIN), CNV_SPARTS (each part's sounds: id and offset in that part's
+                    bank in sub DRAM, 0FFh-terminated), CNV_SBANK_MAX (the largest part's bank) and
+                    CNV_SFILE_MAX (the largest sound's ADPCM bytes)
 
 A sound resource is 8 bytes of header (length and loop length, in 16-bit words, big-endian) and signed 8-bit
 samples: the first `length` play once, then the `loop length` after them repeat (rawgl). The floppy has no
@@ -113,20 +115,20 @@ def part_sounds(resdir):
     return out
 
 
-def files(resdir):
+def _coded(resdir):
+    """{id: ADPCM bytes} for every sound some part plays, in id order"""
     out = {}
-    for pid, ids in part_sounds(resdir):
-        for i in ids:
-            name = 'AWS%02X.BIN' % i
-            if name in out:
-                continue
-            ln, lp, smp = _sound(resdir, i)
-            data = encode([b - 256 if b > 127 else b for b in smp])
-            back = decode(data, len(smp))
-            if len(back) != len(smp):
-                sys.exit('aw_sbank: sound 0x%02x decodes to the wrong length' % i)
-            out[name] = data
+    for i in sorted({i for pid, ids in part_sounds(resdir) for i in ids}):
+        ln, lp, smp = _sound(resdir, i)
+        data = encode([b - 256 if b > 127 else b for b in smp])
+        if len(decode(data, len(smp))) != len(smp):
+            sys.exit('aw_sbank: sound 0x%02x decodes to the wrong length' % i)
+        out[i] = data
     return out
+
+
+def files(resdir):
+    return {'AWSND.BIN': b''.join(_coded(resdir).values())}
 
 
 def table(resdir):
@@ -140,6 +142,12 @@ def table(resdir):
     for i in range(0x92):
         ln, lp = lens.get(i, (0, 0))
         lines.append('\tdd %d, %d\t; 0x%02x' % (ln, lp, i))
+    lines += ['', '; CNV_SOFF: each sound id 0x00..0x91: where its ADPCM starts in AWSND.BIN', 'CNV_SOFF:']
+    off, offs = 0, {}
+    for i, data in _coded(resdir).items():
+        offs[i] = off
+        off += len(data)
+    lines += ['\tdd %d\t; 0x%02x' % (offs.get(i, 0), i) for i in range(0x92)]
     lines += ['', '; CNV_SPARTS: per part 0x3E80..0x3E89, a pointer to its list: (id byte, offset dd in the bank) ..., 0FFh',
               'CNV_SPARTS:']
     lines += ['\tdd CNV_SPART_%d' % k for k in range(len(parts))]
@@ -154,6 +162,7 @@ def table(resdir):
         lines.append('\tdb 0FFh')
         biggest = max(biggest, off)
     lines.append('CNV_SBANK_MAX\tEQU %d' % biggest)
+    lines.append('CNV_SFILE_MAX\tEQU %d' % max((sum(lens[i]) + 1) // 2 for pid, ids in parts for i in ids))
     return '\n'.join(lines) + '\n'
 
 

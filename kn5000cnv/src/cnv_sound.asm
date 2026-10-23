@@ -392,6 +392,13 @@ _se_restore:
 ; CNV_SND_PLAY - PLAY_SOUND: XIX = its operands (resource u16 BE, frequency index, volume, channel)
 ; -----------------------------------------------------------------------------
 CNV_SND_PLAY:
+	ifdef DSND
+	PUSH WA
+	LD A, (DSND_ON)
+	CP A, 0
+	POP WA
+	JP NZ, CNV_DSND_PLAY	; the game's own sample, on the DSP (cnv_dspsnd.asm)
+	endif
 	PUSH XWA
 	PUSH XBC
 	PUSH XDE

@@ -8,7 +8,9 @@ RESDIR holds resource-0xNN.bin as kn7000/tools/aw_extract.py writes them from th
   OUTDIR/awfiles.inc      for aw_cnv.asm: CNV_SIZES (a 32-bit size for every id 0x00..0x91, 0 = not
                           on the disk), CNV_PARTS (palette, bytecode, video1, video2 ids per part,
                           video2 0 = none) and the largest size of each kind, to size the buffers;
-                          CNV_SND, the voice that plays each sound resource (tools/aw_sound_map5.py)
+                          CNV_SND, the voice that plays each sound resource (tools/aw_sound_map5.py);
+                          and, for the DSP sound, CNV_SLEN, CNV_SPARTS and CNV_SBANK_MAX (tools/aw_sbank.py)
+  OUTDIR/files/AWSND.BIN  every sound some part plays, as IMA ADPCM (tools/aw_sbank.py), for the DSP sound
 The music modules go on the disk too: the sound reads them when the game starts one.
 """
 import os
@@ -16,6 +18,7 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import aw_sbank  # noqa: E402
 import aw_sound_map5  # noqa: E402
 
 # (palette, bytecode, video1, video2) per part, 0x3E80..0x3E89 -- the VM's PART_RESOURCE_TABLE
@@ -73,8 +76,15 @@ def main():
         f.write('CNV_SND:\n')
         for i in range(0, len(snd), 8):
             f.write('\tdb ' + ', '.join(f'0{b:02X}h' for b in snd[i:i + 8]) + f'\t; 0x{i // 8:02x}\n')
+        f.write('\n')
+        f.write(aw_sbank.table(resdir))
+    coded = aw_sbank.files(resdir)
+    for name, data in coded.items():
+        with open(os.path.join(files, name), 'wb') as g:
+            g.write(data)
     total = sum(sizes.values())
-    print(f'{out}: {len(ids)} files, {total} bytes; largest palette {most["PALETTE"]}, '
+    print(f'{out}: {len(ids)} files, {total} bytes, and {", ".join(coded)}, {sum(len(v) for v in coded.values())} '
+          f'bytes coded; largest palette {most["PALETTE"]}, '
           f'bytecode {most["BYTECODE"]}, video1 {most["VIDEO1"]}, video2 {sizes[0x11]}')
 
 

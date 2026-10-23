@@ -15,7 +15,10 @@ PYTHON      ?= python3
 START_PART  ?=
 # SND_TEST=1 plays a fixed list of notes before the game (src/cnv_sound.asm CNV_SND_TEST; test builds only)
 SND_TEST    ?=
-# DSND_TEST=1 loops a sine on the DSP sound's channel 0 at the start (src/cnv_dspsnd.asm; test builds only)
+# DSND=1 plays the game's sound effects as its own samples, through a mixer of ours in the effects DSP IC311
+# (src/cnv_dspsnd.asm, src/awsub.asm; heard in MAME only with the IC311 build: kn5000cnv/README.md)
+DSND        ?=
+# DSND_TEST=1 (implies DSND) loops a sine on the DSP sound's channel 0 at the start (test builds only)
 DSND_TEST   ?=
 # the DSP sound's streamer: where it goes in the sub CPU's DRAM, and timer 4's period (src/awsub.asm)
 SUB_BASE    ?= 0F8000h
@@ -33,7 +36,7 @@ build/res/memlist.tsv: ../kn7000/tools/aw_extract.py $(AW_DATA)/MEMLIST.BIN
 	mkdir -p build/res
 	$(PYTHON) -I ../kn7000/tools/aw_extract.py $(AW_DATA) build/res
 
-build/awfiles.inc: tools/make_awdisk.py tools/aw_sound_map5.py ../kn7000/tools/aw_sound_map.py build/res/memlist.tsv
+build/awfiles.inc: tools/make_awdisk.py tools/aw_sound_map5.py tools/aw_sbank.py ../kn7000/tools/aw_sound_map.py ../kn7000/tools/aw_partinfo.py build/res/memlist.tsv
 	$(PYTHON) -I tools/make_awdisk.py build/res build
 
 build/dspmix.inc: tools/dspmix.py tools/upd6383_asm.py
@@ -51,7 +54,7 @@ build/AWSUB.BIN build/awsub.inc: src/awsub.asm build/dspmix.inc tools/subsyms.py
 	$(PYTHON) -I tools/subsyms.py build/awsub.sym build/awsub.inc
 
 build/aw_cnv.p: build/AWSUB.BIN build/awsub.inc build/dsnd_sine.inc src/cnv_dspsnd.asm src/aw_cnv.asm src/cnv_platform.asm src/cnv_sound.asm src/cnv_ram.inc build/awfiles.inc ../src/another_world_vm.asm ../src/vm_ram.inc
-	$(ASL) -w -q -L -D TARGET_CNV $(if $(START_PART),-D START_PART=$(START_PART)) $(if $(SND_TEST),-D SND_TEST=1) $(if $(DSND_TEST),-D DSND_TEST=1 -D DSND_TEST_STEP=$(DSND_TEST_STEP)) -olist build/aw_cnv.lst $(INCS) \
+	$(ASL) -w -q -L -D TARGET_CNV $(if $(START_PART),-D START_PART=$(START_PART)) $(if $(SND_TEST),-D SND_TEST=1) $(if $(DSND)$(DSND_TEST),-D DSND=1) $(if $(DSND_TEST),-D DSND_TEST=1 -D DSND_TEST_STEP=$(DSND_TEST_STEP)) -D SUB_TREG5=$(SUB_TREG5) -olist build/aw_cnv.lst $(INCS) \
 		src/aw_cnv.asm -o $@
 
 build/AW.CNV: build/aw_cnv.p

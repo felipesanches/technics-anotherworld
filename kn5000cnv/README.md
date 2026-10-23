@@ -162,11 +162,28 @@ the IC311 build of the emulator (`KN5000_ENABLE_DSP1=1`), the insert switched on
 `UPD6383_PRESENT_ASIS=1`, which `run_dsnd.sh` sets; and kn7000_mame `38ee146`, without which the DSP saw the
 samples about 90 times a second instead of 4000.
 
-Open: the game's sounds into the channels (`tools/aw_sbank.py` codes them as IMA ADPCM, 342,490 bytes for the 93
-the parts play; not yet on the floppy); IC311's own effect program back when the game ends; and the real
-instrument, where none of this has run. The core's model reads the CALL, its D-RAM rebase and the output level
-from the shipped kernel; the chip may differ. The research plan is on the technics-docs site:
-`kn5000-dsp-sample-playback-research.md`.
+**The game's sound effects (`make DSND=1`).** `tools/aw_sbank.py` codes every sound the parts play as IMA
+ADPCM into one file, `AWSND.BIN` (93 sounds, 342,490 bytes; the floppy then holds 1,408,512 of 1,457,664
+bytes). When a part loads, `CNV_SBANK_LOAD` reads its sounds (seek and read per sound, into the screen
+buffer, which nothing uses while a part loads), decodes them on the main CPU and sends the samples to the sub
+CPU's DRAM from `0xA0000` (the largest part, 219,012 bytes). PLAY_SOUND then sets one of the four channels:
+start, end, loop, the step for its frequency at 4000 ticks a second, its volume. Measured (`probes/dsnd.lua`
+with `DS_WATCH=1`, runs `e9`-`e11`):
+
+| how the sounds are read            | the intro's 22 sounds (141 KB of samples)                |
+|------------------------------------|----------------------------------------------------------|
+| one file per sound, 4 KB a read    | over 35 s                                                |
+| one file per sound, read whole     | about 1.5 s a sound, nearly all of it the file's opening |
+| `AWSND.BIN`: one open, seek + read | 14 s (41.0 - 55.0 s)                                     |
+
+and the intro then plays with its own sound effects (levels 58-110 s: rms up to 3309, peak 10483, nothing
+clipped). The music stays on the instrument's voices for now.
+
+Open: the music on the four channels, as on the Amiga; a faster load (decoding and E1 take about half the
+14 s); a higher tick rate than 4000 Hz, whose 2 kHz bandwidth dulls the sounds; IC311's own effect program
+back when the game ends; and the real instrument, where none of this has run. The core's model reads the
+CALL, its D-RAM rebase and the output level from the shipped kernel; the chip may differ. The research plan is
+on the technics-docs site: `kn5000-dsp-sample-playback-research.md`.
 
 ### Speed (2026-10-23)
 

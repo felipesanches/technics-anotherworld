@@ -20,6 +20,7 @@ SUB_TRAMP_INTT1	EQU 0464h
 SUB_TRAMP_INTT5	EQU 0478h
 SUB_FLASH_LIT	EQU 3E000Ch		; the compressed sub program's first literals in IC19 flash: sub 0x400..0x407
 SUB_BANK	EQU 0A0000h		; the samples, in the sub CPU's DRAM (kn5000cnv/README.md, "DSP sound")
+DSND_RATE	EQU 2500000 / SUB_TREG5	; the streamer's ticks a second (timer 4 at 2.5 MHz; 4000 measured at 625)
 
 ; -----------------------------------------------------------------------------
 ; CNV_E1_SEND - XWA = source (main), XDE = destination (sub), BC = count (1..65535); all registers kept
@@ -276,6 +277,330 @@ CNV_DSND_CHANNEL:
 	LD XWA, XHL
 	LD BC, 1
 	CALL CNV_E1_SEND	; +0: the new seq
+	POP XHL
+	POP XDE
+	POP XBC
+	POP XWA
+	RET
+
+; -----------------------------------------------------------------------------
+; CNV_SBANK_LOAD - WA = part id (0x3E80..0x3E89): its sounds (CNV_SPARTS) into the sub CPU's DRAM at
+; SUB_BANK + their offsets, as 8-bit samples. AWSND.BIN is opened once; each sound's ADPCM is sought (CNV_SOFF)
+; and read whole into the screen buffer (free while a part loads: the part's setup points the VM back at its
+; own polygons), then decoded (CNV_ADPCM) and sent (CNV_E1_SEND) SB_CHUNK samples at a time. One file because
+; opening one costs the firmware about 1.5 s (kn5000cnv/README.md). Without AWSND.BIN the part has no sounds;
+; the game goes on.
+; -----------------------------------------------------------------------------
+CNV_SBANK_LOAD:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
+	PUSH XIX
+	PUSH XIY
+	PUSH XIZ
+	LD B, (DSND_ON)
+	CP B, 0
+	JP Z, _sl_out
+	CP WA, (DSND_BANK_PART)
+	JP EQ, _sl_out
+	LD (DSND_BANK_PART), WA
+	SUB WA, GAME_PART_FIRST
+	SLA 2, WA
+	EXTZ XWA
+	ADD XWA, CNV_SPARTS
+	LD XIZ, (XWA)		; the part's list
+	LD (DSND_LIST), XIZ
+	LD (DSND_CUR), XIZ
+	LD XWA, DSND_FILE
+	LD XBC, CNV_MODE_RB
+	LD XIX, (CNV_FW_OPEN)
+	CALL (XIX)
+	CP HL, 0
+	JP NE, _sl_none
+_sl_sound:
+	LD XIZ, (DSND_CUR)	; (the firmware's file routines need not keep XIZ)
+	LD A, (XIZ)
+	CP A, 0FFh
+	JP Z, _sl_close
+	EXTZ WA
+	EXTZ XWA
+	LD XHL, XWA		; XHL = the sound's id
+	LD XWA, (XIZ + 1)
+	ADD XWA, SUB_BANK
+	LD (DSND_DEST), XWA
+	LD XWA, XHL
+	SLA 3, XWA
+	ADD XWA, CNV_SLEN
+	LD XDE, (XWA)
+	ADD XDE, (XWA + 4)	; length + loop length
+	LD (DSND_LEFT), XDE
+	LD XWA, XHL
+	SLA 2, XWA
+	ADD XWA, CNV_SOFF
+	LD XWA, (XWA)		; its place in AWSND.BIN
+	LD BC, 0		; from the start
+	LD XIX, (CNV_FW_SEEK)
+	CALL (XIX)
+	CP HL, 0
+	JP NE, _sl_close	; (the rest would be wrong too)
+	LD XBC, (DSND_LEFT)
+	INC 1, XBC
+	SRL 1, XBC		; its ADPCM bytes
+	LD XWA, SCREEN_BUF
+	LD XIX, (CNV_FW_READ)
+	CALL (XIX)
+	LD XWA, 0
+	LD (DSND_PRED), XWA
+	LDB (DSND_IDX), 0
+	LD XWA, SCREEN_BUF
+	LD (DSND_SRC), XWA
+_sl_chunk:
+	LD XBC, (DSND_LEFT)
+	CP XBC, 0
+	JP EQ, _sl_next
+	CP XBC, SB_CHUNK
+	JR ULE, _sl_n
+	LD XBC, SB_CHUNK
+_sl_n:
+	LD XIX, (DSND_SRC)
+	LD XIY, SB_OUT
+	LD WA, BC
+	CALL CNV_ADPCM		; (SB_CHUNK is even: a chunk ends on a byte)
+	LD XWA, XBC
+	SRL 1, XWA
+	ADD XIX, XWA
+	LD (DSND_SRC), XIX
+	LD XWA, SB_OUT
+	LD XDE, (DSND_DEST)
+	CALL CNV_E1_SEND
+	ADD XDE, XBC
+	LD (DSND_DEST), XDE
+	LD XWA, (DSND_LEFT)
+	SUB XWA, XBC
+	LD (DSND_LEFT), XWA
+	JP _sl_chunk
+_sl_next:
+	LD XIZ, (DSND_CUR)
+	LD XWA, 5
+	ADD XIZ, XWA
+	LD (DSND_CUR), XIZ
+	JP _sl_sound
+_sl_close:
+	LD XIX, (CNV_FW_CLOSE)
+	CALL (XIX)
+	JR _sl_out
+_sl_none:
+	LD XWA, 0
+	LD (DSND_LIST), XWA	; no sounds
+_sl_out:
+	POP XIZ
+	POP XIY
+	POP XIX
+	POP XHL
+	POP XDE
+	POP XBC
+	POP XWA
+	RET
+
+DSND_FILE:	DB "AWSND.BIN", 0
+
+; -----------------------------------------------------------------------------
+; CNV_ADPCM - XIX = IMA ADPCM bytes (low nibble first), XIY = where the samples go, WA = how many (1..65535):
+; decode, carrying the predictor and step index in DSND_PRED / DSND_IDX from one call to the next. Each sample
+; is the predictor's high byte, as tools/aw_sbank.py decode() makes it (the build checks it against encode()).
+; -----------------------------------------------------------------------------
+CNV_ADPCM:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
+	PUSH XIX
+	PUSH XIY
+	LD BC, WA		; BC = samples left
+	LD XHL, (DSND_PRED)
+	LD D, (DSND_IDX)
+_ad_byte:
+	LD A, (XIX)
+	INC 1, XIX
+	LD E, A
+	AND E, 0Fh
+	CALL _ad_step
+	DEC 1, BC		; (no flags from a word DEC)
+	CP BC, 0
+	JR Z, _ad_done
+	LD E, A
+	SRL 4, E
+	CALL _ad_step
+	DEC 1, BC
+	CP BC, 0
+	JR NZ, _ad_byte
+_ad_done:
+	LD (DSND_PRED), XHL
+	LD (DSND_IDX), D
+	POP XIY
+	POP XIX
+	POP XHL
+	POP XDE
+	POP XBC
+	POP XWA
+	RET
+
+; _ad_step: E = a 4-bit code, XHL = the predictor (-32768..32767), D = the step index: both updated, the
+; predictor's high byte stored at (XIY+); XWA and XBC kept
+_ad_step:
+	PUSH XWA
+	PUSH XBC
+	LD A, D
+	EXTZ WA
+	SLA 1, WA
+	EXTZ XWA
+	ADD XWA, ADPCM_STEPS
+	LD WA, (XWA)
+	EXTZ XWA		; XWA = the step
+	LD XBC, XWA
+	SRL 3, XBC		; difference = step / 8
+	BIT 2, E
+	JR Z, _as_b1
+	ADD XBC, XWA		; + step
+_as_b1:
+	SRL 1, XWA
+	BIT 1, E
+	JR Z, _as_b0
+	ADD XBC, XWA		; + step / 2
+_as_b0:
+	SRL 1, XWA
+	BIT 0, E
+	JR Z, _as_sign
+	ADD XBC, XWA		; + step / 4
+_as_sign:
+	BIT 3, E
+	JR Z, _as_add
+	SUB XHL, XBC
+	CP XHL, -32768
+	JR GE, _as_index
+	LD XHL, -32768
+	JR _as_index
+_as_add:
+	ADD XHL, XBC
+	CP XHL, 32767
+	JR LE, _as_index
+	LD XHL, 32767
+_as_index:
+	LD A, E
+	AND A, 7
+	EXTZ WA
+	EXTZ XWA
+	ADD XWA, ADPCM_INDEX
+	LD A, (XWA)
+	ADD A, D		; -1 .. 96
+	BIT 7, A
+	JR Z, _as_pos
+	LD A, 0
+_as_pos:
+	CP A, 88
+	JR ULE, _as_idx
+	LD A, 88
+_as_idx:
+	LD D, A
+	LD (XIY), H		; the sample: bits 15..8 of the predictor
+	INC 1, XIY
+	POP XBC
+	POP XWA
+	RET
+
+ADPCM_STEPS:	; IMA ADPCM's 89 steps (tools/aw_sbank.py STEPS)
+	dw 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88
+	dw 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658
+	dw 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660
+	dw 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818
+	dw 18500, 20350, 22385, 24623, 27086, 29794, 32767
+ADPCM_INDEX:	; the step index's move per code & 7
+	db -1, -1, -1, -1, 2, 4, 6, 8
+
+; -----------------------------------------------------------------------------
+; CNV_DSND_PLAY - PLAY_SOUND on the DSP: XIX = its operands (resource u16 BE, frequency index, volume 0..63,
+; channel): the sound on that channel from its start, at the frequency's rate, its loop repeating; volume 0
+; stops the channel. A sound not in the loaded part's bank is not played.
+; -----------------------------------------------------------------------------
+CNV_DSND_PLAY:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
+	PUSH XIZ
+	LD A, (XIX + 3)
+	CP A, 63
+	JR ULE, _dp_vol
+	LD A, 63
+_dp_vol:
+	LD (DSND_REC + 1), A
+	CP A, 0
+	JP Z, _dp_stop
+	LD A, (XIX)
+	CP A, 0
+	JP NZ, _dp_out
+	LD B, (XIX + 1)		; B = the sound
+	LD XIZ, (DSND_LIST)
+	CP XIZ, 0
+	JP EQ, _dp_out
+_dp_find:
+	LD A, (XIZ)
+	CP A, 0FFh
+	JP Z, _dp_out
+	CP A, B
+	JR Z, _dp_found
+	LD XWA, 5
+	ADD XIZ, XWA
+	JR _dp_find
+_dp_found:
+	LD XHL, (XIZ + 1)
+	ADD XHL, SUB_BANK
+	LD (DSND_REC + 4), XHL	; start
+	LD A, B
+	EXTZ WA
+	EXTZ XWA
+	SLA 3, XWA
+	ADD XWA, CNV_SLEN
+	ADD XHL, (XWA)
+	ADD XHL, (XWA + 4)
+	LD (DSND_REC + 8), XHL	; end: length + loop length on
+	LD XHL, (XWA + 4)
+	LD (DSND_REC + 12), XHL	; loop length
+	; step = Hz / DSND_RATE, 16.16: the whole part, then the fraction from the remainder
+	LD A, (XIX + 2)
+	CP A, 39
+	JR ULE, _dp_freq
+	LD A, 39
+_dp_freq:
+	EXTZ WA
+	SLA 1, WA
+	EXTZ XWA
+	ADD XWA, SND_FREQ
+	LD WA, (XWA)
+	EXTZ XWA		; Hz
+	LD BC, DSND_RATE
+	DIV XWA, BC		; WA = whole, QWA = remainder
+	LD XHL, XWA
+	SRL 16, XHL		; the remainder
+	SLA 16, XWA		; the whole part, << 16 (WA's upper half dropped)
+	LD XDE, XWA
+	SLA 14, XHL		; remainder x 16384
+	LD BC, DSND_RATE / 4	; / (rate / 4): remainder x 65536 / rate
+	DIV XHL, BC
+	EXTZ XHL
+	OR XDE, XHL
+	LD (DSND_REC + 16), XDE
+	JR _dp_send
+_dp_stop:
+	LD XWA, 0
+	LD (DSND_REC + 4), XWA
+	LD (DSND_REC + 8), XWA	; start = end: the channel stops
+_dp_send:
+	LD A, (XIX + 4)
+	CALL CNV_DSND_CHANNEL
+_dp_out:
+	POP XIZ
 	POP XHL
 	POP XDE
 	POP XBC
