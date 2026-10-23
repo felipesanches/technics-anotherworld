@@ -42,6 +42,14 @@ _G.DSND = emu.add_machine_frame_notifier(function()
 	end
 	chs = chs .. string.format(" ring w=%04x r=%04x n=%d gate=%d", mem:read_u16(0x3b60), mem:read_u16(0x3b62),
 		mem:read_u16(0x3b64), mem:read_u16(0x448c))
+	if _G.DSND_N and _G.DSND_N > 0 then
+		chs = chs .. string.format(" streamer=%.1f%%", 100 * (_G.DSND_IN or 0) / _G.DSND_N)
+		local r = {}
+		for n, c in pairs(_G.DSND_R or {}) do r[#r + 1] = { n, c } end
+		table.sort(r, function(x, y) return x[2] > y[2] end)
+		for k = 1, math.min(5, #r) do chs = chs .. string.format(" %s=%.0f%%", r[k][1], 100 * r[k][2] / _G.DSND_N) end
+		_G.DSND_N, _G.DSND_IN, _G.DSND_R = 0, 0, {}
+	end
 	emu.print_error(string.format("DSND t=%.1f intt1=%s intt5=%s magic=%s state=%d ticks=%d rate=%.0f/s%s main800064=%s",
 		t, hex(0x464, 5), hex(0x478, 5), hex(S.SUB_BASE, 4), mem:read_u8(S.SUB_STATE), ticks, rate, chs, mi))
 end)
@@ -56,6 +64,23 @@ if os.getenv("DS_WATCH") and M.DSND_CUR then
 			last = cur
 			emu.print_error(string.format("DSNDLOAD t=%.3f cur=%06x id=%02x dest=%06x", mac.time:as_double(), cur,
 				mmem:read_u8(cur), mmem:read_u32(M.DSND_DEST)))
+		end
+	end)
+end
+-- DS_PROF=1: the sub CPU's PC sampled once a video frame; each DSND line then also reports the share of samples
+-- since the last line that were in the streamer (SUB_BASE..SUB_END): how much of the sub CPU it takes, and the five
+-- streamer routines (nearest global symbol at or below the PC) with the most samples
+if os.getenv("DS_PROF") then
+	local scpu = mac.devices[":subcpu"]
+	_G.DSNDP = emu.add_machine_frame_notifier(function()
+		local pc = scpu.state["PC"].value
+		_G.DSND_N = (_G.DSND_N or 0) + 1
+		if pc >= S.SUB_BASE and pc < S.SUB_END then
+			_G.DSND_IN = (_G.DSND_IN or 0) + 1
+			local best, bn = 0, "?"
+			for n, v in pairs(S) do if v <= pc and v > best and v >= S.SUB_BASE and not n:match("^_") then best, bn = v, n end end
+			_G.DSND_R = _G.DSND_R or {}
+			_G.DSND_R[bn] = (_G.DSND_R[bn] or 0) + 1
 		end
 	end)
 end

@@ -193,8 +193,24 @@ identical at 85 s to what they were at 24 s, before the game. Two simpler restor
 (`FFh`) message was consumed and uploaded nothing, and a change on slot 0 reloaded a different body for unit 0
 (104 words for 70).
 
-Open: a faster load (decoding and E1 take about half the 14 s); a higher tick rate than 4000 Hz, whose 2 kHz
-bandwidth dulls the sounds; and the real instrument, where none of this has run. The core's model reads the
+**The streamer's share of the sub CPU** (`probes/dsnd.lua` with `DS_PROF=1`: the sub CPU's PC once a video
+frame, by streamer routine; the intro, 4000 ticks a second):
+
+| byte writer                                                        | sub CPU in the streamer |
+|--------------------------------------------------------------------|-------------------------|
+| the firmware's way, `DSP_DATA` per byte (61 % in it alone)         | 86-88 %                 |
+| `DSP_FAST`: mode and read strobe once a burst, an 8-bit READY wait | 65-66 %                 |
+| and the chip held selected through the burst                       | 54-57 %                 |
+
+Asked for 8000 ticks a second with the first writer, the sub CPU gave 4709 and nothing else (99 %). Each tick
+writes 33 bytes (the command, the poke port, the pointer, four samples and the output level). The last row
+departs from the firmware's strobes, which select the chip around every byte; it is the usual timing of such a
+host port but is not checked on the uPD6383 (`src/awsub.asm` `DSP_FAST`). MAME's TLCS-900 instruction timings are
+themselves not confirmed against the chip, so these shares are the emulator's.
+
+Open: a faster load (decoding and E1 take about half the 14 s); a tick rate above 4000 Hz, whose 2 kHz bandwidth
+dulls the sounds, needs fewer bytes a tick or a sample player inside the DSP; and the real instrument, where
+none of this has run. The core's model reads the
 CALL, its D-RAM rebase and the output level from the shipped kernel; the chip may differ. The research plan is
 on the technics-docs site: `kn5000-dsp-sample-playback-research.md`.
 

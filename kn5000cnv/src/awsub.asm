@@ -358,31 +358,68 @@ SUB_SAMPLES:	DB 4 DUP (0)
 
 ; ---- the DSP: packets ---------------------------------------------------------
 ; DSP_SEND_SAMPLES: the D-RAM pointer to 0x05, then the first sample, the level (0x06), the other three
-; (samples << 16, sign kept; the pointer steps by one a value)
+; (samples << 16, sign kept; the pointer steps by one a value). Every tick, so through DSP_FAST: at 4000 ticks
+; a second the per-byte DSP_DATA took 61 % of the sub CPU (probes/dsnd.lua DS_PROF, kn5000cnv/README.md).
 DSP_SEND_SAMPLES:
-	CALL DSP_POKE_OPEN
+	SET 0, (PH)		; (READY's latch, as DSP_DATA sets it)
+	SET 4, (P7)		; read strobe off
+	RES 6, (P7)		; command
+	RES 5, (P7)		; the chip selected for the whole burst (DSP_FAST)
+	LD A, 01h
+	CALL DSP_FAST
+	SET 6, (P7)		; data from here on
+	LD A, 01h		; I-RAM 0x0160, the poke port
+	CALL DSP_FAST
+	LD A, 60h
+	CALL DSP_FAST
 	LD XIX, PKT_DPTR
-	CALL DSP_PACKET
+	CALL _dss_packet
 	LD XIY, SUB_SAMPLES
 	LD B, 4
 _dss:
 	CP B, 3
 	JR NZ, _dss_sample
 	LD XIX, PKT_LEVEL
-	CALL DSP_PACKET
+	CALL _dss_packet
 _dss_sample:
 	LD A, 0Ah
-	CALL DSP_DATA
+	CALL DSP_FAST
 	LD A, (XIY)		; v23..16: the sample
-	CALL DSP_DATA
+	CALL DSP_FAST
 	LD A, 0
-	CALL DSP_DATA
-	LD A, 0
-	CALL DSP_DATA
+	CALL DSP_FAST
+	CALL DSP_FAST
 	LD A, 15h		; tag: D-RAM
-	CALL DSP_DATA
+	CALL DSP_FAST
 	INC 1, XIY
 	DJNZ B, _dss
+	SET 5, (P7)		; deselected
+	RET
+_dss_packet:
+	LD C, 5
+_dsp_p:
+	LD A, (XIX)
+	INC 1, XIX
+	CALL DSP_FAST
+	DJNZ C, _dsp_p
+	RET
+
+; DSP_FAST: A = one byte to IC311, inside a burst (DSP_BURST_ON: the read strobe off, the chip selected): the
+; write strobe low, READY waited for at most 255 polls (DSP_DATA: 8000, then it writes anyway), the byte, the
+; write strobe high. DSP_DATA instead selects and deselects the chip around every byte; holding the select
+; through a burst and latching each byte on the write strobe's rising edge is the usual timing of such a host
+; port, but on the uPD6383 it is not checked: if the instrument shows otherwise, select per byte here.
+; Keeps every register but W.
+DSP_FAST:
+	RES 3, (P7)
+	LD W, 0
+_df_wait:
+	BIT 0, (PH)
+	JR NZ, _df_ready
+	DJNZ W, _df_wait
+_df_ready:
+	LD (PZ), A
+	SET 3, (P7)
 	RET
 
 DSP_SEND_SAMPLES_ZERO:
