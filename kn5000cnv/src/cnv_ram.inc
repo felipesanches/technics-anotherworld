@@ -36,3 +36,16 @@ CNV_KEYS:		DB 16 DUP (?)	; held keybed notes, one bit per MIDI note
 CNV_LR:			DB ?		; direction in use: 0 none, 1 right, 2 left
 CNV_UD:			DB ?		; 0 none, 1 down, 2 up
 CNV_DBG_REPLY:		DB 4 DUP (?)	; the last EXIT query's four reply bytes (probes)
+; cnv_sound.asm
+SND_READY:		DB ?		; 1 once CNV_SND_INIT has run, until CNV_SND_END
+SND_REC:		DB 5 DUP (?)	; the record being sent to the sub CPU
+SND_PROG:		DB 32 DUP (?)	; per part 0..15: the (program, selector) last sent, 0FFh = unknown
+SND_SLOTS:		DB 32 DUP (?)	; 8 notes sounding: part (0FFh none), note, end tick (0 = held)
+MUS_MOD:		DB ?		; 1 while a module plays
+MUS_ORDER:		DB ?		; its order index
+MUS_NORD:		DB ?		; orders in it
+			DB ?
+MUS_LOADED:		DW ?		; the module in MUSIC_BUF (resource id, 0 = none)
+MUS_POS:		DW ?		; the row's offset in its pattern, 0..1008 in 16s
+MUS_TIME:		DD ?		; when the next row is due, in 1/256 ticks (bits 23-8: the tick)
+MUS_PER:		DD ?		; a row's length, 1/256 ticks

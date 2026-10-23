@@ -316,6 +316,7 @@ VIDEO_START:
 initForPart:
 	LD (CURRENT_PART_ID), WA
 	ifdef TARGET_CNV
+	CALL CNV_SND_STOPALL		; the sound and the music stop, as rawgl's restartAt
 	CALL CNV_LOAD_PART		; read this part's resources from the floppy (WA = partId)
 	endif
 
@@ -524,6 +525,9 @@ _pause_capped:
 	; Poll timer with DJNZ fallback (65536 iterations ≈ 80ms safety net)
 	LD HL, 0				; fallback counter
 _pause_wait:
+	ifdef TARGET_CNV
+	CALL CNV_SND_POLL		; the music's rows and the notes' ends, all through the pause
+	endif
 	LD XWA, (SYSTEM_TICKS)
 	LD XDE, (FRAME_START_TICKS)
 	SUB XWA, XDE			; XWA = elapsed
@@ -1447,6 +1451,9 @@ _cpanel_delay:
 	ifdef HAS_CPANEL
 
 HELP_SCREEN:
+	ifdef TARGET_CNV
+	CALL CNV_SND_STOPALL		; no note hangs while the game is paused
+	endif
 	; Save all registers
 	PUSH XWA
 	PUSH XBC
@@ -2415,6 +2422,9 @@ _next_thread__do_loop:
 	CALL INPUT_UPDATE_PLAYER		; Once per frame (matches reference HLE)
 	CALL CHECK_THREAD_REQUESTS
 	; The screen changes only on BLIT_FRAMEBUFFER, which also paces the frames (PAUSE)
+	ifdef TARGET_CNV
+	CALL CNV_SND_POLL
+	endif
 
 	LD WA, 0			; Must clear W (the calls above clobber it); thread scan uses W=0
 _not_end_of_frame:
@@ -3393,8 +3403,9 @@ INSTRUCTION_IS_NOT_SHR:
 	; ====  PLAY_SOUND instruction  ====
 	CP A, 18h
 	JP NE, INSTRUCTION_IS_NOT_PLAY_SOUND
-	; Implement-me!
-	; Note: We currently do not understand the Technics KN5000 sound hardware.
+	ifdef TARGET_CNV
+	CALL CNV_SND_PLAY	; the instrument's voices (kn5000cnv/src/cnv_sound.asm)
+	endif
 	ADD XIX, 5		; word resourceId; byte freq; byte vol; byte channel (INC only supports 1,2,4,8)
 	JP _end_of_EXECUTE_INSTRUCTION
 INSTRUCTION_IS_NOT_PLAY_SOUND:
@@ -3407,9 +3418,16 @@ INSTRUCTION_IS_NOT_PLAY_SOUND:
 	EX W, A			; byte-swap: bytecode is big-endian
 	INC 2, XIX
 
-	; resourceId == 0: stop sound (no-op, we don't have sound)
+	; resourceId == 0: stop sound
 	CP WA, 0
+	ifdef TARGET_CNV
+	JR NE, _load_not_stop
+	CALL CNV_SND_STOPALL
+	JP _end_of_EXECUTE_INSTRUCTION
+_load_not_stop:
+	else
 	JP EQ, _end_of_EXECUTE_INSTRUCTION
+	endif
 
 	; resourceId > 0x91: part switch request
 	CP WA, NUM_MEM_LIST
@@ -3510,8 +3528,9 @@ INSTRUCTION_IS_NOT_LOAD:
 	; ====  PLAY_MUSIC instruction  ====
 	CP A, 1Ah
 	JP NE, INSTRUCTION_IS_NOT_PLAY_MUSIC
-	; Implement-me!
-	; Note: We currently do not understand the Technics KN5000 sound hardware.
+	ifdef TARGET_CNV
+	CALL CNV_SND_MUSIC	; the module, on the instrument's voices (kn5000cnv/src/cnv_sound.asm)
+	endif
 	ADD XIX, 5		; word resNum; word delay; byte pos (INC only supports 1,2,4,8)
 	JP _end_of_EXECUTE_INSTRUCTION
 INSTRUCTION_IS_NOT_PLAY_MUSIC:

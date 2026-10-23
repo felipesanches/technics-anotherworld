@@ -74,6 +74,7 @@ CNV_FIRST:
 	PUSH SR
 	LD (CNV_SAVED_SP), XSP
 	CALL CNV_HW_TAKE
+	CALL CNV_SND_INIT	; the game's sound on the instrument's voices (cnv_sound.asm)
 	JP ENTRY		; the VM; it leaves through CNV_EXIT
 
 CNV_NO_FIRMWARE:
@@ -88,6 +89,7 @@ CNV_SONG_IN_USE:
 CNV_EXIT:
 	DI
 	LD XSP, (CNV_SAVED_SP)
+	CALL CNV_SND_END	; the parts the game used, as the firmware set them
 	CALL CNV_HW_GIVE_BACK
 	CALL CNV_SONG_RESTORE
 	POP SR

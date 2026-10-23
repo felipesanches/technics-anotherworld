@@ -39,6 +39,7 @@ CNV_ENTRY:
 	include "vga_io.asm"
 	include "another_world_vm.asm"
 	include "cnv_platform.asm"
+	include "cnv_sound.asm"
 	include "awfiles.inc"
 
 ; The VM finds each part's resources here (initForPart); CNV_LOAD_PART fills the buffers.
@@ -68,6 +69,8 @@ PALETTE_BUF	EQU (CNV_RAM_END + 0FFh) & 0FFFF00h
 BYTECODE_BUF	EQU (PALETTE_BUF + CNV_MAX_PALETTE + 0FFh) & 0FFFF00h
 VIDEO1_BUF	EQU (BYTECODE_BUF + CNV_MAX_BYTECODE + 0FFh) & 0FFFF00h
 VIDEO1_END	EQU VIDEO1_BUF + CNV_MAX_VIDEO1
+MUSIC_BUF	EQU (VIDEO1_END + 0FFh) & 0FFFF00h	; the music module playing (cnv_sound.asm)
+MUSIC_END	EQU MUSIC_BUF + CNV_MAX_MUSIC
 VIDEO2_BUF	EQU PAGE_BITMAP_3 + 64000
 SCREEN_BUF	EQU (VIDEO2_BUF + CNV_SIZE_VIDEO2 + 0FFh) & 0FFFF00h
 SCREEN_END	EQU SCREEN_BUF + 32000
@@ -75,8 +78,8 @@ SCREEN_END	EQU SCREEN_BUF + 32000
 	if CNV_IMAGE_END > 0B0000h
 	error "AW.CNV is larger than the 192 KB the firmware loads"
 	endif
-	if VIDEO1_END > PAGE_BITMAP_0
-	error "the part buffers run into the page buffers"
+	if MUSIC_END > PAGE_BITMAP_0
+	error "the part and music buffers run into the page buffers"
 	endif
 	if SCREEN_END > CNV_SONG_END
 	error "the screen buffer runs past the song memory"

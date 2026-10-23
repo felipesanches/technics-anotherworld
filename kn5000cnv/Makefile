@@ -13,6 +13,8 @@ DISASM_REPO ?= ../../technics-roms-disasm
 PYTHON      ?= python3
 # START_PART=03E82h starts the game in that part instead of the intro (test builds only)
 START_PART  ?=
+# SND_TEST=1 plays a fixed list of notes before the game (src/cnv_sound.asm CNV_SND_TEST; test builds only)
+SND_TEST    ?=
 
 ASL   := $(ASL_DIR)/asl
 P2BIN := $(ASL_DIR)/p2bin
@@ -25,11 +27,11 @@ build/res/memlist.tsv: ../kn7000/tools/aw_extract.py $(AW_DATA)/MEMLIST.BIN
 	mkdir -p build/res
 	$(PYTHON) -I ../kn7000/tools/aw_extract.py $(AW_DATA) build/res
 
-build/awfiles.inc: tools/make_awdisk.py build/res/memlist.tsv
+build/awfiles.inc: tools/make_awdisk.py tools/aw_sound_map5.py ../kn7000/tools/aw_sound_map.py build/res/memlist.tsv
 	$(PYTHON) -I tools/make_awdisk.py build/res build
 
-build/aw_cnv.p: src/aw_cnv.asm src/cnv_platform.asm src/cnv_ram.inc build/awfiles.inc ../src/another_world_vm.asm ../src/vm_ram.inc
-	$(ASL) -w -q -L -D TARGET_CNV $(if $(START_PART),-D START_PART=$(START_PART)) -olist build/aw_cnv.lst $(INCS) \
+build/aw_cnv.p: src/aw_cnv.asm src/cnv_platform.asm src/cnv_sound.asm src/cnv_ram.inc build/awfiles.inc ../src/another_world_vm.asm ../src/vm_ram.inc
+	$(ASL) -w -q -L -D TARGET_CNV $(if $(START_PART),-D START_PART=$(START_PART)) $(if $(SND_TEST),-D SND_TEST=1) -olist build/aw_cnv.lst $(INCS) \
 		src/aw_cnv.asm -o $@
 
 build/AW.CNV: build/aw_cnv.p

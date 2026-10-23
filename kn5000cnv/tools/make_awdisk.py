@@ -7,11 +7,16 @@ RESDIR holds resource-0xNN.bin as kn7000/tools/aw_extract.py writes them from th
                           polygons, the shared polygons 0x11, the twelve screens), unchanged
   OUTDIR/awfiles.inc      for aw_cnv.asm: CNV_SIZES (a 32-bit size for every id 0x00..0x91, 0 = not
                           on the disk), CNV_PARTS (palette, bytecode, video1, video2 ids per part,
-                          video2 0 = none) and the largest size of each kind, to size the buffers
+                          video2 0 = none) and the largest size of each kind, to size the buffers;
+                          CNV_SND, the voice that plays each sound resource (tools/aw_sound_map5.py)
+The music modules go on the disk too: the sound reads them when the game starts one.
 """
 import os
 import shutil
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import aw_sound_map5  # noqa: E402
 
 # (palette, bytecode, video1, video2) per part, 0x3E80..0x3E89 -- the VM's PART_RESOURCE_TABLE
 PARTS = [
@@ -36,7 +41,10 @@ def main():
     resdir, out = sys.argv[1], sys.argv[2]
     files = os.path.join(out, 'files')
     os.makedirs(files, exist_ok=True)
-    ids = sorted({r for p in PARTS for r in p if r} | set(SCREENS))
+    rows = [line.split('\t') for line in open(os.path.join(resdir, 'memlist.tsv')).read().split('\n')[1:] if line]
+    types = [r[1] for r in rows]
+    music = [i for i, t in enumerate(types) if t == 'music']
+    ids = sorted({r for p in PARTS for r in p if r} | set(SCREENS) | set(music))
     sizes = {}
     for r in ids:
         src = os.path.join(resdir, f'resource-0x{r:02x}.bin')
@@ -50,7 +58,8 @@ def main():
         f.write('; awfiles.inc -- written by kn5000cnv/tools/make_awdisk.py; do not edit\n\n')
         for k, v in most.items():
             f.write(f'CNV_MAX_{k}\tEQU {v}\n')
-        f.write(f'CNV_SIZE_VIDEO2\tEQU {sizes[0x11]}\n\n')
+        f.write(f'CNV_SIZE_VIDEO2\tEQU {sizes[0x11]}\n')
+        f.write(f'CNV_MAX_MUSIC\tEQU {max(sizes[m] for m in music)}\n\n')
         f.write('; CNV_SIZES: the byte count of AWnn.BIN for each resource id 0x00..0x91 (0 = not on the disk)\n')
         f.write('CNV_SIZES:\n')
         for r in range(0x92):
@@ -59,6 +68,11 @@ def main():
         f.write('CNV_PARTS:\n')
         for p in PARTS:
             f.write('\tdb ' + ', '.join(f'0{r:02X}h' for r in p) + '\n')
+        snd, _ = aw_sound_map5.table(types, lambda i: open(os.path.join(resdir, f'resource-0x{i:02x}.bin'), 'rb').read(4))
+        f.write('\n; CNV_SND: the voice of each sound resource 0x00..0x91, 8 bytes each (tools/aw_sound_map5.py)\n')
+        f.write('CNV_SND:\n')
+        for i in range(0, len(snd), 8):
+            f.write('\tdb ' + ', '.join(f'0{b:02X}h' for b in snd[i:i + 8]) + f'\t; 0x{i // 8:02x}\n')
     total = sum(sizes.values())
     print(f'{out}: {len(ids)} files, {total} bytes; largest palette {most["PALETTE"]}, '
           f'bytecode {most["BYTECODE"]}, video1 {most["VIDEO1"]}, video2 {sizes[0x11]}')
