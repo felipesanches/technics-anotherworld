@@ -526,9 +526,6 @@ ADPCM_INDEX:	; the step index's move per code & 7
 CNV_DSND_PLAY:
 	PUSH XWA
 	PUSH XBC
-	PUSH XDE
-	PUSH XHL
-	PUSH XIZ
 	LD A, (XIX + 3)
 	CP A, 63
 	JR ULE, _dp_vol
@@ -536,24 +533,125 @@ CNV_DSND_PLAY:
 _dp_vol:
 	LD (DSND_REC + 1), A
 	CP A, 0
-	JP Z, _dp_stop
+	JR Z, _dp_stop
 	LD A, (XIX)
 	CP A, 0
-	JP NZ, _dp_out
-	LD B, (XIX + 1)		; B = the sound
+	JR NZ, _dp_out
+	LD B, (XIX + 1)
+	CALL _dsnd_sample	; the sound's start, end and loop
+	JR NZ, _dp_out
+	LD A, (XIX + 2)
+	CP A, 39
+	JR ULE, _dp_freq
+	LD A, 39
+_dp_freq:
+	EXTZ WA
+	SLA 1, WA
+	EXTZ XWA
+	ADD XWA, SND_FREQ
+	LD WA, (XWA)		; Hz
+	CALL _dsnd_step
+	LD A, (XIX + 4)
+	CALL CNV_DSND_CHANNEL
+	JR _dp_out
+_dp_stop:
+	LD A, (XIX + 4)
+	CALL CNV_DSND_STOP
+_dp_out:
+	POP XBC
+	POP XWA
+	RET
+
+; -----------------------------------------------------------------------------
+; CNV_DSND_MUSNOTE - a music module event on the DSP, as rawgl SfxPlayer::handlePattern plays it: C = channel,
+; HL = the note (an Amiga period; 0 = none), A = the volume after the event's effect, D = instrument << 4 |
+; effect. A period plays the instrument's sample at 7159092 / (2 x period) Hz; no period only sets the volume.
+; -----------------------------------------------------------------------------
+CNV_DSND_MUSNOTE:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
+	PUSH XIX
+	CP A, 63
+	JR ULE, _mn_vol
+	LD A, 63
+_mn_vol:
+	LD (DSND_REC + 1), A
+	CP HL, 0
+	JR NZ, _mn_note
+	LD (DSND_BYTE), A	; the volume alone: the streamer sends it on its next tick
+	LD A, C
+	AND A, 3
+	EXTZ WA
+	EXTZ XWA
+	SLA 5, XWA
+	ADD XWA, CH0 + 1
+	LD XDE, XWA
+	LD XWA, DSND_BYTE
+	LD BC, 1
+	CALL CNV_E1_SEND
+	JR _mn_out
+_mn_note:
+	LD A, D
+	SRL 4, A
+	DEC 1, A
+	EXTZ WA
+	SLA 2, WA
+	EXTZ XWA
+	LD XIX, MUSIC_BUF + 2
+	ADD XIX, XWA		; the instrument: u16 BE resource, u16 BE volume
+	LD A, (XIX)
+	CP A, 0
+	JR NZ, _mn_out
+	LD B, (XIX + 1)
+	CALL _dsnd_sample
+	JR NZ, _mn_out
+	CP HL, 113
+	JR UGE, _mn_period
+	LD HL, 113		; (the shortest ProTracker period; keeps the quotient in 16 bits)
+_mn_period:
+	LD XWA, 3579546		; 7159092 / 2
+	DIV XWA, HL		; Hz
+	CALL _dsnd_step
+	LD A, C
+	CALL CNV_DSND_CHANNEL
+_mn_out:
+	POP XIX
+	POP XHL
+	POP XDE
+	POP XBC
+	POP XWA
+	RET
+
+; CNV_DSND_STOP - A = channel: it stops (a record whose start is its end)
+CNV_DSND_STOP:
+	PUSH XWA
+	LD XWA, 0
+	LD (DSND_REC + 4), XWA
+	LD (DSND_REC + 8), XWA
+	POP XWA
+	JP CNV_DSND_CHANNEL
+
+; _dsnd_sample: B = a sound's id -> DSND_REC +4 start, +8 end, +12 loop length in the sub CPU's DRAM, Z; NZ when
+; the loaded part's bank does not hold it
+_dsnd_sample:
+	PUSH XWA
+	PUSH XHL
+	PUSH XIZ
 	LD XIZ, (DSND_LIST)
 	CP XIZ, 0
-	JP EQ, _dp_out
-_dp_find:
+	JR EQ, _ds_none
+_ds_find:
 	LD A, (XIZ)
 	CP A, 0FFh
-	JP Z, _dp_out
+	JR Z, _ds_none
 	CP A, B
-	JR Z, _dp_found
+	JR Z, _ds_found
 	LD XWA, 5
 	ADD XIZ, XWA
-	JR _dp_find
-_dp_found:
+	JR _ds_find
+_ds_found:
 	LD XHL, (XIZ + 1)
 	ADD XHL, SUB_BANK
 	LD (DSND_REC + 4), XHL	; start
@@ -567,40 +665,38 @@ _dp_found:
 	LD (DSND_REC + 8), XHL	; end: length + loop length on
 	LD XHL, (XWA + 4)
 	LD (DSND_REC + 12), XHL	; loop length
-	; step = Hz / DSND_RATE, 16.16: the whole part, then the fraction from the remainder
-	LD A, (XIX + 2)
-	CP A, 39
-	JR ULE, _dp_freq
-	LD A, 39
-_dp_freq:
-	EXTZ WA
-	SLA 1, WA
+	LD A, 0
+	CP A, 0			; Z
+	JR _ds_out
+_ds_none:
+	LD A, 1
+	CP A, 0			; NZ
+_ds_out:
+	POP XIZ
+	POP XHL
+	POP XWA
+	RET
+
+; _dsnd_step: WA = Hz -> DSND_REC + 16 = Hz / DSND_RATE, 16.16: the whole part, then the fraction from the
+; remainder (remainder x 65536 / rate = remainder x 16384 / (rate / 4), within 16 bits)
+_dsnd_step:
+	PUSH XWA
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
 	EXTZ XWA
-	ADD XWA, SND_FREQ
-	LD WA, (XWA)
-	EXTZ XWA		; Hz
 	LD BC, DSND_RATE
 	DIV XWA, BC		; WA = whole, QWA = remainder
 	LD XHL, XWA
 	SRL 16, XHL		; the remainder
-	SLA 16, XWA		; the whole part, << 16 (WA's upper half dropped)
+	SLA 16, XWA		; the whole part << 16
 	LD XDE, XWA
-	SLA 14, XHL		; remainder x 16384
-	LD BC, DSND_RATE / 4	; / (rate / 4): remainder x 65536 / rate
+	SLA 14, XHL
+	LD BC, DSND_RATE / 4
 	DIV XHL, BC
 	EXTZ XHL
 	OR XDE, XHL
 	LD (DSND_REC + 16), XDE
-	JR _dp_send
-_dp_stop:
-	LD XWA, 0
-	LD (DSND_REC + 4), XWA
-	LD (DSND_REC + 8), XWA	; start = end: the channel stops
-_dp_send:
-	LD A, (XIX + 4)
-	CALL CNV_DSND_CHANNEL
-_dp_out:
-	POP XIZ
 	POP XHL
 	POP XDE
 	POP XBC

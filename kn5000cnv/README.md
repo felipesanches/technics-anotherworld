@@ -176,10 +176,13 @@ with `DS_WATCH=1`, runs `e9`-`e11`):
 | one file per sound, read whole     | about 1.5 s a sound, nearly all of it the file's opening |
 | `AWSND.BIN`: one open, seek + read | 14 s (41.0 - 55.0 s)                                     |
 
-and the intro then plays with its own sound effects (levels 58-110 s: rms up to 3309, peak 10483, nothing
-clipped). The music stays on the instrument's voices for now.
+The music module's rows go to the same four channels, as on the Amiga: an event with a period plays its
+instrument's sample at 7159092 / (2 x period) Hz, one without only sets the volume, 0xFFFE stops the channel
+(rawgl `SfxPlayer::handlePattern`). The intro's bank holds 148,508 bytes of samples; the intro then plays with
+its own sound effects and music (run `e12`: effects from 58 s, the module from 78 s on all four channels;
+rms up to 3413, peak 11082, nothing clipped). The instrument's voices are not used.
 
-Open: the music on the four channels, as on the Amiga; a faster load (decoding and E1 take about half the
+Open: a faster load (decoding and E1 take about half the
 14 s); a higher tick rate than 4000 Hz, whose 2 kHz bandwidth dulls the sounds; IC311's own effect program
 back when the game ends; and the real instrument, where none of this has run. The core's model reads the
 CALL, its D-RAM rebase and the output level from the shipped kernel; the chip may differ. The research plan is

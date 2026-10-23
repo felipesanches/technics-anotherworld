@@ -604,7 +604,16 @@ _mus_stop:
 	LDB (MUS_MOD), 0
 	LD A, 0
 _mst_slot:
+	ifdef DSND
+	LD W, (DSND_ON)
+	CP W, 0
+	JR Z, _mst_voice
+	CALL CNV_DSND_STOP	; (the four channels are the music's and the sound effects', as on the Amiga)
+	JR _mst_next
+_mst_voice:
+	endif
 	CALL _slot_off
+_mst_next:
 	INC 1, A
 	CP A, SND_SLOT_SFX
 	JR NZ, _mst_slot
@@ -681,6 +690,14 @@ _me_notmark:
 	CP HL, 0FFFEh
 	JR NZ, _me_notstop
 	LD A, C
+	ifdef DSND
+	LD B, (DSND_ON)
+	CP B, 0
+	JR Z, _me_stopvoice
+	CALL CNV_DSND_STOP	; (cnv_dspsnd.asm)
+	JP _me_out
+_me_stopvoice:
+	endif
 	CALL _slot_off
 	JP _me_out
 _me_notstop:
@@ -733,6 +750,14 @@ _me_not5:
 	JR NC, _me_vol
 	LD A, 0
 _me_vol:
+	ifdef DSND
+	LD B, (DSND_ON)
+	CP B, 0
+	JR Z, _me_voices
+	CALL CNV_DSND_MUSNOTE	; the instrument's own sample, on the DSP (cnv_dspsnd.asm)
+	JP _me_out
+_me_voices:
+	endif
 	CP HL, 0
 	JP Z, _me_out		; no note: a volume change, nothing to send
 	CP A, 0
