@@ -170,7 +170,7 @@ CPU's DRAM from `0xA0000` (the largest part, 219,012 bytes). PLAY_SOUND then set
 start, end, loop, the step for its frequency at 4000 ticks a second, its volume. Measured (`probes/dsnd.lua`
 with `DS_WATCH=1`, runs `e9`-`e11`):
 
-| how the sounds are read                                                                     | the intro's 22 sounds (141 KB of samples)                |
+| how the sounds are read                                                                     | the intro's 22 sounds (148,508 bytes of samples)         |
 |---------------------------------------------------------------------------------------------|----------------------------------------------------------|
 | one file per sound, 4 KB a read                                                             | over 35 s                                                |
 | one file per sound, read whole                                                              | about 1.5 s a sound, nearly all of it the file's opening |
