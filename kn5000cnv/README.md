@@ -136,34 +136,26 @@ played; each PLAY_SOUND and each row of the music module becomes a note of one o
   (Dream, -67 dBFS) while it lasts (`probes/sndstate.lua`, `tools/wavlevel.py`). Not heard by a person yet, and not
   tried on the unit.
 
-### Why not a DSP mixer as on the KN7000 (2026-10-23)
+### A DSP mixer as on the KN7000: not yet (initial result, 2026-10-23)
 
 The KN7000 port plays the game's own samples with a mixer of ours in the effects DSP (an ADSP-21065L, a
 documented chip), reached through the firmware's host-port routines from the CPU the game runs on
-(`../kn7000/README-CNV.md`, "Sound"). On the KN5000 neither of its two DSPs allows that today:
+(`../kn7000/README-CNV.md`, "Sound"). On the KN5000 that cannot be written today, for what is known of its
+DSPs now:
 
-|                 | IC311, uPD6383GF (effects)                                                                                                                                                                                                                             | IC310, MN19413 (the main mix passes through it)            |
-|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| driven by       | the **sub CPU** (port 7 strobes)                                                                                                                                                                                                                       | the **sub CPU** (3-wire serial PF.0/PF.2/PE.6, write-only) |
-| instruction set | partly decoded: the biquad and delay datapaths bit-exact; the arithmetic not yet confronted with the HLE, a machine-wide saturation open, the modulated delays (chorus, pitch shift) still stubs (technics-roms-disasm `dsp/analysis/HANDOFF-NEXT.md`) | not decoded                                                |
-| in MAME         | a draft core, **not in the default build** (`KN5000_ENABLE_DSP1=0`, kn5000.cpp)                                                                                                                                                                        | not emulated at all                                        |
-| sample data     | only the DSP writes its delay DRAM (IC309, 256K x 16); the host reaches C-RAM and the register file one 5-byte group at a time                                                                                                                         | delay DRAM IC308, 128K x 8                                 |
+|                 | IC311, uPD6383GF (effects)                                                                                                                                           | IC310, MN19413 (the main mix passes through it)            |
+|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| driven by       | the **sub CPU** (port 7 strobes)                                                                                                                                     | the **sub CPU** (3-wire serial PF.0/PF.2/PE.6, write-only) |
+| instruction set | partly decoded (about 81 % of the distinct microwords); no assembler                                                                                                 | not decoded                                                |
+| in MAME         | a draft core, **not in the default build** (`KN5000_ENABLE_DSP1=0`, kn5000.cpp), and its return into IC303 not mixed                                                 | not emulated at all                                        |
+| sample data     | only the DSP's own write words reach its delay DRAM (IC309, 256K x 16); the host writes coefficients and registers one 5-byte group at a time and reads nothing back | delay DRAM IC308, 128K x 8                                 |
 
-A sample player also meets IC311's memory model as documented (technics-docs `upd6383-datasheet.md`, 3.1-3.5):
-every delay-DRAM address is `descriptor + G mod 2^N`, G the frame counter, so a tap moves one word per frame and
-pitch would need the host to rewrite a descriptor every frame; only the DSP's own write words reach the DRAM; the
-host port is write-only (nothing can be read back, so the host cannot know G, nor where a sample landed); and the
-condition flags are strapped on the KN5000, the programs straight-line. So the game's samples could neither be put
-at known places in the delay DRAM nor played at the game's pitches. And the converter runs on the main CPU, which
-reaches the DSPs only through the sub CPU.
-A mixer written now could not be checked against the chip, would play only in a non-default MAME build, and
-could not be tried on the unit while it is away.
-
-Reaching the DSPs is possible in principle: the sub CPU's boot ROM takes its whole program from the main CPU at
-power-on (E1 transfers into sub-CPU DRAM, then a call to `0x400`: technics-roms-disasm
-`subcpu/boot/kn5000_subcpu_boot.s`), so code of ours could run on the sub CPU next to the firmware's. That
-answers who drives the DSP, not what the DSP can do: IC311 is not on the main mix bus in MAME either (its
-send/return insert is not wired up, kn5000.cpp), so nothing it outputs would be heard there.
+A delay address is a descriptor plus the frame counter, plus, on CHORUS-type words, a computed modulation offset
+(`lo12 = 0x44C`): CHORUS is an LFO-swept delay, its phase accumulator measured live. That is the core of a sample
+player, and how wide and how fine that offset is, whether writes can use it, and how a program of ours would reach
+the chip (the sub CPU's DRAM is writable from the main CPU with E1 transfers, and the effect programs are bytecode
+streams there) are open. The research plan, its questions and their order, is on the technics-docs site:
+`kn5000-dsp-sample-playback-research.md` ("DSP Sample Playback — Research Plan").
 
 Hence the instrument's voices above, the KN7000's first iteration.
 
