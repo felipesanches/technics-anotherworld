@@ -149,9 +149,13 @@ documented chip), reached through the firmware's host-port routines from the CPU
 | in MAME         | a draft core, **not in the default build** (`KN5000_ENABLE_DSP1=0`, kn5000.cpp)                                                                                                                                                                        | not emulated at all                                        |
 | sample data     | only the DSP writes its delay DRAM (IC309, 256K x 16); the host reaches C-RAM and the register file one 5-byte group at a time                                                                                                                         | delay DRAM IC308, 128K x 8                                 |
 
-A sample player needs delay-memory reads at addresses computed at run time (the mechanism of the chorus and the
-pitch shifter, which are not decoded), a way to put 685,000 samples into the delay DRAM, and a path from the main
-CPU to the DSP: the converter runs on the main CPU, which reaches the DSPs only through the sub CPU's firmware.
+A sample player also meets IC311's memory model as documented (technics-docs `upd6383-datasheet.md`, 3.1-3.5):
+every delay-DRAM address is `descriptor + G mod 2^N`, G the frame counter, so a tap moves one word per frame and
+pitch would need the host to rewrite a descriptor every frame; only the DSP's own write words reach the DRAM; the
+host port is write-only (nothing can be read back, so the host cannot know G, nor where a sample landed); and the
+condition flags are strapped on the KN5000, the programs straight-line. So the game's samples could neither be put
+at known places in the delay DRAM nor played at the game's pitches. And the converter runs on the main CPU, which
+reaches the DSPs only through the sub CPU.
 A mixer written now could not be checked against the chip, would play only in a non-default MAME build, and
 could not be tried on the unit while it is away.
 
@@ -161,9 +165,7 @@ power-on (E1 transfers into sub-CPU DRAM, then a call to `0x400`: technics-roms-
 answers who drives the DSP, not what the DSP can do: IC311 is not on the main mix bus in MAME either (its
 send/return insert is not wired up, kn5000.cpp), so nothing it outputs would be heard there.
 
-What can be done now: the KN7000's first iteration, the game's sounds as the instrument's own voices. On the
-KN5000 these would go to the sub CPU as note commands, since the firmware's main loop (which would read a MIDI
-ring) does not run while the game does.
+Hence the instrument's voices above, the KN7000's first iteration.
 
 ### Speed (2026-10-23)
 
