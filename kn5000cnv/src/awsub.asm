@@ -58,8 +58,8 @@ CH_SIZE		EQU 32
 SUB_MAGIC:	DB "AWS1"
 SUB_ORIG_JP:	DB 1Bh, 0, 0, 0	; `jp` to the sub program's INTT1 handler: AW.CNV writes the address from the
 				; sub program's own trampoline (its image in main memory, 0x800064)
-SUB_STATE:	DB 0		; 0 not set up, 1 running, 2 stopped
-SUB_REQ:	DB 0		; AW.CNV writes 1 to stop: SUB_HOOK stops the timer and silences the DSP
+SUB_STATE:	DB 0		; 0 not set up, 1 running, 3 stopping, 2 stopped
+SUB_REQ:	DB 0		; AW.CNV writes 1 to stop: SUB_HOOK passes it to SUB_TICK, which ends it
 SUB_TICKS:	DD 0		; ticks run (for probes)
 		ALIGN 4
 CH0:		DB CH_SIZE DUP (0)
@@ -76,7 +76,7 @@ SUB_HOOK:
 	LD A, (SUB_STATE)
 	CP A, 1
 	JR NZ, _sh_out
-	CALL SUB_STOP
+	LDB (SUB_STATE), 3	; SUB_TICK stops between two of its own DSP writes, never in one
 	JR _sh_out
 _sh_notstop:
 	LD A, (SUB_STATE)
@@ -144,18 +144,129 @@ _si_ch:
 	POP XBC
 	RET
 
-; ---- SUB_STOP: timer 4 stopped, the samples to 0 -------------------------------
+; ---- SUB_STOP (from SUB_TICK): timer 4 stopped, the samples to 0, the sub program's own effects back ----
+; First the words the mixer overwrote that the sub program uploads only at boot: the kernel (I-RAM 0..59) and
+; the epilogue (60..82), from the sub program's own copies, verbatim at the same addresses in v1.40, v1.41 and
+; v1.42 (SUB_KERNEL, SUB_EPILOGUE; found by matching the boot's uploads in MAME's IC311 capture against the three
+; sub program images). Then everything else, as the sub program would rewrite it after a change of algorithm
+; (technics-roms-disasm v142/subcpu, DSP_State_ApplyAll): its configuration's header word 6 is made to differ
+; from its shadow (0x45D0), so DSP_AlgoChange_CheckAndFlag asks for a full rewrite of all five effect slots;
+; and the rewrite is set off through the sub program's own DSP command ring, with the 0x2D message the main CPU
+; sends for an effect slot (technics-docs audio-subsystem.md, "Command 0x2D"): 2D, 00, 0B (slot 1, whose path
+; only hands the configuration to the apply task), 00, 00, 00, 38h (56 bytes follow), 00, then the slot's own 56
+; bytes (0x44CE). Audio_Process_DSP, in the sub program's main loop, compares them with the slot's buffer and
+; applies only a change, so once queued the buffer's first two bytes (the algorithm) are inverted, and the
+; message puts them back. The ring (0x3B60: write index, read index, count, 2 KB of data) and these buffers are at
+; the same addresses in v1.40, v1.41 and v1.42. Skipped while a stream from the main CPU is half in (0x448C, the
+; consumer's gate) or the ring has no room. Measured with probes/dspram.lua (kn5000cnv/README.md).
 SUB_STOP:
-	PUSH XBC		; (called from SUB_HOOK, which keeps only XWA of the interrupted code)
+	PUSH XBC
+	PUSH XDE
+	PUSH XHL
 	PUSH XIX
 	RES 0, (T16RUN)
 	LD A, (INTET45)
 	AND A, 0Fh
 	LD (INTET45), A
 	CALL DSP_SEND_SAMPLES_ZERO
+	LD XIX, SUB_KERNEL
+	LD DE, 0
+	LD BC, 60 * 5
+	CALL DSP_UPLOAD
+	LD XIX, SUB_EPILOGUE
+	LD DE, 60
+	LD BC, 23 * 5
+	CALL DSP_UPLOAD
+	LD XIX, SUB_ZERO	; I-RAM 83 and C-RAM 0..4, which only the mixer wrote: 0, as at power-on (the
+	LD DE, 83		; rewrite below sets those cells an effect uses)
+	LD BC, 5
+	CALL DSP_UPLOAD
+	CALL DSP_POKE_OPEN
+	LD XIX, PKT_CPTR0
+	CALL DSP_PACKET
+	LD B, 5
+_sp_cram:
+	LD XIX, PKT_ZERO
+	CALL DSP_PACKET
+	DJNZ B, _sp_cram
+	CPW (448Ch), 0
+	JR NZ, _sp_done
+	LD WA, (3B64h)
+	CP WA, 800h - 64
+	JR UGT, _sp_done
+	LD WA, (45D0h)
+	CPL WA
+	LD (45D0h), WA		; the header's shadow differs: a full rewrite
+	LD XIX, SUB_MSG2D
+	LD B, 8
+_sp_hdr:
+	LD A, (XIX)
+	INC 1, XIX
+	CALL _sp_put
+	DJNZ B, _sp_hdr
+	LD XHL, 44CEh		; slot 1's 56 bytes
+	LD B, 38h
+_sp_data:
+	LD A, (XHL)
+	INC 1, XHL
+	CALL _sp_put
+	DJNZ B, _sp_data
+	LD WA, (44CEh)
+	CPL WA
+	LD (44CEh), WA		; its algorithm, inverted: the message is a change
+_sp_done:
 	LDB (SUB_STATE), 2
 	POP XIX
+	POP XHL
+	POP XDE
 	POP XBC
+	RET
+
+; _sp_put: A into the DSP command ring, as DSP_RingBuf_Enqueue does
+_sp_put:
+	PUSH XWA
+	PUSH XBC
+	LD BC, (3B60h)
+	INCW 1, (3B60h)
+	AND BC, 7FFh
+	EXTZ XBC
+	ADD XBC, 3B66h
+	LD (XBC), A
+	INCW 1, (3B64h)
+	POP XBC
+	POP XWA
+	RET
+
+SUB_MSG2D:	DB 2Dh, 00h, 0Bh, 00h, 00h, 00h, 38h, 00h
+
+SUB_ZERO:	DB 0, 0, 0, 0, 0
+PKT_CPTR0:	DB 08h, 01h, 00h, 08h, 21h	; ldptr #$00: 801.0.00.821
+PKT_ZERO:	DB 0Ah, 00h, 00h, 00h, 26h	; 0 into C-RAM
+
+SUB_KERNEL	EQU 01E49Bh	; the 60 words of I-RAM 0..59, as the sub program sends them
+SUB_EPILOGUE	EQU 01E641h	; the 23 words of I-RAM 60..82
+
+; DSP_UPLOAD: DE = an I-RAM address, XIX = words, BC = their bytes: command 0x01, the address, the words
+DSP_UPLOAD:
+	PUSH XWA
+	PUSH XBC
+	PUSH XIX
+	LD A, 01h
+	CALL DSP_CMD
+	LD A, D
+	CALL DSP_DATA
+	LD A, E
+	CALL DSP_DATA
+_du_byte:
+	LD A, (XIX)
+	INC 1, XIX
+	CALL DSP_DATA
+	DEC 1, BC
+	CP BC, 0
+	JR NZ, _du_byte
+	POP XIX
+	POP XBC
+	POP XWA
 	RET
 
 ; ---- SUB_TICK: the INTT5 trampoline lands here --------------------------------
@@ -167,6 +278,12 @@ SUB_TICK:
 	PUSH XIX
 	PUSH XIY
 	EI 3			; the inter-CPU link and the sub program's own work stay above us
+	LD A, (SUB_STATE)
+	CP A, 3
+	JR NZ, _st_run
+	CALL SUB_STOP
+	JP _st_out
+_st_run:
 	LD XWA, (SUB_TICKS)
 	INC 1, XWA
 	LD (SUB_TICKS), XWA
@@ -227,6 +344,7 @@ _st_next:
 	; the volumes that changed, then the four samples
 	CALL DSP_SEND_VOLUMES
 	CALL DSP_SEND_SAMPLES
+_st_out:
 	DI
 	POP XIY
 	POP XIX

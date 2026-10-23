@@ -1,7 +1,8 @@
 -- dsnd.lua -- the DSP sound's streamer (src/awsub.asm) as the sub CPU sees it, every DS_PERIOD s (default 2) from
 -- DS_FROM (default 30): DSND lines with the two trampolines it rewrites (INTT1 0x464, INTT5 0x478), its magic,
 -- SUB_STATE (0 not set up, 1 running, 2 stopped), SUB_TICKS and its rate since the last line, and each channel's
--- record as chN=seq/vol/active/pos; and on the main CPU, the sub program's image where CNV_DSND_INSTALL reads the
+-- record as chN=seq/vol/active/pos, the sub program's DSP command ring (0x3B60: write and read index, count)
+-- and its consumer's gate (0x448C); and on the main CPU, the sub program's image where CNV_DSND_INSTALL reads the
 -- INTT1 trampoline (0x800064) and, with MAINSYM = build/aw_cnv.sym, DSND_ON and the sound bank loader's progress
 -- (the part, where the next samples go, how many of the current sound are left). SUBSYM = build/awsub.sym.
 local mac = manager.machine
@@ -39,6 +40,8 @@ _G.DSND = emu.add_machine_frame_notifier(function()
 		chs = chs .. string.format(" ch%d=%d/%d/%d/%06x", c, mem:read_u8(r), mem:read_u8(r + 1), mem:read_u8(r + 29),
 			mem:read_u32(r + 22) & 0xffffff)
 	end
+	chs = chs .. string.format(" ring w=%04x r=%04x n=%d gate=%d", mem:read_u16(0x3b60), mem:read_u16(0x3b62),
+		mem:read_u16(0x3b64), mem:read_u16(0x448c))
 	emu.print_error(string.format("DSND t=%.1f intt1=%s intt5=%s magic=%s state=%d ticks=%d rate=%.0f/s%s main800064=%s",
 		t, hex(0x464, 5), hex(0x478, 5), hex(S.SUB_BASE, 4), mem:read_u8(S.SUB_STATE), ticks, rate, chs, mi))
 end)

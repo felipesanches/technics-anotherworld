@@ -182,9 +182,19 @@ instrument's sample at 7159092 / (2 x period) Hz, one without only sets the volu
 its own sound effects and music (run `e12`: effects from 58 s, the module from 78 s on all four channels;
 rms up to 3413, peak 11082, nothing clipped). The instrument's voices are not used.
 
-Open: a faster load (decoding and E1 take about half the
-14 s); a higher tick rate than 4000 Hz, whose 2 kHz bandwidth dulls the sounds; IC311's own effect program
-back when the game ends; and the real instrument, where none of this has run. The core's model reads the
+**Leaving puts IC311 back.** The sub program does not know its effects were replaced, so the streamer's stop
+(`src/awsub.asm` `SUB_STOP`) restores them through the sub program's own machinery. It uploads the
+kernel and epilogue from the sub program's own copies (sub `0x01E49B` and `0x01E641`, the same in v1.40-v1.42),
+then zeroes the cells only the mixer wrote. It then makes the configuration's header differ from its shadow
+(`0x45D0`), so the sub program's next apply rewrites all five effect slots, as after a change of algorithm.
+Finally it queues a `0x2D` effect message for slot 1 into the sub program's own DSP command ring (`0x3B60`).
+`probes/dspram.lua` hashes IC311's I-RAM and C-RAM: with the game played and left (run `e23`), they are
+identical at 85 s to what they were at 24 s, before the game. Two simpler restores fell short: a full-mode
+(`FFh`) message was consumed and uploaded nothing, and a change on slot 0 reloaded a different body for unit 0
+(104 words for 70).
+
+Open: a faster load (decoding and E1 take about half the 14 s); a higher tick rate than 4000 Hz, whose 2 kHz
+bandwidth dulls the sounds; and the real instrument, where none of this has run. The core's model reads the
 CALL, its D-RAM rebase and the output level from the shipped kernel; the chip may differ. The research plan is
 on the technics-docs site: `kn5000-dsp-sample-playback-research.md`.
 
@@ -313,5 +323,6 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/pagehash.lua`, `tools/pagehash_cmp.py`     | a hash of every page shown; do two builds show the same pages in the same order?                               |
 | `probes/profile.lua`                               | the main CPU's PC once a video frame, counted by AW.CNV routine                                                |
 | `probes/run_dsnd.sh`, `probes/dsnd.lua`            | one run for the DSP sound (IC311 build, insert on, `-wavwrite`); the streamer's state in the sub CPU           |
+| `probes/dspram.lua`                                | IC311's I-RAM and C-RAM hashed at given times, with the words and cells that differ from the first             |
 | `tools/dspmix.py`, `tools/upd6383_asm.py`          | the IC311 mixer program (`build/dspmix.inc`) and its test version for the MAME core's harness                  |
 | `tools/aw_sbank.py`                                | the game's sounds as IMA ADPCM, and each part's sound table (not yet used by the build)                        |
