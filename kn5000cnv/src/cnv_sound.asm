@@ -246,19 +246,21 @@ _si_slot:
 
 	ifdef SND_TEST
 ; CNV_SND_TEST (test builds, make SND_TEST=1): before the game, one note at a time, 0.5 s on and 0.25 s
-; off: piano C3 on each part the game uses (3..10, then the drum part's key 38); then each voice of
-; SND_TEST_VOICES on part 3. A recording (-wavwrite) shows which are heard (kn5000cnv/README.md).
+; off, in this order: the drum keys of SND_TEST_DRUMS on the rhythm part 0x14 (its kit unchanged); piano C3
+; on each part the game uses (3..10); key 38 on the MIDI drum part 0x0F with the kit at selector 0x41, then
+; 0x40 (left so, as at power-on); then C3 of each voice of SND_TEST_VOICES on part 3. A recording
+; (-wavwrite) shows which are heard: tools/sndtest_levels.py (kn5000cnv/README.md, "Sound").
 CNV_SND_TEST:
 	PUSH XIX
-	LD XIX, SND_TEST_DRUMS	; the drum keys first, on the rhythm part (its kit unchanged)
-_st_drum0:
+	LD XIX, SND_TEST_DRUMS
+_st_drum:
 	LD C, (XIX)
 	CP C, 0
 	JR Z, _st_parts
 	LD B, 14h
 	CALL _st_note
 	INC 1, XIX
-	JR _st_drum0
+	JR _st_drum
 _st_parts:
 	LD B, SND_PART_SFX
 _st_part:
@@ -270,22 +272,22 @@ _st_part:
 	INC 1, B
 	CP B, SND_PART_MUS + 4
 	JR NZ, _st_part
-	LD B, SND_PART_DRUM
-	LD C, 38
-	CALL _st_note
-	LD C, 0			; the drum part with the standard kit, selector 0x40
-	LD A, 40h
+	LD B, 0Fh
+	LD C, 0
+	LD A, 41h
 	CALL _snd_prog
 	LD C, 38
 	CALL _st_note
 	LD C, 0
-	LD A, 41h
+	LD A, 40h
 	CALL _snd_prog
+	LD C, 38
+	CALL _st_note
 	LD XIX, SND_TEST_VOICES
 _st_voice:
 	LD A, (XIX + 1)
 	CP A, 0FFh
-	JR Z, _st_drums
+	JR Z, _st_out
 	LD B, SND_PART_SFX
 	LD C, (XIX)
 	CALL _snd_prog
@@ -293,16 +295,6 @@ _st_voice:
 	CALL _st_note
 	INC 2, XIX
 	JR _st_voice
-_st_drums:
-	LD XIX, SND_TEST_DRUMS
-_st_drum:
-	LD C, (XIX)
-	CP C, 0
-	JR Z, _st_out
-	LD B, 14h
-	CALL _st_note
-	INC 1, XIX
-	JR _st_drum
 _st_out:
 	POP XIX
 	RET
@@ -327,11 +319,16 @@ _stw_loop:
 	JR NZ, _stw_loop
 	POP WA
 	RET
-SND_TEST_VOICES:	; (program, selector): candidate voices
-	db 56, 000h, 6, 000h, 5, 000h, 60, 000h, 63, 000h, 117, 000h, 118, 000h, 94, 000h
-	db 108, 000h, 120, 000h, 104, 000h, 105, 000h, 106, 000h, 84, 000h, 85, 000h, 96, 000h
-	db 97, 000h, 98, 000h, 99, 000h, 39, 000h, 32, 000h, 48, 000h, 122, 000h, 123, 000h
-	db 1, 000h, 2, 000h, 3, 000h, 16, 000h
+SND_TEST_VOICES:	; (program, selector): every voice tried for the sound map (aw_sound_map5.py), the organs last
+	db 0, 000h, 8, 000h, 14, 000h, 45, 000h, 46, 001h, 103, 000h, 62, 005h, 100, 000h
+	db 101, 000h, 102, 000h, 103, 001h, 107, 000h, 40, 000h, 43, 000h, 46, 000h, 41, 000h
+	db 42, 000h, 47, 000h, 10, 000h, 11, 000h, 9, 000h, 12, 000h, 7, 000h, 15, 000h
+	db 125, 000h, 14, 001h, 107, 002h, 107, 003h, 62, 002h, 21, 003h, 106, 002h, 116, 002h
+	db 119, 000h, 127, 000h, 126, 000h, 56, 000h, 6, 000h, 5, 000h, 60, 000h, 63, 000h
+	db 117, 000h, 118, 000h, 94, 000h, 108, 000h, 120, 000h, 104, 000h, 105, 000h, 106, 000h
+	db 96, 000h, 97, 000h, 98, 000h, 99, 000h, 39, 000h, 32, 000h, 48, 000h, 122, 000h
+	db 123, 000h, 1, 000h, 2, 000h, 3, 000h, 16, 000h, 122, 001h, 123, 003h, 124, 000h
+	db 124, 003h, 123, 002h, 84, 000h, 85, 000h
 	db 0, 0FFh
 SND_TEST_DRUMS:		; drum keys, played on the rhythm part 0x14 with whatever kit it has
 	db 35, 36, 38, 40, 41, 42, 46, 47, 48, 49, 51, 37, 39, 44, 0

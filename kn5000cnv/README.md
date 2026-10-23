@@ -49,7 +49,7 @@ To play: DISK MENU > STYLE CONVERT > `AW.CNV` > OK. Controls as in the standalon
 RIGHT 2, DOWN / LEFT / RIGHT = CONDUCTOR RIGHT 2 / LEFT / RIGHT 1, ACTION = VARIATION 4, HELP, OTHER PARTS/TR
 for the codes). The keybed plays it too: F4 left, C5 right, A4 down, A♭4 or B♭4 up, any key from C3 down
 action (the KN5000's own note names: middle C is C3; the help screen lists them); of two opposite directions held, the one in use stays until its key is released. Hold EXIT for 1.5 s to leave; the firmware then shows "ERROR!" and "Continue Next?", as it
-does after any converter that ends; NO returns to the main screen. There is no sound yet ("Sound" below).
+does after any converter that ends; NO returns to the main screen. The sound effects and the music play on the instrument's own voices ("Sound" below).
 
 ### How it runs beside the firmware
 
@@ -104,7 +104,39 @@ the `KEYS` line below); earlier binaries named every key an octave higher.
 
 Not checked: the real instrument; the game past the beast's first chase on a converter build.
 
-### Sound: why a DSP mixer as on the KN7000 cannot be written yet (2026-10-23)
+### Sound: the instrument's voices (2026-10-23)
+
+As the KN7000 port's first sound mode (`../kn7000/src/audio.s`, the tone generator mode): no sample of the game is
+played; each PLAY_SOUND and each row of the music module becomes a note of one of the KN5000's voices
+(`src/cnv_sound.asm`).
+
+- **To the sub CPU directly.** The firmware's main loop, which turns MIDI and the keybed into the sub CPU's records,
+  does not run while the game does, so the game sends the records itself over the inter-CPU latch, with its own copy
+  of the firmware's send (v10 `InterCPU_Send_Data_Block`, 0xEF3345: the handshake on port Z): `90 part note velocity`,
+  `B0 part control value`, `C0 part program selector 0`. The records were read off the latch (`probes/latch.lua`,
+  `tools/latch_decode.py`) while the firmware played: C3 on the keybed sends `90 00 3C 64`, BRASS `C0 00 38 00 00`
+  ("Bigband Brass" is selector 0 program 56 in the tone database), the boot gives every part its settings.
+- **Parts 3-6** play PLAY_SOUND's channels 0-3 and **parts 7-10** the music's (MIDI receive parts of channels 4-11,
+  piano at power-on, idle while no song is loaded, which the game requires); on leaving they get the boot's piano,
+  volume 100, expression 127 and pan back. The module (resources 0x07, 0x89, 0x8A, now on the floppy) is read when
+  the game starts it, into `MUSIC_BUF`; rows are timed on the firmware's 488 Hz counter, polled through every frame
+  pause; its sync marks go into var 0xF4 as the original's.
+- **The voices** (`tools/aw_sound_map5.py`): the KN7000 table's choice per sound, moved to KN5000 voices that MAME
+  plays. MAME has only one of the four wave ROMs dumped, and many voices are silent there; every drum kit is (so the
+  drums are melodic voices at a fixed note). The instrument plays them all, so the table is one to retune on the
+  unit. Measured with the `SND_TEST=1` build (`make SND_TEST=1 ...`: 82 notes before the game, 0.75 s apart) and
+  `tools/sndtest_levels.py RUN.log OUT.wav 33` (MAME `-wavwrite`; the latch probe's log):
+
+  | heard in MAME (C3, velocity 100)                                                                                                                                                                                                                                                                                                                        | silent                                                                                                                                                                                                                                                       |
+  |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+  | Piano, Bright Piano, Mellow Piano -34..-36 dBFS; Electric Bass -45; Mute Bass -31; Glockenspiel -45; Steel Drum -49; Sleigh Bell -40; Halo Pad -55; Sine Lead -42; Dream -51; Goblins -63; Kalimba -47; Agogo -31; Wood Block -33; Taiko -26; Synth Drum -30; Seashore -46; Gun Shot -32; Full and Chapel Organ -40, -46 (the organs' notes do not end) | Vibraphone, Tubular Bells, Marimba, Xylophone, Celesta, Music Box, every bass synth, every string and pad but Halo, every brass, the leads but Sine, the E.Pianos, voices, Harp, Trumpet; drum keys on the rhythm part 0x14 and on part 0x0F with either kit |
+
+- **Checked in MAME (v10):** the intro sends 436 notes and program changes in 230 s and sounds at -17 to -40 dBFS
+  through it; the water part (`START_PART=03E82h`, UP held) at -14 to -32 dBFS, its looping water held quietly
+  (Dream, -67 dBFS) while it lasts (`probes/sndstate.lua`, `tools/wavlevel.py`). Not heard by a person yet, and not
+  tried on the unit.
+
+### Why not a DSP mixer as on the KN7000 (2026-10-23)
 
 The KN7000 port plays the game's own samples with a mixer of ours in the effects DSP (an ADSP-21065L, a
 documented chip), reached through the firmware's host-port routines from the CPU the game runs on
@@ -249,6 +281,11 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/foreign.lua`                               | writes into AW.CNV's memory and buffers from code outside AW.CNV                                               |
 | `probes/cpupc.lua`, `frames.lua`                   | the main CPU's PC by AW.CNV symbol every few seconds; every frame with the stack pointer and VM PC             |
 | `probes/hostkeys.lua`                              | which PC keys MAME sees held, on every change: does the keyboard report a combination at all?                  |
+| `probes/latch.lua`, `tools/latch_decode.py`        | every byte the main CPU writes to the sub CPU (and MIDI IN bytes); cut into packets, the MIDI-ring records     |
+| `probes/sndstate.lua`                              | the sound's state: ready, module, the notes sounding                                                           |
+| `tools/sndtest_levels.py`, `tools/wavlevel.py`     | each note of a run and how loud it was in the recording; a recording's level per second                        |
+| `tools/mkmid.py`                                   | a MIDI file of GM program changes and notes, for MAME's `-midiin1`                                             |
+| `tools/aw_sound_map5.py`                           | the KN5000 voice of each sound resource (`CNV_SND`)                                                            |
 | `probes/frametime.lua`, `tools/ftsum.py`           | each VM frame's pause request, length and overrun; summarised per part and request                             |
 | `probes/pagehash.lua`, `tools/pagehash_cmp.py`     | a hash of every page shown; do two builds show the same pages in the same order?                               |
 | `probes/profile.lua`                               | the main CPU's PC once a video frame, counted by AW.CNV routine                                                |
