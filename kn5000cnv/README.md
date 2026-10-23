@@ -123,6 +123,12 @@ CPU to the DSP: the converter runs on the main CPU, which reaches the DSPs only 
 A mixer written now could not be checked against the chip, would play only in a non-default MAME build, and
 could not be tried on the unit while it is away.
 
+Reaching the DSPs is possible in principle: the sub CPU's boot ROM takes its whole program from the main CPU at
+power-on (E1 transfers into sub-CPU DRAM, then a call to `0x400`: technics-roms-disasm
+`subcpu/boot/kn5000_subcpu_boot.s`), so code of ours could run on the sub CPU next to the firmware's. That
+answers who drives the DSP, not what the DSP can do: IC311 is not on the main mix bus in MAME either (its
+send/return insert is not wired up, kn5000.cpp), so nothing it outputs would be heard there.
+
 What can be done now: the KN7000's first iteration, the game's sounds as the instrument's own voices. On the
 KN5000 these would go to the sub CPU as note commands, since the firmware's main loop (which would read a MIDI
 ring) does not run while the game does.
