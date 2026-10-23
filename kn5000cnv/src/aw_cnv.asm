@@ -40,6 +40,8 @@ CNV_ENTRY:
 	include "another_world_vm.asm"
 	include "cnv_platform.asm"
 	include "cnv_sound.asm"
+	include "awsub.inc"
+	include "cnv_dspsnd.asm"
 	include "awfiles.inc"
 
 ; The VM finds each part's resources here (initForPart); CNV_LOAD_PART fills the buffers.
