@@ -77,7 +77,9 @@ CNV_FIRST:
 	CALL CNV_SND_INIT	; the game's sound on the instrument's voices (cnv_sound.asm)
 	ifdef DSND_TEST
 	CALL CNV_DSND_INSTALL	; the DSP sound's streamer into the sub CPU (cnv_dspsnd.asm)
+	JR NZ, _no_dsnd
 	CALL CNV_DSND_TEST
+_no_dsnd:
 	endif
 	JP ENTRY		; the VM; it leaves through CNV_EXIT
 

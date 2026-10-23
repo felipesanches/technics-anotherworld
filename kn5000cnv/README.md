@@ -136,28 +136,37 @@ played; each PLAY_SOUND and each row of the music module becomes a note of one o
   (Dream, -67 dBFS) while it lasts (`probes/sndstate.lua`, `tools/wavlevel.py`). Not heard by a person yet, and not
   tried on the unit.
 
-### A DSP mixer as on the KN7000: not yet (initial result, 2026-10-23)
+### A DSP mixer of ours in IC311 (2026-10-23): runs in the emulator, test builds only
 
-The KN7000 port plays the game's own samples with a mixer of ours in the effects DSP (an ADSP-21065L, a
-documented chip), reached through the firmware's host-port routines from the CPU the game runs on
-(`../kn7000/README-CNV.md`, "Sound"). On the KN5000 that cannot be written today, for what is known of its
-DSPs now:
+The KN7000 port plays the game's own samples with a mixer of ours in its effects DSP (`../kn7000/README-CNV.md`,
+"Sound"). The KN5000 now has the same, in three pieces, all in a `DSND_TEST=1` build so far:
 
-|                 | IC311, uPD6383GF (effects)                                                                                                                                           | IC310, MN19413 (the main mix passes through it)            |
-|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| driven by       | the **sub CPU** (port 7 strobes)                                                                                                                                     | the **sub CPU** (3-wire serial PF.0/PF.2/PE.6, write-only) |
-| instruction set | partly decoded (about 81 % of the distinct microwords); no assembler                                                                                                 | not decoded                                                |
-| in MAME         | a draft core, **not in the default build** (`KN5000_ENABLE_DSP1=0`, kn5000.cpp), and its return into IC303 not mixed                                                 | not emulated at all                                        |
-| sample data     | only the DSP's own write words reach its delay DRAM (IC309, 256K x 16); the host writes coefficients and registers one 5-byte group at a time and reads nothing back | delay DRAM IC308, 128K x 8                                 |
+| piece                | where it runs                             | what it does                                                                                                                                                                                                                                          |
+|----------------------|-------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `src/cnv_dspsnd.asm` | main CPU, in AW.CNV                       | puts the streamer into the sub CPU's DRAM at `0xF8000` with E1 transfers, as the boot sends the sub program, and points two of the sub program's RAM trampolines at it: INTT1 (the audio tick) and INTT5 (timer 4, unused); puts both back at the end |
+| `src/awsub.asm`      | sub CPU, from its audio tick              | once, loads the mixer into IC311 and starts timer 4 at 4000 Hz; on each timer 4 tick, steps four channels over 8-bit samples in sub DRAM and writes the four current samples and any changed volume to IC311                                          |
+| `tools/dspmix.py`    | IC311 (uPD6383GF), 44,100 frames a second | DO1 = the sum of the four samples times their volumes; 92 I-RAM words, only decoded forms but the output stage's presentation word                                                                                                                    |
 
-A delay address is a descriptor plus the frame counter, plus, on CHORUS-type words, a computed modulation offset
-(`lo12 = 0x44C`): CHORUS is an LFO-swept delay, its phase accumulator measured live. That is the core of a sample
-player, and how wide and how fine that offset is, whether writes can use it, and how a program of ours would reach
-the chip (the sub CPU's DRAM is writable from the main CPU with E1 transfers, and the effect programs are bytecode
-streams there) are open. The research plan, its questions and their order, is on the technics-docs site:
-`kn5000-dsp-sample-playback-research.md` ("DSP Sample Playback — Research Plan").
+The trampolines' original targets differ between sub programs (v1.40/1.41 on firmware v5-v8, v1.42 on v9/v10),
+and the main CPU cannot read the sub CPU's memory, so AW.CNV recognises the sub program by its first literal bytes
+in IC19 flash (the compressed copy the boot sends, `0x3E000C`) and takes the targets from a table; on any other
+sub program it leaves the sub CPU alone. The mixer's layout (where the CALL, the presentation word, the samples
+and the output level go) is what the MAME core's model of the chip required, each item measured:
+kn7000_mame `notes/kn5000-dsp-mixer/README.md`.
 
-Hence the instrument's voices above, the KN7000's first iteration.
+**Measured (run `e4`, firmware v10, `probes/run_dsnd.sh`):** AW.CNV found sub program v1.42, the streamer's
+magic and both trampolines are in place, timer 4 ticks at 4000 per second of emulated time (`SUB_TICKS`), and
+the DSND_TEST sine on channel 0 (256 samples, 4 per tick: 62.5 Hz) is on the speakers from the moment AW.CNV
+starts (36-44 s: rms 4454, peak 6819, strongest bins 62.1-62.8 Hz), and stays under the intro's music. It needs
+the IC311 build of the emulator (`KN5000_ENABLE_DSP1=1`), the insert switched on (DSPCFG bit 0) and
+`UPD6383_PRESENT_ASIS=1`, which `run_dsnd.sh` sets; and kn7000_mame `38ee146`, without which the DSP saw the
+samples about 90 times a second instead of 4000.
+
+Open: the game's sounds into the channels (`tools/aw_sbank.py` codes them as IMA ADPCM, 342,490 bytes for the 93
+the parts play; not yet on the floppy); IC311's own effect program back when the game ends; and the real
+instrument, where none of this has run. The core's model reads the CALL, its D-RAM rebase and the output level
+from the shipped kernel; the chip may differ. The research plan is on the technics-docs site:
+`kn5000-dsp-sample-playback-research.md`.
 
 ### Speed (2026-10-23)
 
@@ -283,3 +292,6 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/frametime.lua`, `tools/ftsum.py`           | each VM frame's pause request, length and overrun; summarised per part and request                             |
 | `probes/pagehash.lua`, `tools/pagehash_cmp.py`     | a hash of every page shown; do two builds show the same pages in the same order?                               |
 | `probes/profile.lua`                               | the main CPU's PC once a video frame, counted by AW.CNV routine                                                |
+| `probes/run_dsnd.sh`, `probes/dsnd.lua`            | one run for the DSP sound (IC311 build, insert on, `-wavwrite`); the streamer's state in the sub CPU           |
+| `tools/dspmix.py`, `tools/upd6383_asm.py`          | the IC311 mixer program (`build/dspmix.inc`) and its test version for the MAME core's harness                  |
+| `tools/aw_sbank.py`                                | the game's sounds as IMA ADPCM, and each part's sound table (not yet used by the build)                        |

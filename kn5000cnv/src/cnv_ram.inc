@@ -53,6 +53,9 @@ MUS_PER:		DD ?		; a row's length, 1/256 ticks
 DSND_ON:		DB ?		; 1 while the streamer is in the sub CPU
 DSND_BYTE:		DB ?
 DSND_TRAMP:		DB 5 DUP (?)	; a trampoline being sent: jp target, ret
+			ALIGN 2
+DSND_ORIG1:		DD ?		; the sub program's INTT1 and INTT5 handlers (CNV_DSND_INSTALL)
+DSND_ORIG5:		DD ?
 DSND_HDR:		DB 6 DUP (?)	; an E1 header: destination, count
 DSND_SEQ:		DB 4 DUP (?)	; each channel's last sequence byte
 DSND_REC:		DB 20 DUP (?)	; a channel record being sent (+1 vol, +4 start, +8 end, +12 loop, +16 step)

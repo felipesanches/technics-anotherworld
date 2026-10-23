@@ -8,9 +8,10 @@
 ;   slot 20, INTT1 (the audio tick, 0x464)  -> SUB_HOOK: once, SUB_INIT; on request, SUB_STOP; then on to the
 ;                                              sub program's own handler (SUB_ORIG_TICK, filled in by AW.CNV)
 ;   slot 24, INTT5 (timer 4, unused by the sub program, 0x478) -> SUB_TICK, SUB_RATE times a second
-; SUB_INIT loads the mixer into IC311 (I-RAM 0..82, src/dspmix.inc) and starts timer 4. SUB_TICK steps the four
-; channels over 8-bit samples in sub DRAM and writes their current samples into the DSP's data cells
-; 0x40..0x43, and a changed volume into C-RAM 0..3; the DSP program multiplies and sums them every frame.
+; SUB_INIT loads the mixer into IC311 (I-RAM from 0, src/dspmix.inc) and starts timer 4. SUB_TICK steps the four
+; channels over 8-bit samples in sub DRAM and writes their current samples into the DSP's data cells 0x05,
+; 0x07, 0x08 and 0x09 (with the output level, 0x7FFFFF, into 0x06 between the first two), and a changed volume
+; into C-RAM 0..3; the DSP program multiplies and sums them every frame (tools/dspmix.py has the layout).
 ; The DSP is written as the sub program writes it (DSP_Send_Data, v1.42 0x0367EE): P7.6 data/command, P7.3
 ; write strobe, P7.5 chip select, PH.0 ready, PZ the byte; commands 0x01 with an I-RAM address, 0x0160 being
 ; the poke port of pointer and value packets (kn7000_mame src/devices/cpu/upd6383/upd6383.cpp host_w).
@@ -37,7 +38,7 @@ SUB_BASE	EQU 0F0000h
 SUB_TREG5	EQU 625		; timer 4's period in its clock (set by the build: SUB_RATE)
 	endif
 
-DSP_CELL_SAMPLE	EQU 40h		; data cells the mixer reads (D-RAM, mode-2 pointer)
+DSP_CELL_SAMPLE	EQU 05h		; the first data cell the mixer reads (D-RAM; tools/dspmix.py SAMPLE_CELLS)
 CH_SEQ		EQU 0
 CH_VOL		EQU 1
 CH_START	EQU 4
@@ -118,6 +119,12 @@ _si_ch:
 	ADD XIX, XWA
 	DJNZ B, _si_ch
 	CALL DSP_SEND_SAMPLES_ZERO
+	; C-RAM 4, the coefficient under the cursor at the presentation word, to 1.0 (tools/dspmix.py)
+	CALL DSP_POKE_OPEN
+	LD XIX, PKT_CPTR4
+	CALL DSP_PACKET
+	LD XIX, PKT_ONE
+	CALL DSP_PACKET
 	; timer 4: T4MOD = 05h (as the sub program sets it), TREG5 = the period, its upper interrupt at level 2
 	RES 0, (T16RUN)
 	LD A, 05h
@@ -139,12 +146,16 @@ _si_ch:
 
 ; ---- SUB_STOP: timer 4 stopped, the samples to 0 -------------------------------
 SUB_STOP:
+	PUSH XBC		; (called from SUB_HOOK, which keeps only XWA of the interrupted code)
+	PUSH XIX
 	RES 0, (T16RUN)
 	LD A, (INTET45)
 	AND A, 0Fh
 	LD (INTET45), A
 	CALL DSP_SEND_SAMPLES_ZERO
 	LDB (SUB_STATE), 2
+	POP XIX
+	POP XBC
 	RET
 
 ; ---- SUB_TICK: the INTT5 trampoline lands here --------------------------------
@@ -228,7 +239,8 @@ _st_next:
 SUB_SAMPLES:	DB 4 DUP (0)
 
 ; ---- the DSP: packets ---------------------------------------------------------
-; DSP_SEND_SAMPLES: the D-RAM pointer to 0x40, then the four samples (<< 16, sign kept)
+; DSP_SEND_SAMPLES: the D-RAM pointer to 0x05, then the first sample, the level (0x06), the other three
+; (samples << 16, sign kept; the pointer steps by one a value)
 DSP_SEND_SAMPLES:
 	CALL DSP_POKE_OPEN
 	LD XIX, PKT_DPTR
@@ -236,6 +248,11 @@ DSP_SEND_SAMPLES:
 	LD XIY, SUB_SAMPLES
 	LD B, 4
 _dss:
+	CP B, 3
+	JR NZ, _dss_sample
+	LD XIX, PKT_LEVEL
+	CALL DSP_PACKET
+_dss_sample:
 	LD A, 0Ah
 	CALL DSP_DATA
 	LD A, (XIY)		; v23..16: the sample
@@ -261,8 +278,8 @@ DSP_SEND_SAMPLES_ZERO:
 	POP XIY
 	RET
 
-; DSP_SEND_VOLUMES: each channel whose volume changed: C-RAM[c] <- vol x 2^15 (63 -> 0.246; four at full
-; volume sum to just under 1.0)
+; DSP_SEND_VOLUMES: each channel whose volume changed: C-RAM[c] <- vol x 2^14 (0x400000 is 1.0, so 63 -> 0.246;
+; four at full volume sum to just under 1.0)
 DSP_SEND_VOLUMES:
 	LD XIX, CH0
 	LD C, 0
@@ -288,17 +305,17 @@ _dsv:
 	LD A, 21h
 	CALL DSP_DATA
 	POP WA
-	; value: vol << 15 = bytes (vol >> 1), (vol & 1) << 7, 0
+	; value: vol << 14 = bytes (vol >> 2), (vol & 3) << 6, 0
 	PUSH WA
 	LD A, 0Ah
 	CALL DSP_DATA
 	POP WA
 	PUSH WA
-	SRL 1, A
+	SRL 2, A
 	CALL DSP_DATA
 	POP WA
-	AND A, 1
-	SLA 7, A
+	AND A, 3
+	SLA 6, A
 	CALL DSP_DATA
 	LD A, 0
 	CALL DSP_DATA
@@ -333,7 +350,10 @@ _dp:
 	POP BC
 	RET
 
-PKT_DPTR:	DB 00h, 00h, 10h | (DSP_CELL_SAMPLE >> 4), (DSP_CELL_SAMPLE & 0Fh) << 4, 00h	; 000.1.40.000
+PKT_CPTR4:	DB 08h, 01h, 00h, 48h, 21h	; ldptr #$04: 801.0.04.821
+PKT_ONE:	DB 0Ah, 40h, 00h, 00h, 26h	; 0x400000 (1.0) into C-RAM
+PKT_LEVEL:	DB 0Ah, 7Fh, 0FFh, 0FFh, 15h	; 0x7FFFFF into D-RAM: the presentation's level
+PKT_DPTR:	DB 00h, 00h, 10h | (DSP_CELL_SAMPLE >> 4), (DSP_CELL_SAMPLE & 0Fh) << 4, 00h	; 000.1.05.000
 
 ; ---- the DSP: one byte, as DSP_Send_Data / DSP_Send_Command do it ---------------
 ; DSP_CMD / DSP_DATA: A = the byte. Waits for READY (PH.0) up to 8000 polls.

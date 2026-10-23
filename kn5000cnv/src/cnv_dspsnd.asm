@@ -8,13 +8,17 @@
 ; Its RAM interrupt trampolines (0x400 + 5 x slot: `jp target`, `ret`) are rewritten the same way:
 ;   slot 24 (0x478), INTT5  -> SUB_TICK   (timer 4; the sub program leaves it unused)
 ;   slot 20 (0x464), INTT1  -> SUB_HOOK   (the audio tick: sets the streamer up, then the original handler)
-; and put back, from the sub program's own image in main memory (0x800000: its first 256 bytes are what the
-; boot sent to sub 0x400, technics-roms-disasm v10 SubCPU_Send_Payload), when the game ends.
+; and put back when the game ends. The trampolines' original targets differ between the sub programs, and the
+; main CPU cannot read the sub CPU's memory, so they come from a table (DSND_SUBVERS), picked by the start of the
+; sub program as the boot sent it: IC19 flash holds it SLIDE4K-compressed at 0x3E0000 (technics-roms-disasm v7
+; SubCPU_Send_Payload; kn7000_mame kn5000.cpp), and its first literals, from offset 0x0C, are sub 0x400..0x407:
+; the payload entry and slot 1's trampoline, whose target is the sub program's EMPTY_HANDLER. Another sub
+; program is left alone: no streamer, no DSP sound.
 ; =============================================================================
 
 SUB_TRAMP_INTT1	EQU 0464h
 SUB_TRAMP_INTT5	EQU 0478h
-SUB_IMAGE_MAIN	EQU 800000h		; the sub program's image in main memory: sub 0x400 + k = here + k
+SUB_FLASH_LIT	EQU 3E000Ch		; the compressed sub program's first literals in IC19 flash: sub 0x400..0x407
 SUB_BANK	EQU 0A0000h		; the samples, in the sub CPU's DRAM (kn5000cnv/README.md, "DSP sound")
 
 ; -----------------------------------------------------------------------------
@@ -110,24 +114,45 @@ _eb_delay:
 	RET
 
 ; -----------------------------------------------------------------------------
-; CNV_DSND_INSTALL - the streamer into the sub CPU, and the two trampolines; Z set when done
+; CNV_DSND_INSTALL - the streamer into the sub CPU, and the two trampolines; Z set when done, NZ when the sub
+; program is not one DSND_SUBVERS knows
 ; -----------------------------------------------------------------------------
 CNV_DSND_INSTALL:
 	PUSH XWA
 	PUSH XBC
 	PUSH XDE
-	; the sub program's INTT1 trampoline, as the boot sent it: `jp target`, `ret`
-	LD A, (SUB_IMAGE_MAIN + SUB_TRAMP_INTT1 - 400h)
-	CP A, 1Bh
-	JR NZ, _di_fail
-	LD A, (SUB_IMAGE_MAIN + SUB_TRAMP_INTT1 - 400h + 4)
-	CP A, 0Eh
-	JR NZ, _di_fail
-	LD XWA, (SUB_IMAGE_MAIN + SUB_TRAMP_INTT1 - 400h + 1)
-	AND XWA, 0FFFFFFh
-	LD (AWSUB_IMAGE + (SUB_ORIG_JP - SUB_BASE) + 1), WA	; the streamer's own `jp` to it
+	PUSH XHL
+	PUSH XIX
+	; which sub program: its first eight bytes against each row of DSND_SUBVERS
+	LD XIX, DSND_SUBVERS
+_di_row:
+	LD A, (XIX)
+	CP A, 0
+	JP Z, _di_fail		; none: leave the sub CPU alone
+	LD XDE, SUB_FLASH_LIT
+	LD XHL, XIX
+	LD B, 8
+_di_cmp:
+	LD A, (XDE)
+	CP A, (XHL)
+	JR NZ, _di_next
+	INC 1, XDE
+	INC 1, XHL
+	DJNZ B, _di_cmp
+	; a match: the row's two targets
+	LD XWA, (XIX + 8)
+	LD (DSND_ORIG1), XWA
+	LD (AWSUB_IMAGE + (SUB_ORIG_JP - SUB_BASE) + 1), WA	; the streamer's own `jp` to the INTT1 handler
 	SRL 16, XWA
 	LD (AWSUB_IMAGE + (SUB_ORIG_JP - SUB_BASE) + 3), A
+	LD XWA, (XIX + 12)
+	LD (DSND_ORIG5), XWA
+	JR _di_found
+_di_next:
+	LD XWA, 16
+	ADD XIX, XWA
+	JR _di_row
+_di_found:
 	; the streamer
 	LD XWA, AWSUB_IMAGE
 	LD XDE, SUB_BASE
@@ -155,10 +180,23 @@ _di_fail:
 	LD A, 1
 	CP A, 0			; NZ
 _di_out:
+	POP XIX
+	POP XHL
 	POP XDE
 	POP XBC
 	POP XWA
 	RET
+
+; DSND_SUBVERS: per sub program, 16 bytes: its first eight (sub 0x400..0x407: `jp RESET`, `ret`, and slot 1's
+; `jp EMPTY_HANDLER` as far as its middle byte), the INTT1 handler, the INTT5 handler (EMPTY_HANDLER); then 0.
+; From kn7000-emulator roms/kn5000 kn5000_subprogram_v14x.rom (file offset = sub address - 0x400): the
+; trampolines at 0x464 and 0x478
+DSND_SUBVERS:
+	DB 1Bh, 24h, 0F9h, 01h, 0Eh, 1Bh, 0BCh, 0FBh	; v1.42 (firmware v9, v10)
+	DD 01FB41h, 01FBBCh
+	DB 1Bh, 24h, 0F9h, 01h, 0Eh, 1Bh, 0A5h, 0FBh	; v1.40, v1.41 (firmware v5 - v8)
+	DD 01FB2Ah, 01FBA5h
+	DB 0
 
 ; _dsnd_tramp: XWA = target -> DSND_TRAMP = jp target, ret
 _dsnd_tramp:
@@ -192,12 +230,16 @@ _dr_wait:
 	SUB WA, DE
 	BIT 7, W
 	JR NZ, _dr_wait
-	LD XWA, SUB_IMAGE_MAIN + SUB_TRAMP_INTT1 - 400h
+	LD XWA, (DSND_ORIG1)
+	CALL _dsnd_tramp
 	LD XDE, SUB_TRAMP_INTT1
+	LD XWA, DSND_TRAMP
 	LD BC, 5
 	CALL CNV_E1_SEND
-	LD XWA, SUB_IMAGE_MAIN + SUB_TRAMP_INTT5 - 400h
+	LD XWA, (DSND_ORIG5)
+	CALL _dsnd_tramp
 	LD XDE, SUB_TRAMP_INTT5
+	LD XWA, DSND_TRAMP
 	LD BC, 5
 	CALL CNV_E1_SEND
 	LDB (DSND_ON), 0
