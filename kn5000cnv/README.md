@@ -49,7 +49,7 @@ To play: DISK MENU > STYLE CONVERT > `AW.CNV` > OK. Controls as in the standalon
 RIGHT 2, DOWN / LEFT / RIGHT = CONDUCTOR RIGHT 2 / LEFT / RIGHT 1, ACTION = VARIATION 4, HELP, OTHER PARTS/TR
 for the codes). The keybed plays it too: F4 left, C5 right, A4 down, A♭4 or B♭4 up, any key from C3 down
 action (the KN5000's own note names: middle C is C3; the help screen lists them); of two opposite directions held, the one in use stays until its key is released. Hold EXIT for 1.5 s to leave; the firmware then shows "ERROR!" and "Continue Next?", as it
-does after any converter that ends; NO returns to the main screen. There is no sound.
+does after any converter that ends; NO returns to the main screen. There is no sound yet ("Sound" below).
 
 ### How it runs beside the firmware
 
@@ -103,6 +103,29 @@ the `KEYS` line below); earlier binaries named every key an octave higher.
 | a song in memory (`poke.lua` changes one byte)                                                 | "AW: SAVE SONGS, SWITCH OFF+ON" for 4 s, then "Continue Next?"; the memory untouched                                                     |
 
 Not checked: the real instrument; the game past the beast's first chase on a converter build.
+
+### Sound: why a DSP mixer as on the KN7000 cannot be written yet (2026-10-23)
+
+The KN7000 port plays the game's own samples with a mixer of ours in the effects DSP (an ADSP-21065L, a
+documented chip), reached through the firmware's host-port routines from the CPU the game runs on
+(`../kn7000/README-CNV.md`, "Sound"). On the KN5000 neither of its two DSPs allows that today:
+
+|                 | IC311, uPD6383GF (effects)                                                                                                                                                                                                                             | IC310, MN19413 (the main mix passes through it)            |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| driven by       | the **sub CPU** (port 7 strobes)                                                                                                                                                                                                                       | the **sub CPU** (3-wire serial PF.0/PF.2/PE.6, write-only) |
+| instruction set | partly decoded: the biquad and delay datapaths bit-exact; the arithmetic not yet confronted with the HLE, a machine-wide saturation open, the modulated delays (chorus, pitch shift) still stubs (technics-roms-disasm `dsp/analysis/HANDOFF-NEXT.md`) | not decoded                                                |
+| in MAME         | a draft core, **not in the default build** (`KN5000_ENABLE_DSP1=0`, kn5000.cpp)                                                                                                                                                                        | not emulated at all                                        |
+| sample data     | only the DSP writes its delay DRAM (IC309, 256K x 16); the host reaches C-RAM and the register file one 5-byte group at a time                                                                                                                         | delay DRAM IC308, 128K x 8                                 |
+
+A sample player needs delay-memory reads at addresses computed at run time (the mechanism of the chorus and the
+pitch shifter, which are not decoded), a way to put 685,000 samples into the delay DRAM, and a path from the main
+CPU to the DSP: the converter runs on the main CPU, which reaches the DSPs only through the sub CPU's firmware.
+A mixer written now could not be checked against the chip, would play only in a non-default MAME build, and
+could not be tried on the unit while it is away.
+
+What can be done now: the KN7000's first iteration, the game's sounds as the instrument's own voices. On the
+KN5000 these would go to the sub CPU as note commands, since the firmware's main loop (which would read a MIDI
+ring) does not run while the game does.
 
 ### Speed (2026-10-23)
 
