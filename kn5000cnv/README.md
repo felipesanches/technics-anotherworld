@@ -170,11 +170,13 @@ CPU's DRAM from `0xA0000` (the largest part, 219,012 bytes). PLAY_SOUND then set
 start, end, loop, the step for its frequency at 4000 ticks a second, its volume. Measured (`probes/dsnd.lua`
 with `DS_WATCH=1`, runs `e9`-`e11`):
 
-| how the sounds are read            | the intro's 22 sounds (141 KB of samples)                |
-|------------------------------------|----------------------------------------------------------|
-| one file per sound, 4 KB a read    | over 35 s                                                |
-| one file per sound, read whole     | about 1.5 s a sound, nearly all of it the file's opening |
-| `AWSND.BIN`: one open, seek + read | 14 s (41.0 - 55.0 s)                                     |
+| how the sounds are read                                                                     | the intro's 22 sounds (141 KB of samples)                |
+|---------------------------------------------------------------------------------------------|----------------------------------------------------------|
+| one file per sound, 4 KB a read                                                             | over 35 s                                                |
+| one file per sound, read whole                                                              | about 1.5 s a sound, nearly all of it the file's opening |
+| `AWSND.BIN`: one open, seek + read                                                          | 14 s (41.0 - 55.0 s)                                     |
+| and ordered by the parts, no needless seek                                                  | 12.8 s                                                   |
+| and one read for each run of sounds that follow each other in the file (up to 32,000 bytes) | 7.9 s (41.07 - 48.95 s)                                  |
 
 The music module's rows go to the same four channels, as on the Amiga: an event with a period plays its
 instrument's sample at 7159092 / (2 x period) Hz, one without only sets the volume, 0xFFFE stops the channel
@@ -208,7 +210,12 @@ departs from the firmware's strobes, which select the chip around every byte; it
 host port but is not checked on the uPD6383 (`src/awsub.asm` `DSP_FAST`). MAME's TLCS-900 instruction timings are
 themselves not confirmed against the chip, so these shares are the emulator's.
 
-Open: a faster load (decoding and E1 take about half the 14 s); a tick rate above 4000 Hz, whose 2 kHz bandwidth
+During the 14 s load the main CPU spent 71 % of its time in the firmware's floppy read, about 15 % decoding
+and 4 % in E1 (`probes/profile.lua`), so the reads were cut first. The bank the sub CPU then holds is checked
+byte for byte against `tools/aw_sbank.py`'s own decoding (`probes/subdump.lua` and `tools/sbank_check.py`, run
+`e27`): the intro's 22 sounds, 148,508 bytes, none differs.
+
+Open: a tick rate above 4000 Hz, whose 2 kHz bandwidth
 dulls the sounds, needs fewer bytes a tick or a sample player inside the DSP; and the real instrument, where
 none of this has run. The core's model reads the
 CALL, its D-RAM rebase and the output level from the shipped kernel; the chip may differ. The research plan is
@@ -341,4 +348,5 @@ R=~/compartilhado/tmp/kn5000cnv/keys; H=$PWD/probes; mkdir -p $R/nv $R/cfg; cp b
 | `probes/run_dsnd.sh`, `probes/dsnd.lua`            | one run for the DSP sound (IC311 build, insert on, `-wavwrite`); the streamer's state in the sub CPU           |
 | `probes/dspram.lua`                                | IC311's I-RAM and C-RAM hashed at given times, with the words and cells that differ from the first             |
 | `tools/dspmix.py`, `tools/upd6383_asm.py`          | the IC311 mixer program (`build/dspmix.inc`) and its test version for the MAME core's harness                  |
-| `tools/aw_sbank.py`                                | the game's sounds as IMA ADPCM, and each part's sound table (not yet used by the build)                        |
+| `tools/aw_sbank.py`                                | the game's sounds as IMA ADPCM in one file, `AWSND.BIN`, and each part's sound table                           |
+| `probes/subdump.lua`, `tools/sbank_check.py`       | the sub CPU's DRAM dumped at a time; a part's sound bank in it against the samples it should hold              |

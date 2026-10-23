@@ -318,43 +318,81 @@ CNV_SBANK_LOAD:
 	CALL (XIX)
 	CP HL, 0
 	JP NE, _sl_none
+	LD XWA, 0
+	LD (DSND_FPOS), XWA
+	LD (DSND_WSTART), XWA
+	LD (DSND_WLEN), XWA	; nothing in the screen buffer yet
 _sl_sound:
 	LD XIZ, (DSND_CUR)	; (the firmware's file routines need not keep XIZ)
 	LD A, (XIZ)
 	CP A, 0FFh
 	JP Z, _sl_close
-	EXTZ WA
-	EXTZ XWA
-	LD XHL, XWA		; XHL = the sound's id
 	LD XWA, (XIZ + 1)
 	ADD XWA, SUB_BANK
 	LD (DSND_DEST), XWA
-	LD XWA, XHL
-	SLA 3, XWA
-	ADD XWA, CNV_SLEN
-	LD XDE, (XWA)
-	ADD XDE, (XWA + 4)	; length + loop length
+	CALL _sl_info		; XWA = its place in AWSND.BIN, XBC = its bytes, XDE = its samples
 	LD (DSND_LEFT), XDE
-	LD XWA, XHL
-	SLA 2, XWA
-	ADD XWA, CNV_SOFF
-	LD XWA, (XWA)		; its place in AWSND.BIN
+	; already in the screen buffer, read with the sounds before it?
+	LD XHL, XWA
+	SUB XHL, (DSND_WSTART)
+	JR C, _sl_fill
+	ADD XHL, XBC
+	CP XHL, (DSND_WLEN)
+	JR UGT, _sl_fill
+	SUB XHL, XBC		; its place in the buffer
+	JP _sl_have
+_sl_fill:
+	; one read for it and the list's next sounds that follow it in the file, up to the buffer's 32000 bytes:
+	; each read call costs the firmware about a disk turn (kn5000cnv/README.md)
+	LD (DSND_WSTART), XWA
+	LD XHL, XBC		; XHL = the span's bytes
+	LD XDE, XWA
+	ADD XDE, XBC		; XDE = where it ends in the file
+_sl_span:
+	LD XBC, 5
+	ADD XIZ, XBC
+	LD A, (XIZ)
+	CP A, 0FFh
+	JR Z, _sl_span_end
+	PUSH XDE
+	PUSH XHL
+	CALL _sl_info
+	POP XHL
+	POP XDE
+	CP XWA, XDE
+	JR NE, _sl_span_end	; not next in the file
+	ADD XHL, XBC
+	CP XHL, 32000
+	JR UGT, _sl_span_over
+	ADD XDE, XBC
+	JR _sl_span
+_sl_span_over:
+	SUB XHL, XBC
+_sl_span_end:
+	LD (DSND_WLEN), XHL
+	LD XWA, (DSND_WSTART)
+	CP XWA, (DSND_FPOS)
+	JR EQ, _sl_read		; the file is there already (tools/aw_sbank.py orders it so)
 	LD BC, 0		; from the start
 	LD XIX, (CNV_FW_SEEK)
 	CALL (XIX)
 	CP HL, 0
 	JP NE, _sl_close	; (the rest would be wrong too)
-	LD XBC, (DSND_LEFT)
-	INC 1, XBC
-	SRL 1, XBC		; its ADPCM bytes
+_sl_read:
+	LD XBC, (DSND_WLEN)
 	LD XWA, SCREEN_BUF
 	LD XIX, (CNV_FW_READ)
 	CALL (XIX)
+	LD XWA, (DSND_WSTART)
+	ADD XWA, (DSND_WLEN)
+	LD (DSND_FPOS), XWA	; where the file is now
+	LD XHL, 0
+_sl_have:
+	ADD XHL, SCREEN_BUF
+	LD (DSND_SRC), XHL
 	LD XWA, 0
 	LD (DSND_PRED), XWA
 	LDB (DSND_IDX), 0
-	LD XWA, SCREEN_BUF
-	LD (DSND_SRC), XWA
 _sl_chunk:
 	LD XBC, (DSND_LEFT)
 	CP XBC, 0
@@ -404,6 +442,26 @@ _sl_out:
 	RET
 
 DSND_FILE:	DB "AWSND.BIN", 0
+
+; _sl_info: XIZ = an entry of a part's sound list -> XWA = the sound's place in AWSND.BIN, XBC = its ADPCM bytes,
+; XDE = its samples (length + loop length)
+_sl_info:
+	LD A, (XIZ)
+	EXTZ WA
+	EXTZ XWA
+	PUSH XWA
+	SLA 3, XWA
+	ADD XWA, CNV_SLEN
+	LD XDE, (XWA)
+	ADD XDE, (XWA + 4)
+	LD XBC, XDE
+	INC 1, XBC
+	SRL 1, XBC
+	POP XWA
+	SLA 2, XWA
+	ADD XWA, CNV_SOFF
+	LD XWA, (XWA)
+	RET
 
 ; -----------------------------------------------------------------------------
 ; CNV_ADPCM - XIX = IMA ADPCM bytes (low nibble first), XIY = where the samples go, WA = how many (1..65535):

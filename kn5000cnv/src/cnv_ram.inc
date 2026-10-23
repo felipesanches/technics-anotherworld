@@ -66,5 +66,8 @@ DSND_DEST:		DD ?		; where they go in the sub CPU's DRAM
 DSND_LIST:		DD ?		; the loaded part's CNV_SPARTS list
 DSND_CUR:		DD ?		; CNV_SBANK_LOAD's place in it
 DSND_SRC:		DD ?		; the ADPCM bytes it decodes next
+DSND_FPOS:		DD ?		; where AWSND.BIN's next read starts
+DSND_WSTART:		DD ?		; the part of AWSND.BIN in the screen buffer: where it starts
+DSND_WLEN:		DD ?		; and its bytes
 DSND_BANK_PART:		DW ?		; the part whose sounds are in the sub CPU (0: none)
 DSND_IDX:		DB ?		; the ADPCM decoder's step index

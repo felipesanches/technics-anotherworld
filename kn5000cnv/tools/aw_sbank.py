@@ -3,7 +3,8 @@
 
 Library for make_awdisk.py:
   files(resdir)  -> {name: bytes}: AWSND.BIN, every sound some part plays, once, as 4-bit IMA ADPCM, one after
-                    the other by id: one file, because opening a file costs the firmware about 1.5 s
+                    the other in the order the parts first play them: one file, because opening a file costs the
+                    firmware about 1.5 s
   table(resdir)  -> the ASL text of CNV_SLEN (each sound's length and loop length, bytes), CNV_SOFF (where its
                     ADPCM starts in AWSND.BIN), CNV_SPARTS (each part's sounds: id and offset in that part's
                     bank in sub DRAM, 0FFh-terminated), CNV_SBANK_MAX (the largest part's bank) and
@@ -116,9 +117,13 @@ def part_sounds(resdir):
 
 
 def _coded(resdir):
-    """{id: ADPCM bytes} for every sound some part plays, in id order"""
+    """{id: ADPCM bytes} for every sound some part plays, in the order the parts first need them (aw_partinfo.PARTS
+    order), so a part's sounds mostly follow each other in AWSND.BIN and CNV_SBANK_LOAD reads on without seeking"""
     out = {}
-    for i in sorted({i for pid, ids in part_sounds(resdir) for i in ids}):
+    order = []
+    for pid, ids in part_sounds(resdir):
+        order += [i for i in ids if i not in order]
+    for i in order:
         ln, lp, smp = _sound(resdir, i)
         data = encode([b - 256 if b > 127 else b for b in smp])
         if len(decode(data, len(smp))) != len(smp):
