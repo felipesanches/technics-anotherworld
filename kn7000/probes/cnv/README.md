@@ -23,15 +23,17 @@ boots with the loader floppy exactly as released (technics-roms-disasm
 with the 44 files of `build/sdcard/` added to its root by `sd_addfile.py`; the copy is deleted when
 the run ends.
 
-| file                      | what it is                                                                                   |
-|---------------------------|----------------------------------------------------------------------------------------------|
-| `run_cnv_tests.sh`        | the runner: the cases below, each MAME run in its own directory with fresh cfg and NVRAM     |
-| `awcnv_test.lua`          | the MAME side: the whole game session (or the control, or a plain boot) and every tap        |
-| `noop_app.s`              | the control application: a `KN7APP.BIN` that ends the conversion on its first call           |
-| `guard_loader_selftest.s` | what `ic23_guard.py --loader` must find: 7 planted references, and the 2 loads it must allow |
-| `ic23_file.py`            | a saved IC23's stored and computed header checksum (copied from kn7000_mame)                 |
-| `ic23_diff.py`            | which regions of two IC23 images differ (copied from kn7000_mame)                            |
-| `awcnv_cksum.lua`         | the intro frame by frame, for the pixel comparison with the reference VM                     |
+| file                      | what it is                                                                                             |
+|---------------------------|--------------------------------------------------------------------------------------------------------|
+| `run_cnv_tests.sh`        | the runner: the cases below, each MAME run in its own directory with fresh cfg and NVRAM               |
+| `awcnv_test.lua`          | the MAME side: the whole game session (or the control, or a plain boot) and every tap                  |
+| `noop_app.s`              | the control application: a `KN7APP.BIN` that ends the conversion on its first call                     |
+| `guard_loader_selftest.s` | what `ic23_guard.py --loader` must find: 7 planted references, and the 2 loads it must allow           |
+| `ic23_file.py`            | a saved IC23's stored and computed header checksum (copied from kn7000_mame)                           |
+| `ic23_diff.py`            | which regions of two IC23 images differ (copied from kn7000_mame)                                      |
+| `awcnv_cksum.lua`         | the intro frame by frame, for the pixel comparison with the reference VM                               |
+| `awcnv_inplog.lua`        | the input log (`src/inplog.s`): a scripted session recorded, or a session replayed; every frame's page |
+| `run_inplog.sh`           | its runner: `OUT record`, `OUT replay SESSION.awr`, `OUT compare A B`                                  |
 
 The questions, and how each is answered:
 
@@ -632,3 +634,18 @@ How to run them, from `kn7000/` after `make floppy`:
       -autoboot_script $PWD/probes/cnv/awcnv_session.lua
 
 `pages.bin` is 167 MB; it is regenerated, not kept.
+
+## The input log (2026-11-01)
+
+`run_inplog.sh` (README-CNV.md, "Replaying a session"). Results, program 893 (`-bios v13`), KN7APP.BIN 6f58c18f
+(technics-anotherworld 5ea5e2c), the published emulator; `compare_frames.py` over the CRC-32 of the front page at every
+frame (pages.log), rustyworld's `replayawr` (research-scratch kn7000-aw-reference/replay-mods) from its run folder:
+
+| run                                                 | frames | sync marks | result                                                                                  |
+|-----------------------------------------------------|--------|------------|-----------------------------------------------------------------------------------------|
+| `rec1`: splash, 300 intro frames, C4, 13 moves      | 797    | 1          | rustyworld's replay of its log: 797/797 identical                                       |
+| `rep1`: `rec1`'s log replayed in MAME               | 817    | 1          | `rec1`'s pages 797/797; rustyworld's 817/817; its own I, P, R records = the replayed 19 |
+| `rec2`: splash, the whole intro, the lake, 13 moves | 3198   | 24         | rustyworld's replay of its log: 3198/3198 identical                                     |
+
+In `rep1` the module player wrote 5 marks of its own, which the replay undid: the music does not keep the same time
+against the VM's frames from one run to the next, so the marks must come from the log.
