@@ -784,6 +784,8 @@ MusicEvent:
     mov     d1, (AU_MARK)
     mov     AU_MARK_VAR, d0
     call    WriteVar, 0, 0
+    mov     (AU_MARK), d0           # into the input log: replays must write it where this did (inplog.s)
+    call    InpLogMark, 0, 0
     bra     me_ret
 me_notmark:
     cmp     0xFFFE, d3

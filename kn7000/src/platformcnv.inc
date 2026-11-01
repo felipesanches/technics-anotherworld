@@ -99,6 +99,7 @@
 .equ SHADOW,          0x50360000    # 64,000 bytes: the page as the LCD shows it now (display.s BlitPage)
 .equ REPORT_BUF,      0x50370000    # 8 KB: the text of AWPERF.TXT, written to the SD card at quit (cnv_main.s)
 .equ REPORT_MAX,      0x2000
+.equ INPLOG_AT,       0x50372000    # 32 KB to AW_HI: the input log (inplog.s), not zeroed by the loader
 .equ PAGE_SIZE,       AW_W*AW_H
 
 # ---- MIDI IN as game input ----------------------------------------------------------

@@ -24,7 +24,7 @@ every program build we know: **893** (v1.3, the owner's), 935, **941** (v1.6) an
 > measures its own speed on the instrument ("Speed").
 
 Contents: [What goes where](#what-goes-where) · [Building](#building) · [Before the first run on the
-instrument](#before-the-first-run-on-the-instrument) · [Playing it](#playing-it) · [How it works](#how-it-works) ·
+instrument](#before-the-first-run-on-the-instrument) · [Playing it](#playing-it) · [Replaying a session](#replaying-a-session) · [How it works](#how-it-works) ·
 [Sound](#sound) · [Speed](#speed) · [Memory](#memory) · [How it was checked](#how-it-was-checked) · [What MAME cannot
 settle](#what-mame-cannot-settle) · [Limits](#limits) · [History](#history-the-awcnv-floppy-retired)
 
@@ -165,25 +165,25 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 4. The controls (the HELP screen shows them too, with the level codes). **The game is played on the keybed
    only** (or over MIDI IN 1, channels 1-3); since 2026-10-21 no panel button moves the player:
 
-   | game   | keybed (or MIDI IN 1, channels 1-3) |
-   |--------|-------------------------------------|
-   | up     | A♭5 or B♭5                          |
-   | down   | A5                                  |
-   | left   | F5                                  |
-   | right  | C6                                  |
-   | action | C4 or any key below                 |
+| game   | keybed (or MIDI IN 1, channels 1-3) |
+|--------|-------------------------------------|
+| up     | A♭5 or B♭5                          |
+| down   | A5                                  |
+| left   | F5                                  |
+| right  | C6                                  |
+| action | C4 or any key below                 |
 
    The panel's buttons are the port's own controls:
 
-   | what         | panel                                                                   |
-   |--------------|-------------------------------------------------------------------------|
-   | codes        | OTHER PART & FR: the level code screen                                  |
-   | help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns     |
-   | sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too) |
-   | keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off  |
-   | speed        | PAGE UP: the overlay on / off ("Speed")                                 |
-   | blit         | PAGE DOWN: the new blit / the old one                                   |
-   | quit         | hold EXIT for 1.5 s                                                     |
+| what         | panel                                                                   |
+|--------------|-------------------------------------------------------------------------|
+| codes        | OTHER PART & FR: the level code screen                                  |
+| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns     |
+| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too) |
+| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off  |
+| speed        | PAGE UP: the overlay on / off ("Speed")                                 |
+| blit         | PAGE DOWN: the new blit / the old one                                   |
+| quit         | hold EXIT for 1.5 s                                                     |
 
    A♭5 and B♭5 are both UP, the black keys either side of A5 (DOWN); B5 is no control (Felipe,
    2026-10-21). With three keys down (an action key, a direction and up: run and jump) the keybed's
@@ -207,7 +207,8 @@ If anything looks wrong, write the card image from step 1 back and restore the p
    made the firmware repaint its screen and stop calling the game for good, so that EXIT could no
    longer end it (`probes/cnv/README.md`, "Speed").
 5. **To quit, hold EXIT for 1.5 seconds.** The game writes its speed figures to a new file in the
-   card's root (`AWPERF0.TXT`, then `AWPERF1.TXT`, ...: "Speed"). The firmware shows a message box; press EXIT, and it asks
+   card's root (`AWPERF0.TXT`, then `AWPERF1.TXT`, ...: "Speed"), and the rest of its input log
+   (`AWIN00.BIN` ...: "Replaying a session"). The firmware shows a message box; press EXIT, and it asks
    **Continue Next?** **NO** (right button 4) returns to the main screen. **YES** (right button 3)
    makes the loader read `KN7APP.BIN` again and starts a new game from the beginning, firmware search
    included. A short EXIT press still closes the help screen.
@@ -216,6 +217,39 @@ If anything looks wrong, write the card image from step 1 back and restore the p
    it; nothing has been written outside the game's RAM. Step 2 of the search is the loader's service
    table: "STEP 2" means the floppy's loader is not the one the game was built for. If `KN7APP.BIN`
    itself is missing or damaged, the loader says so on its own screen and ends after about 15 s.
+
+## Replaying a session
+
+Every game keeps an **input log** (`src/inplog.s`): everything the VM was given from outside, frame by frame, so that
+what was played on the instrument can be played again exactly in MAME and in the reference VM, and the two compared
+frame by frame to find where the port's VM goes wrong. The VM is otherwise deterministic (GameReset fixes the random
+seed), so the log holds:
+
+| record   | what                                                                                                                                                                                                             |
+|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `I`      | the input ReadInput applied, from that frame on: the mask it wrote to var 0xFE, and its mode (in the intro only var 0xFA and 0xFE are written; elsewhere the six hero variables, which all follow from the mask) |
+| `M`      | a sync mark of the music (var 0xF4), and the first thread that saw it: the module player writes them on the kernel's clock, between two threads or in the yield at a frame's end, and the intro waits for them   |
+| `R`      | the part the panel asked for (OTHER PART & FR, the code screen)                                                                                                                                                  |
+| `P`      | a part switch (to check that a replay keeps step)                                                                                                                                                                |
+| `H`, `E` | each file's header (the session, the file's number); the end (records lost for want of room)                                                                                                                     |
+
+The game writes the log to the SD card's root folder as it fills, 2,032 records at a time, as `AWIN00.BIN`,
+`AWIN01.BIN`, ... (16 KB each), between part loads and while no panel button is down, and the rest when you quit
+(EXIT held). A record is 8 bytes; inputs change a few times a second, so a file holds several minutes. A new game
+writes over the last one's files; quit before switching off, or the last few minutes are lost. KN7000
+`update_sdcard.sh` brings the files back with the card's other root files.
+
+To replay and compare (`probes/cnv/README.md`):
+
+    python3 tools/aw_inplog.py FOLDER -o session.awr          # the AWIN*.BIN files as one text file
+    probes/cnv/run_inplog.sh OUT replay session.awr           # MAME: the session replayed, its pages (OUT/pages.log)
+    replayawr session.awr ref.log                             # rustyworld (research-scratch kn7000-aw-reference/replay-mods)
+    python3 probes/compare_frames.py OUT/pages.log ref.log    # the first frame where they differ, and the rest
+
+`awcnv_inplog.lua` gives MAME's game what the log says, where the log says it: the input at ReadInput's last write,
+the marks when NextThread picks the thread that saw them first (the module player's own are undone), the requests
+after ReadInput. `replayawr` does the same in rustyworld (`Vm::run_awr`), starting with the port's splash.
+`run_inplog.sh OUT record` plays a scripted session in MAME and logs it, for testing the log itself.
 
 ## How it works
 
@@ -245,30 +279,30 @@ source (`kn7000/tools/cnv_romdump/loader.s`, `kn7cnv.inc`) and measured in MAME 
   address. It searches the program flash and the kernel library in RAM by code signatures, the way the
   loader does, and accepts a find only when it is unambiguous and cross-checked:
 
-  | step | what                                          | found by                                                                                                                     |
-  |------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
-  | 0    | the panel switch bitmaps                      | the panel decoder's two sites, which must agree (CPL = CPR + 0x30)                                                           |
-  | 1    | the firmware's yield, the millisecond counter | the yield routine in the library and the tick handler, which must agree, and agree with the loader's own find of the counter |
-  | 2    | SD open, read, close, the drive switch        | the loader's service table: magic `KN7S`, loader ABI 1, file access found                                                    |
-  | 3    | `cre_tsk`, `sta_tsk`                          | the firmware's own "cre_tsk then sta_tsk(N, 0)" call sites: all must agree                                                   |
-  | 4    | `exd_tsk`                                     | the firmware's tasks that end themselves: all must agree, a kernel stub                                                      |
-  | 5    | the MIDI IN 1 and MIDI OUT 1 rings            | the library's per-port ring wrappers                                                                                         |
-  | 6, 7 | the effects DSP's host-port routines          | DSPTONE's search, one signature a call (`src/dsp.s` DspFind); not found: the game goes on with the tone generator ("Sound")  |
+| step | what                                          | found by                                                                                                                     |
+|------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| 0    | the panel switch bitmaps                      | the panel decoder's two sites, which must agree (CPL = CPR + 0x30)                                                           |
+| 1    | the firmware's yield, the millisecond counter | the yield routine in the library and the tick handler, which must agree, and agree with the loader's own find of the counter |
+| 2    | SD open, read, close, the drive switch        | the loader's service table: magic `KN7S`, loader ABI 1, file access found                                                    |
+| 3    | `cre_tsk`, `sta_tsk`                          | the firmware's own "cre_tsk then sta_tsk(N, 0)" call sites: all must agree                                                   |
+| 4    | `exd_tsk`                                     | the firmware's tasks that end themselves: all must agree, a kernel stub                                                      |
+| 5    | the MIDI IN 1 and MIDI OUT 1 rings            | the library's per-port ring wrappers                                                                                         |
+| 6, 7 | the effects DSP's host-port routines          | DSPTONE's search, one signature a call (`src/dsp.s` DspFind); not found: the game goes on with the tone generator ("Sound")  |
 
   `tools/aw_find_fw.py` runs the same searches (all but step 2) over every program image we have; the
   loader's `find_fw.py` runs the loader's:
 
-  | what         | 893 (v1.3)   | 935 (v1.5)   | 941 (v1.6)   | 942 (SP7001) |
-  |--------------|--------------|--------------|--------------|--------------|
-  | cre_tsk      | `0x4C03D0B5` | `0x4C03D0C8` | `0x4C03D0C8` | `0x4C03D46B` |
-  | sta_tsk      | `0x4C03D898` | `0x4C03D8AB` | `0x4C03D8AB` | `0x4C03DCD3` |
-  | dly_tsk      | `0x4C03DD5C` | `0x4C03DD6F` | `0x4C03DD6F` | `0x4C03E295` |
-  | exd_tsk      | `0x4C03D58E` | `0x4C03D5A1` | `0x4C03D5A1` | `0x4C03D944` |
-  | kernel_ms    | `0x500C53F8` | `0x500C541C` | `0x500D3C58` | `0x500D3C68` |
-  | panel_cpr    | `0x5006BE4C` | `0x5006BE50` | `0x5006BE50` | `0x5006BE60` |
-  | panel_cpl    | `0x5006BE7C` | `0x5006BE80` | `0x5006BE80` | `0x5006BE90` |
-  | midiin1_rxq  | `0x5001F020` | `0x5001F024` | `0x5001F050` | `0x5001F060` |
-  | midiout1_txq | `0x5001F834` | `0x5001F838` | `0x5001F864` | `0x5001F874` |
+| what         | 893 (v1.3)   | 935 (v1.5)   | 941 (v1.6)   | 942 (SP7001) |
+|--------------|--------------|--------------|--------------|--------------|
+| cre_tsk      | `0x4C03D0B5` | `0x4C03D0C8` | `0x4C03D0C8` | `0x4C03D46B` |
+| sta_tsk      | `0x4C03D898` | `0x4C03D8AB` | `0x4C03D8AB` | `0x4C03DCD3` |
+| dly_tsk      | `0x4C03DD5C` | `0x4C03DD6F` | `0x4C03DD6F` | `0x4C03E295` |
+| exd_tsk      | `0x4C03D58E` | `0x4C03D5A1` | `0x4C03D5A1` | `0x4C03D944` |
+| kernel_ms    | `0x500C53F8` | `0x500C541C` | `0x500D3C58` | `0x500D3C68` |
+| panel_cpr    | `0x5006BE4C` | `0x5006BE50` | `0x5006BE50` | `0x5006BE60` |
+| panel_cpl    | `0x5006BE7C` | `0x5006BE80` | `0x5006BE80` | `0x5006BE90` |
+| midiin1_rxq  | `0x5001F020` | `0x5001F024` | `0x5001F050` | `0x5001F060` |
+| midiout1_txq | `0x5001F834` | `0x5001F838` | `0x5001F864` | `0x5001F874` |
 
   Step 2 takes the SD routines the loader found: on 893 its service table hands over the SD backends
   themselves (open `0x48564A88`, read `0x48564D70`, close `0x48564B4F`; the drive switch is the loader's
@@ -353,14 +387,14 @@ it):
 
   Where the time goes, in MAME (`probes/cnv/awcnv_round3.lua`, `AWR_MODE=bank`, program 893, through the menu):
 
-  | part                                   | before (`a2fbbaa6...`, 93 `AWRxx.AW`) | now (`7f8ed09a...`, 14 `AWSBn.AW`) |
-  |----------------------------------------|---------------------------------------|------------------------------------|
-  | reading the card                       | 10.19 s (574,084 bytes, 93 files)     | 3.88 s (431,724 bytes, 14 files)   |
-  | ByteKiller unpacking                   | 1.74 s                                | none                               |
-  | host-port traffic and our own work     | 12.26 s                               | 7.52 s                             |
-  | handshakes (one DSP frame each)        | 359,792                               | 238,642                            |
-  | between converter calls                | 1.68 s (97 calls)                     | 0.22 s (29 calls)                  |
-  | in all, from the DSP setup to the game | 25.87 s                               | 11.62 s                            |
+| part                                   | before (`a2fbbaa6...`, 93 `AWRxx.AW`) | now (`7f8ed09a...`, 14 `AWSBn.AW`) |
+|----------------------------------------|---------------------------------------|------------------------------------|
+| reading the card                       | 10.19 s (574,084 bytes, 93 files)     | 3.88 s (431,724 bytes, 14 files)   |
+| ByteKiller unpacking                   | 1.74 s                                | none                               |
+| host-port traffic and our own work     | 12.26 s                               | 7.52 s                             |
+| handshakes (one DSP frame each)        | 359,792                               | 238,642                            |
+| between converter calls                | 1.68 s (97 calls)                     | 0.22 s (29 calls)                  |
+| in all, from the DSP setup to the game | 25.87 s                               | 11.62 s                            |
 
   On the unit the handshakes take one DSP frame each (pass 8: 96.8 % of the firmware's accesses), 8.16 s before
   and 5.41 s now; MAME's took 34 and 31.5 us each. If the card and the CPU go as in MAME, the unit should take

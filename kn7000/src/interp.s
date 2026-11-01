@@ -204,6 +204,7 @@ InitForPart:
     call    EnsurePart, 0, 0        # d0 = partId; returns once its resources are resident
     mov     d2, d0
     movhu   d0, (CURRENT_PART_ID)
+    call    InpLogPart, 0, 0        # d0 = the part: into the input log (inplog.s)
     mov     PREV_LR_BITS, a0        # reset the sticky direction state on a part switch
     clr     d1
     movhu   d1, (a0)
@@ -640,6 +641,7 @@ ri_nohelp:
     bge     ri_nocodes              # 0x3E88 / 0x3E89 (the last part ids)
     mov     PART_PASSWORD, d0
     movhu   d0, (REQ_NEXT_PART)
+    call    InpLogRequest, 0, 0     # d0 = the part: into the input log (inplog.s)
 ri_nocodes:
     movhu   (CURRENT_PART_ID), d0
     cmp     0x3E81, d0
@@ -1079,15 +1081,20 @@ nt_maxok:
     mov     d0, (PF_ASKED)
     mov     PH_WAIT, d0
     call    PerfPhase, 0, 0
+    mov     1, d0                   # (the sync marks written meanwhile: the next frame's, inplog.s)
+    call    InpLogYield, 0, 0
     mov     d2, d0
     mov     DLY_TSK, a1
     calls   (a1)                    # yield sleep_ms to the firmware
+    clr     d0
+    call    InpLogYield, 0, 0
     call    PerfSentinels, 0, 0     # did the firmware draw on the LCD meanwhile? (perf.s)
     call    PerfFrameEnd, 0, 0
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
     mov     d0, (FRAME_START_MS)    # next frame starts now (after the sleep)
     call    ReadInput, 0, 0         # map the keybed to the fire button (intro skip)
+    call    InpLogInput, 0, 0       # what it applied, into the input log (inplog.s)
     # deferred part switch, requested by OpLoad (0x19 with id >= 0x3E80). The intro
     # issues it at its end, or immediately when the player presses fire (skip).
     mov     REQ_NEXT_PART, a2

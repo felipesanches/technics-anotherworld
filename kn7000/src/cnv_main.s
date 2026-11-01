@@ -34,6 +34,7 @@
 
 .include "kn7cnv.inc"               # the loader's contract (technics-roms-disasm cnv_romdump)
 .include "platformcnv.inc"
+.include "inplog.inc"                # the input log (inplog.s)
 .include "vm.inc"
 .include "awpart.inc"               # generated: RES_COUNT, PART_LISTS, LR_* (tools/aw_extract.py --parts)
 .include "dsp.inc"                  # dsp.s's equates (DV_*, MODE_*), and the mixer's addresses (dsp_equ.inc)
@@ -117,6 +118,8 @@ CnvEntry:
     bra     ce_failed
 
 ce_first:                           # a fresh load: everything here is zero
+    clr     d0                      # (but the input log's area, which the loader leaves: no log yet)
+    mov     d0, (IL_STATE)
     call    LaunchFolder, 0, 0      # the folder the program menu started us from, if it did
     mov     1, d0
     mov     d0, (CV_STATE)
@@ -215,6 +218,7 @@ ce_load:                            # a part the game task waits for: one of its
     mov     (LD_REC), d0
     cmp     0, d0
     bne     ce_load_step
+    call    InpLogFlush, 0, 0       # between lists: a full half of the input log onto the card (inplog.s)
     mov     (LD_REQ), d0
     cmp     0, d0
     beq     ce_poll_exit
@@ -318,6 +322,7 @@ ce_answer:
     cmp     0, d0
     beq     ce_park                 # wait for the game task to leave first
     call    DspQuit, 0, 0           # the effects DSP's slots as the firmware had them, read back (once)
+    call    InpLogFinish, 0, 0      # the rest of the input log onto the card (once; inplog.s)
     mov     (CV_REPORT), d0         # the speed report, once, before the end (perf.s ReportBuild)
     cmp     0, d0
     bne     ce_end
@@ -392,6 +397,7 @@ at_file:
 StartTask:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
+    call    InpLogInit, 0, 0        # a new input log (inplog.s)
     mov     TASK_ID_FIRST, d2
 st_try:
     mov     d2, d0
@@ -1218,6 +1224,7 @@ msg_fw_n:
 .include "interp.s"
 .include "help.s"
 .include "perf.s"
+.include "inplog.s"                 # the input log, for replaying a session (README-CNV.md)
 .include "audio.s"                  # sound effects and music: the effects DSP, or MIDI into the receive ring
 .include "dsp.s"                    # the effects DSP: its sample mixer, the bank, the voices
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names

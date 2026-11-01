@@ -106,6 +106,7 @@ regions = [  # name, start, end, what
 ] + [(f"PAGE_BITMAP_{k}", L[f"PAGE_BITMAP_{k}"], L[f"PAGE_BITMAP_{k}"] + 64000, f"VM page {k}") for k in range(4)] + [
     ("SHADOW", L["SHADOW"], L["SHADOW"] + 64000, "the page as the LCD shows it (the blit)"),
     ("REPORT_BUF", L["REPORT_BUF"], L["REPORT_BUF"] + L["REPORT_MAX"], "the text of AWPERF.TXT"),
+    ("INPLOG_AT", L["INPLOG_AT"], L["AW_HI"], "the input log: its variables and two halves (inplog.s)"),
 ]
 lo, hi, mb, mbe = L["AW_LO"], L["AW_HI"], L["MAILBOX_PAGE"], L["MAILBOX_PAGE_END"]
 for name, a, b, _ in regions:
