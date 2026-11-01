@@ -641,11 +641,11 @@ How to run them, from `kn7000/` after `make floppy`:
 (technics-anotherworld 5ea5e2c), the published emulator; `compare_frames.py` over the CRC-32 of the front page at every
 frame (pages.log), rustyworld's `replayawr` (research-scratch kn7000-aw-reference/replay-mods) from its run folder:
 
-| run                                                 | frames | sync marks | result                                                                                  |
-|-----------------------------------------------------|--------|------------|-----------------------------------------------------------------------------------------|
-| `rec1`: splash, 300 intro frames, C4, 13 moves      | 797    | 1          | rustyworld's replay of its log: 797/797 identical                                       |
-| `rep1`: `rec1`'s log replayed in MAME               | 817    | 1          | `rec1`'s pages 797/797; rustyworld's 817/817; its own I, P, R records = the replayed 19 |
-| `rec2`: splash, the whole intro, the lake, 13 moves | 3198   | 24         | rustyworld's replay of its log: 3198/3198 identical                                     |
+| run                                                  | frames | sync marks | result                                                                                  |
+|------------------------------------------------------|--------|------------|-----------------------------------------------------------------------------------------|
+| `rec1`: splash, 300 intro frames, C4, the moves      | 797    | 1          | rustyworld's replay of its log: 797/797 identical                                       |
+| `rep1`: `rec1`'s log replayed in MAME                | 817    | 1          | `rec1`'s pages 797/797; rustyworld's 817/817; its own I, P, R records = the replayed 19 |
+| `rec2`: splash, the whole intro, the lake, the moves | 3198   | 24         | rustyworld's replay of its log: 3198/3198 identical                                     |
 
 In `rep1` the module player wrote 5 marks of its own, which the replay undid: the music does not keep the same time
 against the VM's frames from one run to the next, so the marks must come from the log.
