@@ -3387,11 +3387,11 @@ INSTRUCTION_IS_NOT_SHL:
 	EX W, A			; byte-swap: bytecode is big-endian
 	INC 2, XIX
 	LD DE, (XIY)
-	; Shift DE right by A positions (shift amount in low byte)
+	; Shift DE right by A positions (shift amount in low byte), logically: the variable as unsigned 16 bits
 	CP A, 0
 	JP Z, _shr_done
 _shr_loop:
-	SRA 1, DE
+	SRL 1, DE
 	DEC A
 	JP NZ, _shr_loop
 _shr_done:

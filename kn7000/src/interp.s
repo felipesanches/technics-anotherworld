@@ -1775,12 +1775,12 @@ OpShr:
     inc     a2
     mov     d3, d0
     call    ReadVar, 0, 0
-    exth    d0                      # arithmetic shift (signed var)
+    and     0xffff, d0              # logical shift: the var as unsigned 16 bits (rawgl's op_shr)
     and     0x0f, d2
     cmp     0, d2
     beq     shr_done
 shr_loop:
-    asr     1, d0
+    lsr     1, d0
     add     -1, d2
     bne     shr_loop
 shr_done:
