@@ -136,6 +136,7 @@ fq_ret:
 FwdrawGone:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    call    LedEnd, 0, 0
     call    LcdRelease, 0, 0
     call    FwdrawUnhook, 0, 0
     ret     [d2,d3,a2,a3], 0x20

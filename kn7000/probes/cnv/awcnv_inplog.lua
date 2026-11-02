@@ -22,7 +22,8 @@
 -- At the log's E frame it quits (EXIT held), so the replay's own log can be checked against the one replayed: its
 -- I, P and R records must be the same (the marks are not: the live ones are logged before they are undone).
 --
--- Env: AWCK_BIN, AWCK_IDX (the capture), AWCK_VARS (optional: the 256 VM variables at each capture, int16 LE), AW_REPLAY, AW_INTRO_FRAMES, AW_MAP (build/kn7app.map: ReadInput's range).
+-- Env: AWCK_BIN, AWCK_IDX (the capture), AWCK_VARS (optional: the 256 VM variables at each capture, int16 LE),
+-- AW_LEDLOG (optional: the LED effects' state at each frame, a line each: src/leds.s), AW_REPLAY, AW_INTRO_FRAMES, AW_MAP (build/kn7app.map: ReadInput's range).
 -- Addresses: src/platformcnv.inc, src/vm.inc, src/cnv_main.s, src/audio.s.
 local M = manager.machine
 local cpu = M.devices[":maincpu"]
@@ -121,6 +122,7 @@ end
 
 -- ---- the capture: the front page at every FRAME_NO write (awcnv_cksum.lua's) ---------------------------------
 local binf, idxf = io.open(OUTBIN, "wb"), io.open(OUTIDX, "w")
+local ledf = os.getenv("AW_LEDLOG") and os.getenv("AW_LEDLOG") ~= "" and io.open(os.getenv("AW_LEDLOG"), "w")
 local varf = os.getenv("AWCK_VARS") and os.getenv("AWCK_VARS") ~= "" and io.open(os.getenv("AWCK_VARS"), "wb")
 local captured, capturing, chi, clast = 0, true, 0, 0
 AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function(offset, data, mask)
@@ -133,11 +135,25 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   local front = sp:read_u32(CUR_PAGE_2)
   binf:write(sp:read_range(front, front + sp:read_u32(MISC + 0x6C) - 1, 8))  -- PG_SIZE: 64000 or 92160
   if varf then varf:write(sp:read_range(INTERP, INTERP + 511, 8)) end
+  if ledf then
+    -- AW_LEDLOG: the LED effects at every frame (src/leds.s): active, charge, red / all until (ms left), blinks to go,
+    -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start
+    local LV, sh = 0x502DAD00, sp:read_u32(0x502DAD00)
+    local ms = sp:read_u32(sp:read_u32(MISC + 0x200))
+    local lit = 0
+    for _, side in ipairs({ "cpl_led", "cpr_led" }) do
+      for i = 0, 127 do if (M.output:get_value(side .. i) or 0) ~= 0 then lit = lit + 1 end end
+    end
+    local function hex(a) local t = {}; for i = 0, 19 do t[#t + 1] = string.format("%02X", sp:read_u8(a + i)) end; return table.concat(t) end
+    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
+      math.max(0, sp:read_u32(LV + 0x10) - ms), math.max(0, sp:read_u32(LV + 0x14) - ms), sp:read_u32(LV + 0x18),
+      sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20)))
+  end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
 end)
 local function stop_capture()
-  if capturing then capturing = false; binf:close(); idxf:close(); if varf then varf:close() end; log(string.format("captured %d frames", captured)) end
+  if capturing then capturing = false; binf:close(); idxf:close(); if varf then varf:close() end; if ledf then ledf:close() end; log(string.format("captured %d frames", captured)) end
 end
 
 -- ---- inputs --------------------------------------------------------------------------------------------------

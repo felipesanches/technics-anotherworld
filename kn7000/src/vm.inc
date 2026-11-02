@@ -125,6 +125,25 @@
 .equ PR_ROW_Y0,       58
 .equ PR_ROW_DY,       14
 
+# The LED effects (leds.s; LED_VARS per platform).
+.equ LED_SH,          LED_VARS + 0x00   # u32: the LED shadow for this build (0: effects off)
+.equ LED_MASKS,       LED_VARS + 0x04   # u32: the firmware's four refresh request masks
+.equ LED_ACTIVE,      LED_VARS + 0x08   # u32: the shadow is ours (an effect runs)
+.equ LED_CHARGE,      LED_VARS + 0x0C   # u32: 1 a charge, 2 the big blob
+.equ LED_RED_T,       LED_VARS + 0x10   # u32: the red on until this ms
+.equ LED_ALL_T,       LED_VARS + 0x14   # u32: all on until this ms
+.equ LED_BLINKS,      LED_VARS + 0x18   # u32: halves of blinking to go (from LED_BLINK_T)
+.equ LED_BLINK_T,     LED_VARS + 0x1C   # u32
+.equ LED_PULSE_T,     LED_VARS + 0x20   # u32: when the charge's pulse began
+.equ LED_SAVED,       LED_VARS + 0x40   # 20 bytes: the LED bits as they would be without the effects
+.equ LED_LAST,        LED_VARS + 0x60   # 20 bytes: the shadow as last written
+.equ LEV_LASER,       1                 # LedEvent's events
+.equ LEV_FLASH,       2
+.equ LEV_THUNDER,     3
+.equ LEV_BLINK,       4
+.equ LEV_CHARGE,      5
+.equ LEV_MEGA,        6
+.equ LEV_STOP,        7
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320

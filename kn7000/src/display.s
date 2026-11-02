@@ -36,6 +36,7 @@ gt_settle:                          # let the firmware reach its static screen f
     call    PerfRegs, 0, 0
     call    PerfBench, 0, 0
     call    DisplayInit, 0, 0       # the pages' resolution (after PerfInit, which clears PF_MODE); the LCD (lcd8.s)
+    call    LedInit, 0, 0           # the panel's LEDs for the LED effects (leds.s)
     call    PerfRestart, 0, 0
     call    GameReset, 0, 0
 gt_loop:

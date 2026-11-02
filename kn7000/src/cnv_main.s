@@ -350,6 +350,7 @@ ce_prefs_kept:
     call    ReportWrite, 0, 0
     bra     ce_park                 # one call more: the next one ends
 ce_end:
+    call    LedEnd, 0, 0            # the panel's LEDs as the firmware has them (leds.s)
     call    FwdrawUnhook, 0, 0      # the firmware draws again (fwdraw.s)
     call    LcdRelease, 0, 0        # and its own frame shows again (lcd8.s)
     mov     MAILBOX, a0
@@ -460,6 +461,7 @@ DLY_TSK:
     call    FwdrawQuiet, 0, 0       # the firmware's drawing off, when it can be (fwdraw.s)
 dq_slice:
     call    AudioPoll, 0, 0
+    call    LedService, 0, 0        # the LED effects' pattern, over whatever the firmware set (leds.s)
     mov     d2, d0
     cmp     YIELD_SLICE, d0
     bls     dq_yield
@@ -1380,5 +1382,6 @@ msg_fw_n:
 .include "fwdraw.s"                 # the firmware's screen kept from drawing while the game runs
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "prefs.s"                  # the player's settings
+.include "leds.s"                   # the LED effects
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

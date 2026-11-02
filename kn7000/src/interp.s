@@ -211,6 +211,8 @@ InitForPart:
     cmp     PART_LAST, d0
     bgt     ifp_ret
     mov     d0, d2
+    mov     LEV_STOP, d0            # no charge goes on across a part switch (leds.s)
+    call    LedEvent, 0, 0
     call    AudioStopAll, 0, 0      # nothing sounds across a part switch (rawgl restartAt), and the
     mov     d2, d0                  # module player must not read MUSIC_BUF while the next part loads
     call    EnsurePart, 0, 0        # d0 = partId; returns once its resources are resident
@@ -1323,7 +1325,11 @@ OpMovConst:
     movbu   (a2), d1                # lo
     inc     a2
     or      d1, d0
+    mov     d0, d3                  # the LED effects see it first (leds.s: the mega-blast)
     mov     d0, d1
+    mov     d2, d0
+    call    LedVar, 0, 0
+    mov     d3, d1
     mov     d2, d0
     call    WriteVar, 0, 0
     bra     ei_end
@@ -1575,6 +1581,13 @@ cj_take:
 # ---- 0x0B SET_PALETTE: SETUP_PALETTE(first byte of the BE word) ---------------
 OpSetPalette:
     movbu   (a2), d0                # palette index = first byte
+    mov     a2, d1                  # the LED effects: the index and the opcode's pc (leds.s)
+    mov     (CUR_BYTECODE), a0
+    mov     a0, d3
+    sub     d3, d1
+    add     -1, d1
+    call    LedPalette, 0, 0
+    movbu   (a2), d0
     add     2, a2                   # skip 2-byte word
     call    SetupPalette, 0, 0
     bra     ei_end
@@ -1793,6 +1806,8 @@ shr_done:
 # ---- 0x18 PLAY_SOUND: resource u16, frequency index, volume, channel (the platform's AudioSound:
 # a note on the KN7000's tone generator in the KN7APP.BIN build, audio.s; nothing in the SP7001 one)
 OpPlaySound:
+    mov     a2, a0                  # the LED effects (leds.s)
+    call    LedSound, 0, 0
     mov     a2, a0
     call    AudioSound, 0, 0
     add     5, a2
