@@ -623,7 +623,7 @@ cp_ret:
 ReadInput:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    call    PerfInput, 0, 0         # PAGE UP: the speed overlay; PAGE DOWN: the blit mode (perf.s)
+    call    PerfInput, 0, 0         # PAGE UP: the enlarged window; PAGE DOWN: the original resolution (perf.s)
     mov     (FWV_PANEL), a0         # HELP: pause and show the help screens (help.s)
     movbu   (BTN_HELP_OFS, a0), d0
     and     BTN_HELP_BIT, d0
@@ -1050,7 +1050,7 @@ nt_loop:
     # the remainder after the work already done this frame (measured with the firmware's
     # 1 kHz counter, FWV_KERNEL_MS), clamped to [MIN_YIELD_MS, MAX_YIELD_MS] so the firmware always
     # gets time and a bad slice count can't freeze us. A frame that has overrun its time yields
-    # only MIN_YIELD_MS (2 ms; 8 before 2026-10-20, and still in the old blit mode): the firmware's
+    # only MIN_YIELD_MS (2 ms; 8 before 2026-10-20): the firmware's
     # tasks run when they are ready whatever the yield asks, and a longer one only spins. Then the
     # frame's end for the speed figures (perf.s), and the next frame's start.
     mov     VAR_PAUSE_SLICES, d0
@@ -1064,11 +1064,6 @@ nt_loop:
     sub     d2, d1                  # d1 = elapsed work ms
     sub     d1, d0                  # d0 = sleep_ms = target - elapsed
     mov     MIN_YIELD_MS, d1
-    mov     (PF_MODE), d2
-    cmp     0, d2
-    beq     nt_floor
-    mov     MIN_YIELD_OLD, d1
-nt_floor:
     cmp     d1, d0
     bge     nt_minok
     mov     d1, d0

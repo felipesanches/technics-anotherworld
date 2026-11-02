@@ -10,18 +10,18 @@
 #     per phase, per one-second window, per part and over the whole game.
 #   * A benchmark before the game starts (PerfBench): stores and loads to the LCD frame and to work RAM,
 #     ns per access; and the bus controller's settings as the firmware left them (PerfRegs).
-#   * The figures on the LCD: an overlay in the left border that PAGE UP turns on and off (PerfInput,
-#     PerfOverlay); the help screen's fourth page (PerfPageBuild, help.s); and the text of AWPERF.TXT,
-#     which cnv_main.s writes to the SD card at quit (ReportBuild).
-#   * PAGE DOWN switches the blit mode (PF_MODE): 0, the new blit (only what changed, the border once);
-#     1, the old one (every pixel, 16 bits at a time, and the whole border, on every blit; and the old
-#     8 ms floor on the yield). Each mode has its own totals, so one run gives both.
-#   * PerfSentinels: 16 pixels of the LCD that tell when something else drew on it (the blit, display.s,
-#     then repaints everything).
+#   * The figures: the help screen's fourth page (PerfPageBuild, help.s) and the text of AWPERF.TXT, which
+#     cnv_main.s writes to the SD card at quit (ReportBuild).
+#   * PAGE UP and PAGE DOWN choose the display mode (PerfInput, PF_MODE): 0, the window enlarged to 384x240
+#     (the default); 1, the original resolution, 320x200 (display.s BlitPage). Each mode has its own
+#     totals, so one run gives both.
+#   * PerfSentinels: 47 or 45 pixels of the LCD that tell when something else drew on it (the blit,
+#     display.s, then repaints everything).
 # Convention as the rest of the port: d0, d1, a0, a1 scratch; d2, d3, a2, a3 kept; a routine that calls
 # makes a frame first.
 
-.equ SENT_COUNT,      47            # sent_tab's sentinel pixels
+.equ SENT_COUNT,      47            # sent_tab's sentinel pixels (the original resolution)
+.equ SENT_BIG,        45            # sent_big's (enlarged)
 
 # =================================================================================
 # Stamp -> d0 = now, in counts of 1/2001 ms: ms * 2001 + (2000 - TM4BC), the counter read on both sides
@@ -144,7 +144,7 @@ pfe_part:
     mul     d1, d0
     mov     PF_PART, a3
     add     d0, a3
-    mov     (PF_MODE), d0           # ... of this blit mode
+    mov     (PF_MODE), d0           # ... of this display mode
     cmp     0, d0
     beq     pfe_mode
     add     PR_SET, a3
@@ -242,7 +242,7 @@ pfe_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # PerfWindowEnd: the window ends (a second has passed, or the game is quitting): its figures into
-# PF_SHOW, its sums into the game's, a new window, and the overlay redrawn.
+# PF_SHOW, its sums into the game's, a new window.
 PerfWindowEnd:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -357,15 +357,12 @@ pwe_show:
     mov     d0, (PF_WIN_MAX)
     mov     d0, (PF_WIN_PX)
     mov     d0, (PF_WIN_ASKED)
-    mov     1, d0
-    mov     d0, (PF_OVL_DUE)        # the new figures at the next blit
 pwe_ret:
     ret     [d2,d3,a2,a3], 0x30
 
-# PerfSentinels: do the sentinel pixels of the LCD frame (sent_tab: the border's bands and strips, and a
-# grid in the window) still hold what the game drew there? If one does not, something else drew on the LCD (the
-# firmware), and the next blit repaints everything (PF_DAMAGE). The overlay never covers a border
-# sentinel. Leaf; uses d0, d1, a0, a1 and saves d2, d3, a2.
+# PerfSentinels: do the sentinel pixels of the LCD frame (sent_big or sent_tab, as the mode is: the border, and
+# a grid in the window) still hold what the game drew there? If one does not, something else drew on the LCD (the
+# firmware), and the next blit repaints everything (PF_DAMAGE). Leaf; uses d0, d1, a0, a1 and saves d2, d3, a2.
 PerfSentinels:
     movm    [d2,d3,a2], (sp)
     mov     (PF_LAST_SRC), d0       # nothing shown yet
@@ -374,6 +371,11 @@ PerfSentinels:
     mov     (PF_DAMAGE), d0         # already asked for
     cmp     0, d0
     bne     psn_ret
+    mov     sent_big, a2
+    mov     SENT_BIG, d3
+    mov     (PF_MODE), d0
+    cmp     0, d0
+    beq     psn_one
     mov     sent_tab, a2
     mov     SENT_COUNT, d3
 psn_one:
@@ -408,7 +410,7 @@ psn_bad:
     mov     d0, (PF_SENT_BAD)
     bra     psn_ret
 
-# ModeTotals -> a2 = the totals record of the blit mode in use (PF_TOTS). Leaf; uses d0.
+# ModeTotals -> a2 = the totals record of the display mode in use (PF_TOTS). Leaf; uses d0.
 ModeTotals:
     mov     PF_TOTS, a2
     mov     (PF_MODE), d0
@@ -420,8 +422,9 @@ mt_ret:
 
 # =================================================================================
 # PerfInput: called from ReadInput every frame (not while the help screen runs, which turns its pages
-# with PAGE UP and PAGE DOWN). On a press: PAGE UP turns the overlay on and off; PAGE DOWN switches the
-# blit mode (PF_MODE), after closing the window, so that each mode's figures stay its own.
+# with PAGE UP and PAGE DOWN). On a press: PAGE UP the enlarged window (PF_MODE 0), PAGE DOWN the original
+# resolution (PF_MODE 1); a change of mode closes the window of figures first, so that each mode's figures
+# stay its own, and the next blit repaints everything.
 PerfInput:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -433,16 +436,8 @@ PerfInput:
     btst    2, d3                   # PAGE UP: held since an earlier frame?
     bne     pip_dn
     or      2, d3
-    xor     1, d3                   # the overlay on / off
-    btst    1, d3
-    bne     pip_on
-    mov     (PF_DAMAGE), d0         # off: the next blit paints the border black again
-    or      PFD_OVERLAY, d0
-    mov     d0, (PF_DAMAGE)
-    bra     pip_dn
-pip_on:
-    mov     1, d0
-    mov     d0, (PF_OVL_DUE)
+    clr     d0
+    call    pip_set, 0, 0
     bra     pip_dn
 pip_up_rel:
     and     0xFFFFFFFD, d3
@@ -452,19 +447,8 @@ pip_dn:
     btst    4, d3                   # PAGE DOWN: held since an earlier frame?
     bne     pip_ret
     or      4, d3
-    mov     d3, (PF_STATE)
-    call    PerfWindowEnd, 0, 0     # the window so far belongs to the mode it ran in
-    mov     (PF_MODE), d0
-    xor     1, d0
-    mov     d0, (PF_MODE)
-    mov     (PF_SWITCHES), d0
-    inc     d0
-    mov     d0, (PF_SWITCHES)
-    mov     (PF_DAMAGE), d0         # either way, start from a full repaint
-    or      PFD_MODE, d0
-    mov     d0, (PF_DAMAGE)
     mov     1, d0
-    mov     d0, (PF_OVL_DUE)
+    call    pip_set, 0, 0
     bra     pip_ret
 pip_dn_rel:
     and     0xFFFFFFFB, d3
@@ -472,136 +456,26 @@ pip_ret:
     mov     d3, (PF_STATE)
     ret     [d2,d3,a2,a3], 0x20
 
-# PerfOverlay: if the overlay is on, write the blit mode and the last window's figures into the left
-# border (x 8-159, y 24-191), white on black: frames per second, then ms per frame and per phase. The
-# time it takes is phase PAUSE, not part of any frame's (in the old mode it is drawn after every blit,
-# whose border fill wipes it).
-PerfOverlay:
-    movm    [d2,d3,a2,a3], (sp)
-    add     -0x20, sp
-    clr     d0
-    mov     d0, (PF_OVL_DUE)
-    mov     (PF_STATE), d0
-    btst    1, d0
-    beq     pov_ret
-    mov     PH_PAUSE, d0
-    call    PerfPhase, 0, 0
-    mov     d0, (0x10, sp)
-    mov     ov_new, a0              # the mode
-    mov     (PF_MODE), d0
-    cmp     0, d0
-    beq     pov_mode
-    mov     ov_old, a0
-pov_mode:
-    mov     8, d0
-    mov     24, d1
-    call    LcdText, 0, 0
-    mov     ovl_tab, a2
-    mov     40, d2                  # y
-pov_line:
-    mov     (a2), a1                # the label (0 ends the table)
-    cmp     0, a1
-    beq     pov_done
-    mov     PF_TEXT, a0
-    call    StrPut, 0, 0
-    mov     (4, a2), a1             # the value's address
-    mov     (a1), d0
-    mov     (8, a2), d1             # its format
-    call    FmtNum, 0, 0
-    clr     d0
-    movbu   d0, (a0)
-    mov     PF_TEXT, a0
-    mov     8, d0
-    mov     d2, d1
-    call    LcdText, 0, 0
-    add     12, a2
-    add     12, d2
-    bra     pov_line
-pov_done:
-    mov     (0x10, sp), d0
-    call    PerfPhase, 0, 0
-pov_ret:
-    ret     [d2,d3,a2,a3], 0x30
-
-# LcdText(a0 = text, d0 = x (even), d1 = y): 8x8 glyphs of AW_FONT straight into the LCD frame, white on
-# black, two pixels per 32-bit store.
-LcdText:
+# pip_set(d0 = the mode asked for; d3 = PF_STATE as PerfInput has it): switch to it, unless it is in use.
+pip_set:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     a0, a2
-    mov     FB_STRIDE, d2
-    mul     d1, d2
-    asl     1, d0
-    add     d0, d2
-    mov     FB, a3
-    add     d2, a3                  # the first glyph's top-left pixel
-lt_char:
-    movbu   (a2), d0
-    cmp     0, d0
-    beq     lt_done
-    inc     a2
-    add     -0x20, d0
-    cmp     0x60, d0
-    bcs     lt_glyph
-    clr     d0                      # outside the font: a space
-lt_glyph:
-    asl     3, d0
-    mov     AW_FONT, a0
-    add     d0, a0
-    mov     a3, a1
-    mov     8, d3
-lt_row:
-    movbu   (a0), d2                # 8 pixels, the leftmost in bit 7
-    inc     a0
-    clr     d0
-    btst    0x80, d2
-    beq     lt_b6
-    or      0xFFFF, d0
-lt_b6:
-    btst    0x40, d2
-    beq     lt_w0
-    or      0xFFFF0000, d0
-lt_w0:
-    mov     d0, (a1)
-    clr     d0
-    btst    0x20, d2
-    beq     lt_b4
-    or      0xFFFF, d0
-lt_b4:
-    btst    0x10, d2
-    beq     lt_w1
-    or      0xFFFF0000, d0
-lt_w1:
-    mov     d0, (4, a1)
-    clr     d0
-    btst    0x08, d2
-    beq     lt_b2
-    or      0xFFFF, d0
-lt_b2:
-    btst    0x04, d2
-    beq     lt_w2
-    or      0xFFFF0000, d0
-lt_w2:
-    mov     d0, (8, a1)
-    clr     d0
-    btst    0x02, d2
-    beq     lt_b0
-    or      0xFFFF, d0
-lt_b0:
-    btst    0x01, d2
-    beq     lt_w3
-    or      0xFFFF0000, d0
-lt_w3:
-    mov     d0, (12, a1)
-    add     FB_STRIDE, a1
-    add     -1, d3
-    bne     lt_row
-    add     16, a3
-    bra     lt_char
-lt_done:
+    mov     (PF_MODE), d1
+    cmp     d1, d0
+    beq     pis_ret
+    mov     d0, d2
+    mov     d3, (PF_STATE)
+    call    PerfWindowEnd, 0, 0     # the window so far belongs to the mode it ran in
+    mov     d2, (PF_MODE)
+    mov     (PF_SWITCHES), d0
+    inc     d0
+    mov     d0, (PF_SWITCHES)
+    mov     (PF_DAMAGE), d0         # the other window's size: start from a full repaint
+    or      PFD_MODE, d0
+    mov     d0, (PF_DAMAGE)
+pis_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# =================================================================================
 # Text. StrPut(a1 = NUL-terminated text, a0 = where) -> a0 past it (no NUL written). Leaf; uses d0.
 StrPut:
     movbu   (a1), d0
@@ -916,10 +790,10 @@ ppb_end:
     ret     [d2,d3,a2,a3], 0x30
 
 # PageValues(d0 = kind, a1 = its page_tab entry, a0 = where) -> a0 past what it wrote.
-#   1 nothing (a heading);  2 a figure: the last window's (PF_SHOW + arg), then the whole game's in the new
-#   and in the old blit mode;  3 the program build and the blit mode in use;  4 up to four benchmark
+#   1 nothing (a heading);  2 a figure: the last window's (PF_SHOW + arg), then the whole game's enlarged and
+#   at the original resolution;  3 the program build and the display mode in use;  4 up to four benchmark
 #   results (arg: BN_ indices, one per byte, 0xFF ends);  5 four registers from PF_REGS index arg, in hex;
-#   6 loads, pauses, repaints;  7 frames, per blit mode.
+#   6 loads, pauses, repaints;  7 frames, per display mode.
 PageValues:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -1051,7 +925,7 @@ pv_misc:
 pv_ret:
     ret     [d2,d3,a2,a3], 0x30
 
-# GameFigure(d0 = PS_ offset, d1 = blit mode) -> d0 = that figure over the whole game in that mode (the
+# GameFigure(d0 = PS_ offset, d1 = display mode) -> d0 = that figure over the whole game in that mode (the
 # windows closed so far), d1 = a FmtNum format for it.
 GameFigure:
     movm    [d2,d3,a2,a3], (sp)
@@ -1151,7 +1025,7 @@ rb_parts:
     mov     rp_parts, a1
     call    StrPut, 0, 0
     mov     PF_PART, a2
-    clr     d2                      # 0..9: the parts in the new blit mode, 10..19 in the old one
+    clr     d2                      # 0..9: the parts enlarged, 10..19 at the original resolution
 rb_part:
     mov     (PR_FRAMES, a2), d3
     cmp     0, d3
@@ -1299,10 +1173,9 @@ PutCrLf:
 
 # =================================================================================
     .align  4
-# The sentinels: the LCD pixel, and its offset in the window (SHADOW), or -1 for the black border. The
-# top and bottom bands at x 2, 160, 320, 480, 637 (y 10 and 236, below the load bar's rows 228-233); the
-# side strips at x 2, 158 (left of and right of the overlay's x 8-151) and 482, 637, every 30 rows from
-# y 24; and a 3 x 3 grid in the window. (A box the firmware drew across the screen at y 114-176,
+# The sentinels: the LCD pixel, and its offset in the window (SHADOW), or -1 for the black border. At the
+# original resolution (sent_tab): the top and bottom bands at x 2, 160, 320, 480, 637 (y 10 and 236); the
+# side strips at x 2, 158 and 482, 637, every 30 rows from y 24; and a 3 x 3 grid in the window. (A box the firmware drew across the screen at y 114-176,
 # x 40-606, when the intro loaded the lake in MAME, missed the first, coarser grid: probes/cnv/README.md.)
 sent_tab:
     .long   FB + 10*FB_STRIDE + 2*2, -1
@@ -1353,6 +1226,56 @@ sent_tab:
     .long   FB + 180*FB_STRIDE + 320*2, (180-AW_Y0)*AW_W + 320-AW_X0
     .long   FB + 180*FB_STRIDE + 440*2, (180-AW_Y0)*AW_W + 440-AW_X0
 
+# The enlarged window's sentinels: the side strips at x 2, 125 (left) and 514, 637 (right), at y 10, every 30 rows
+# to 220, and 236; and the same 3 x 3 grid of source pixels as sent_tab's, (40, 160, 280) x (40, 100, 160), where
+# BlitBig shows them: x and y in 6 * (n / 5) + (0, 1, 2, 4, 5)[n % 5], here 48, 192, 336 across, 48, 120, 192 down.
+sent_big:
+    .long   FB + 10*FB_STRIDE + 2*2, -1
+    .long   FB + 10*FB_STRIDE + 125*2, -1
+    .long   FB + 10*FB_STRIDE + 514*2, -1
+    .long   FB + 10*FB_STRIDE + 637*2, -1
+    .long   FB + 40*FB_STRIDE + 2*2, -1
+    .long   FB + 40*FB_STRIDE + 125*2, -1
+    .long   FB + 40*FB_STRIDE + 514*2, -1
+    .long   FB + 40*FB_STRIDE + 637*2, -1
+    .long   FB + 70*FB_STRIDE + 2*2, -1
+    .long   FB + 70*FB_STRIDE + 125*2, -1
+    .long   FB + 70*FB_STRIDE + 514*2, -1
+    .long   FB + 70*FB_STRIDE + 637*2, -1
+    .long   FB + 100*FB_STRIDE + 2*2, -1
+    .long   FB + 100*FB_STRIDE + 125*2, -1
+    .long   FB + 100*FB_STRIDE + 514*2, -1
+    .long   FB + 100*FB_STRIDE + 637*2, -1
+    .long   FB + 130*FB_STRIDE + 2*2, -1
+    .long   FB + 130*FB_STRIDE + 125*2, -1
+    .long   FB + 130*FB_STRIDE + 514*2, -1
+    .long   FB + 130*FB_STRIDE + 637*2, -1
+    .long   FB + 160*FB_STRIDE + 2*2, -1
+    .long   FB + 160*FB_STRIDE + 125*2, -1
+    .long   FB + 160*FB_STRIDE + 514*2, -1
+    .long   FB + 160*FB_STRIDE + 637*2, -1
+    .long   FB + 190*FB_STRIDE + 2*2, -1
+    .long   FB + 190*FB_STRIDE + 125*2, -1
+    .long   FB + 190*FB_STRIDE + 514*2, -1
+    .long   FB + 190*FB_STRIDE + 637*2, -1
+    .long   FB + 220*FB_STRIDE + 2*2, -1
+    .long   FB + 220*FB_STRIDE + 125*2, -1
+    .long   FB + 220*FB_STRIDE + 514*2, -1
+    .long   FB + 220*FB_STRIDE + 637*2, -1
+    .long   FB + 236*FB_STRIDE + 2*2, -1
+    .long   FB + 236*FB_STRIDE + 125*2, -1
+    .long   FB + 236*FB_STRIDE + 514*2, -1
+    .long   FB + 236*FB_STRIDE + 637*2, -1
+    .long   FB + 48*FB_STRIDE + (BIG_X0+48)*2, 40*AW_W + 40
+    .long   FB + 48*FB_STRIDE + (BIG_X0+192)*2, 40*AW_W + 160
+    .long   FB + 48*FB_STRIDE + (BIG_X0+336)*2, 40*AW_W + 280
+    .long   FB + 120*FB_STRIDE + (BIG_X0+48)*2, 100*AW_W + 40
+    .long   FB + 120*FB_STRIDE + (BIG_X0+192)*2, 100*AW_W + 160
+    .long   FB + 120*FB_STRIDE + (BIG_X0+336)*2, 100*AW_W + 280
+    .long   FB + 192*FB_STRIDE + (BIG_X0+48)*2, 160*AW_W + 40
+    .long   FB + 192*FB_STRIDE + (BIG_X0+192)*2, 160*AW_W + 160
+    .long   FB + 192*FB_STRIDE + (BIG_X0+336)*2, 160*AW_W + 280
+
 # The benchmark: kernel, target, turns of 8 accesses, accesses (in BN_ order).
 bench_tab:
     .long   bk_alu, 0, 1024, 8192                       # BN_ALU
@@ -1365,38 +1288,6 @@ bench_tab:
     .long   bk_r32, HELP_BUF, 2000, 16000               # BN_RAM_R32
     .long   bk_r32, HELP_BUF + 0x40000000, 2000, 16000  # BN_UNC_R32: its uncached view, read only
 
-# The overlay's lines: label, the value's address, its FmtNum format.
-ovl_tab:
-    .long   ov_fps, PF_SHOW + PS_FPS, 0x106
-    .long   ov_frame, PF_SHOW + PS_FRAME, 0x106
-    .long   ov_max, PF_SHOW + PS_MAX, 0x106
-    .long   ov_vm, PF_SHOW + PS_PH + 4 * PH_VM, 0x106
-    .long   ov_draw, PF_SHOW + PS_PH + 4 * PH_DRAW, 0x106
-    .long   ov_page, PF_SHOW + PS_PH + 4 * PH_PAGE, 0x106
-    .long   ov_blit, PF_SHOW + PS_PH + 4 * PH_BLIT, 0x106
-    .long   ov_bord, PF_SHOW + PS_PH + 4 * PH_BORD, 0x106
-    .long   ov_wait, PF_SHOW + PS_PH + 4 * PH_WAIT, 0x106
-    .long   ov_asked, PF_SHOW + PS_ASKED, 0x106
-    .long   ov_load, PF_SHOW + PS_PH + 4 * PH_LOAD, 0x106
-    .long   ov_px, PF_SHOW + PS_PX, 0x006
-    .long   ov_rep, PF_REPAINTS, 0x006
-    .long   0
-ov_new:     .asciz  "NEW BLIT  PGDN:OLD"
-ov_old:     .asciz  "OLD BLIT  PGDN:NEW"
-ov_fps:     .asciz  "FPS     "
-ov_frame:   .asciz  "FRAME   "
-ov_max:     .asciz  "LONGEST "
-ov_vm:      .asciz  " VM     "
-ov_draw:    .asciz  " POLYGON"
-ov_page:    .asciz  " PAGE OP"
-ov_blit:    .asciz  " BLIT   "
-ov_bord:    .asciz  " BORDER "
-ov_wait:    .asciz  " YIELD  "
-ov_asked:   .asciz  "ASKED   "
-ov_load:    .asciz  "LOAD/S  "
-ov_px:      .asciz  "PIXELS  "
-ov_rep:     .asciz  "REPAINT "
-    .align  4
 
 # The help page's lines: kind (PageValues), colour (help_palette: 1 white, 2 cyan, 3 yellow), label,
 # argument.
@@ -1426,9 +1317,9 @@ page_tab:
     .long   0
 spg_title:   .asciz  "SPEED  4/4  program "
 spg_now:     .asciz  "  now: "
-spg_new:     .asciz  "new blit"
-spg_old:     .asciz  "old blit"
-spg_head:    .asciz  "ms per frame  last 1 s new blit old blit"
+spg_new:     .asciz  "enlarged"
+spg_old:     .asciz  "original"
+spg_head:    .asciz  "ms per frame  last 1 s enlarged original"
 spg_frames:  .asciz  "VM frames    "
 spg_fps:     .asciz  "frames/s     "
 spg_frame:   .asciz  "frame        "
@@ -1444,7 +1335,7 @@ spg_px:      .asciz  "LCD pixels   "
 spg_load:    .asciz  "load ms"
 spg_pause:   .asciz  " pause"
 spg_repaint: .asciz  " repaints"
-spg_benchh:  .asciz  "ns per access  (PAGE DOWN: other blit)"
+spg_benchh:  .asciz  "ns per access"
 spg_bench1:  .asciz  "ALU, LCD w16 w32 r16"
 spg_bench2:  .asciz  "RAM w8 w32 r8 r32   "
 spg_bench3:  .asciz  "RAM uncached r32    "

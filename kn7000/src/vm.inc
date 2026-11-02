@@ -120,7 +120,6 @@
 .equ VAR_PAUSE_SLICES, 0xFF          # var index holding the per-frame slice count
 .equ SLICE_MS,        20             # ms per slice (authentic AW)
 .equ MIN_YIELD_MS,    2              # never yield less than this (the firmware's tasks get the CPU only then)
-.equ MIN_YIELD_OLD,   8              # ... as before 2026-10-20, in the old blit mode (perf.s PF_MODE)
 .equ MAX_YIELD_MS,    400            # safety cap on a single frame's sleep
 
 # VM instruction trace (for diffing against the vm-gui reference): ExecuteInstruction calls the
@@ -286,7 +285,7 @@
 .equ PF_WIN_MAX,      VM_PERF_BASE + 0x010  # u32: the window's longest frame, us
 .equ PF_WIN_PX,       VM_PERF_BASE + 0x014  # u32: LCD pixels the blits wrote in the window
 .equ PF_FRAME_PX,     VM_PERF_BASE + 0x018  # u32: ... in this frame
-.equ PF_STATE,        VM_PERF_BASE + 0x01C  # u32: bit 0 the overlay is on; bits 1, 2: PAGE UP, PAGE DOWN were down
+.equ PF_STATE,        VM_PERF_BASE + 0x01C  # u32: bits 1, 2: PAGE UP, PAGE DOWN were down
 .equ PF_DAMAGE,       VM_PERF_BASE + 0x020  # u32: != 0: the next blit repaints border and window (PFD_*)
 .equ PF_LAST_SRC,     VM_PERF_BASE + 0x024  # u32: the page the LCD shows (0: the shadow means nothing)
 .equ PF_DIRTY,        VM_PERF_BASE + 0x028  # 4 x u8: VM page k drawn on since it was last shown
@@ -297,12 +296,11 @@
 .equ PF_SKIPS,        VM_PERF_BASE + 0x03C  # u32: blits skipped: nothing changed
 .equ PF_ACC,          VM_PERF_BASE + 0x040  # PH_COUNT x u32: this frame, stamp counts per phase
 .equ PF_WIN,          VM_PERF_BASE + 0x060  # PH_COUNT x u32: this window, us per phase
-.equ PF_MODE,         VM_PERF_BASE + 0x080  # u32: 0 the new blit, 1 the old one (PAGE DOWN switches)
-.equ PF_OVL_DUE,      VM_PERF_BASE + 0x084  # u32: draw the overlay at the next blit
+.equ PF_MODE,         VM_PERF_BASE + 0x080  # u32: the display mode: 0 enlarged (PAGE UP), 1 the original resolution (PAGE DOWN)
 .equ PF_PAIR_N,       VM_PERF_BASE + 0x088  # u32: pixel-pair tables built (palette changes shown)
 .equ PF_ASKED,        VM_PERF_BASE + 0x08C  # u32: this frame's yield, as asked (ms)
 .equ PF_WIN_ASKED,    VM_PERF_BASE + 0x090  # u32: the window's yields as asked, ms
-.equ PF_SWITCHES,     VM_PERF_BASE + 0x094  # u32: blit mode switches
+.equ PF_SWITCHES,     VM_PERF_BASE + 0x094  # u32: display mode switches
 .equ PF_POSTLOAD,     VM_PERF_BASE + 0x098  # u32: frames to go of the repaints after a part's load (PFD_LOAD)
 .equ PF_SHOW,         VM_PERF_BASE + 0x0C0  # the last window's figures (PS_* offsets), u32 each
 .equ PS_FPS,          0x00           #   frames per second x 10
@@ -311,10 +309,10 @@
 .equ PS_PX,           0x0C           #   LCD pixels written per frame
 .equ PS_ASKED,        0x10           #   the yield asked per frame, ms x 10
 .equ PS_PH,           0x14           #   PH_COUNT x: ms per frame x 10 (LOAD, PAUSE: ms in the window x 10)
-.equ PS_MODE,         0x34           #   the window's blit mode
+.equ PS_MODE,         0x34           #   the window's display mode
 .equ PF_BENCH,        VM_PERF_BASE + 0x100  # BN_COUNT x u32: the benchmark, ns per access x 10
 .equ PF_REGS,         VM_PERF_BASE + 0x140  # RG_COUNT x u32: bus controller, cache, timer 4, builds
-.equ PF_TOTS,         VM_PERF_BASE + 0x180  # 2 x TR_LEN: the whole game, per blit mode (the windows closed)
+.equ PF_TOTS,         VM_PERF_BASE + 0x180  # 2 x TR_LEN: the whole game, per display mode (the windows closed)
 .equ TR_PH,           0x00           #   PH_COUNT x u32: ms per phase
 .equ TR_FRAMES,       0x20           #   frames
 .equ TR_MAX,          0x24           #   the longest frame, us
@@ -323,7 +321,7 @@
 .equ TR_ASKED,        0x30           #   the yields asked, ms
 .equ TR_WINDOWS,      0x34           #   windows
 .equ TR_LEN,          0x40
-.equ PF_PART,         VM_PERF_BASE + 0x200  # 2 modes x 10 parts x PR_LEN: per blit mode, per part 0x3E80..0x3E89
+.equ PF_PART,         VM_PERF_BASE + 0x200  # 2 modes x 10 parts x PR_LEN: per display mode, per part 0x3E80..0x3E89
 .equ PR_FRAMES,       0x00           #   frames
 .equ PR_MAX,          0x04           #   the longest frame, us
 .equ PR_SUM,          0x08           #   PH_COUNT x u32: us per phase (wraps after 71 min)
@@ -338,11 +336,10 @@
 .equ PF_LINE_LEN,     48
 .equ PFD_START,       1              # PF_DAMAGE reasons: nothing shown yet
 .equ PFD_BAR,         2              #   the load bar was drawn in the border
-.equ PFD_OVERLAY,     4              #   the overlay went off
 .equ PFD_SENTINEL,    8              #   a sentinel pixel was not as drawn
 .equ PFD_PERIODIC,    0x10           #   the safety repaint
 .equ PFD_STOP,        0x20           #   the stop screen
-.equ PFD_MODE,        0x40           #   the blit mode switched
+.equ PFD_MODE,        0x40           #   the display mode switched
 .equ PFD_LOAD,        0x80           #   5 and 30 frames after a part's load (the firmware repaints its own
                                      #   screen around the loads: probes/cnv/README.md, "Speed")
 .equ PFD_BLACK,       0x100          #   the screen was painted black for a part's load (LcdBlack)

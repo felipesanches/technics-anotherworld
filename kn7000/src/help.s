@@ -289,26 +289,30 @@ help_page0:                         # the status lines (DV_*TXT) are dsp.s DspMo
     .long   DV_BANKTXT
     .word   8, 110, 1, 0
     .long   hs_col_panel
-    .word   8, 122, 3, 0
+    .word   8, 120, 3, 0
     .long   hs_codes
-    .word   80, 122, 1, 0
+    .word   80, 120, 1, 0
     .long   hs_codes_btn
-    .word   8, 132, 3, 0
+    .word   8, 129, 3, 0
     .long   hs_help
-    .word   80, 132, 1, 0
+    .word   80, 129, 1, 0
     .long   hs_help_btn
-    .word   8, 142, 3, 0
+    .word   8, 138, 3, 0
     .long   hs_exit_lbl
-    .word   80, 142, 1, 0
+    .word   80, 138, 1, 0
     .long   hs_exit_btn
-    .word   8, 152, 3, 0
+    .word   8, 147, 3, 0
     .long   hs_sound
-    .word   80, 152, 1, 0
+    .word   80, 147, 1, 0
     .long   hs_sound_btn
-    .word   8, 162, 3, 0
+    .word   8, 156, 3, 0
     .long   hs_keys_lbl
-    .word   80, 162, 1, 0
+    .word   80, 156, 1, 0
     .long   hs_keys_btn
+    .word   8, 165, 3, 0
+    .long   hs_screen
+    .word   80, 165, 1, 0
+    .long   hs_screen_btn
     .word   8, 176, 2, 0
     .long   DV_MODETXT
     .word   8, 188, 2, 0
@@ -429,6 +433,8 @@ hs_sound:        .asciz "SOUND"
 hs_sound_btn:    .asciz "PART SEL RIGHT 2: DSP/TG/OFF"
 hs_keys_lbl:     .asciz "KEYS"
 hs_keys_btn:     .asciz "PART SEL RIGHT 1: their sound"
+hs_screen:       .asciz "SCREEN"
+hs_screen_btn:   .asciz "PAGE UP: large, DOWN: original"
 hs_page_1:       .asciz "Page 1/4"
 hs_page_2:       .asciz "Page 2/4"
 hs_page_3:       .asciz "Page 3/4"

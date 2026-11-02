@@ -30,6 +30,11 @@
 .equ AW_H,            200
 .equ AW_X0,           160           # (640-320)/2
 .equ AW_Y0,           20            # (240-200)/2
+# The enlarged window (display.s BlitBig, PF_MODE 0, the default): the page scaled by 6/5 both ways, 384x240,
+# the LCD's whole height, centred; in every 5 pixels and every 5 rows the middle one is shown twice.
+.equ BIG_W,           384
+.equ BIG_H,           240
+.equ BIG_X0,          128           # (640-384)/2
 
 # ---- the converter area, the loader and the mailbox -------------------------------------
 # kn7cnv.inc: CNV_BASE 0x502B8000 (where the firmware loads KN7LOAD.CNV), CNV_END 0x502E8000 (end of

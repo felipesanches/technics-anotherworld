@@ -13,6 +13,11 @@
 -- and the last) it also writes the frame to AWL_OUT/lcd_TTTT.bin, for a byte comparison between two
 -- builds (cmp). Prints "awlcd: ..." lines: the ticks checked, the ticks and pixels that differ (and the
 -- first few), and the snapshots written.
+-- Since 2026-11-02 the game has two display modes (vm.inc PF_MODE, read at each check): 1, the original
+-- resolution, checked as above; 0, the enlarged window (the default): 128-pixel black strips beside a
+-- 384x240 window, LCD pixel (x, y) of the window = palette[page[sy * 320 + sx] & 15] with sx, sy =
+-- 5 * (n / 6) + (0, 1, 2, 2, 3, 4)[n % 6] of x, y (display.s BlitBig). AWL_PRESS="T:UP,T:DOWN,..." presses
+-- PAGE UP or PAGE DOWN (0.3 s) once the game has reached tick T, to check both modes and the switches.
 --   AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) probes/cnv/run_perf.sh OUT probes/cnv/awcnv_lcd.lua
 -- env: AWL_PAL (required), AWL_MAX (last tick, default 3600), AWL_SNAPS ("all", "none" or the step, default 100),
 -- AWL_TRACE ("FIRST-LAST": for those ticks, a line each with the firmware's LCD stores since the last tick,
@@ -27,6 +32,14 @@ local SNAPS = os.getenv("AWL_SNAPS") or "100"
 local CV = 0x502DF000
 local CUR_PAGE_2, FRAME_NO, NO_SPLASH, PART = 0x502E1000 + 0x100C, 0x502E3000 + 0x7C, 0x502E3000 + 0x58, 0x502E1000 + 0x102A
 local FB, W, H, X0, Y0 = 0x9CE00000, 640, 240, 160, 20
+local BX0 = 128
+local ZBIG = string.rep("\0", BX0 * 2)
+local BMAP = {}                       -- the enlarged window's source index for each of its 384 columns / 240 rows
+for n = 0, 383 do BMAP[n] = 5 * (n // 6) + ({ 0, 1, 2, 2, 3, 4 })[n % 6 + 1] end
+local permode = { [0] = { n = 0, bad = 0 }, [1] = { n = 0, bad = 0 } }
+local PRESSES = {}
+for t, b in (os.getenv("AWL_PRESS") or ""):gmatch("(%d+):(%a+)") do PRESSES[#PRESSES + 1] = { tonumber(t), b } end
+local lasttick = -1
 local function press(tag, mask, v)
   local p = M.ioport.ports[":cpanel:" .. tag] or M.ioport.ports[":" .. tag]
   for _, f in pairs(p.fields) do if f.mask == mask then f:set_value(v) end end
@@ -61,10 +74,23 @@ local function check(tick)
   local lcd = sp:read_range(FB, FB + W * H * 2 - 1, 8)
   local pix = sp:read_range(page, page + 320 * 200 - 1, 8)
   local bad = 0
+  local mode = sp:read_u32(PERF + 0x80)
+  local bigrows = {}
   for y = 0, H - 1 do
     local row = lcd:sub(y * W * 2 + 1, (y + 1) * W * 2)
     local want
-    if y < Y0 or y >= Y0 + 200 then
+    if mode == 0 then
+      local sy = BMAP[y]
+      want = bigrows[sy]
+      if not want then
+        local t = { ZBIG }
+        local base = sy * 320
+        for x = 0, 383 do t[#t + 1] = pal[pix:byte(base + BMAP[x] + 1) & 15] end
+        t[#t + 1] = ZBIG
+        want = table.concat(t)
+        bigrows[sy] = want
+      end
+    elseif y < Y0 or y >= Y0 + 200 then
       want = ZROW
     else
       local t = { ZSTRIP }
@@ -77,13 +103,16 @@ local function check(tick)
       for x = 0, W - 1 do
         if row:sub(2 * x + 1, 2 * x + 2) ~= want:sub(2 * x + 1, 2 * x + 2) then
           bad = bad + 1
-          if #firstbad < 8 then firstbad[#firstbad + 1] = string.format("tick %d (%d,%d)", tick, x, y) end
+          if #firstbad < 8 then firstbad[#firstbad + 1] = string.format("tick %d mode %d (%d,%d)", tick, mode, x, y) end
         end
       end
     end
   end
   checked = checked + 1
   if bad > 0 then badticks = badticks + 1; badpx = badpx + bad end
+  local pm = permode[mode] or permode[1]
+  pm.n = pm.n + 1
+  if bad > 0 then pm.bad = pm.bad + 1 end
   local snap = SNAPS == "all" or (SNAPS ~= "none" and tick % tonumber(SNAPS) == 0) or tick == MAXTICK
   if snap then
     local f = io.open(string.format("%s/lcd_%04d.bin", OUT, tick), "wb"); f:write(lcd); f:close()
@@ -96,6 +125,7 @@ AWL_TAP = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awl_frame", function(off
   local v = data & 0xffff
   if v == 0 then return end
   local tick = v - 1
+  lasttick = tick
   parts[sp:read_u16(PART)] = true
   local bad0 = badpx
   check(tick)
@@ -114,6 +144,8 @@ AWL_TAP = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awl_frame", function(off
     table.sort(pl)
     print(string.format("awlcd: ticks 0-%d: %d checked, %d differ from the old blit's picture (%d pixels)%s; parts %s; %d snapshots in %s",
       tick, checked, badticks, badpx, #firstbad > 0 and (": " .. table.concat(firstbad, ", ")) or "", table.concat(pl, " "), snaps, OUT))
+    print(string.format("awlcd: enlarged: %d ticks checked, %d differ; original resolution: %d checked, %d differ; mode switches %d",
+      permode[0].n, permode[0].bad, permode[1].n, permode[1].bad, sp:read_u32(PERF + 0x94)))
   end
 end)
 
@@ -124,5 +156,11 @@ AWL_TICK = emu.register_periodic(function()
   if s and t > s[1] then press(s[2], s[3], 1); s.down = s.down or t end
   if s and s.down and t > s.down + 0.4 then press(s[2], s[3], 0); print("awlcd: pressed " .. s[4]); step = step + 1 end
   if not nosplash and sp:read_u32(CV) >= 2 then sp:write_u32(NO_SPLASH, 0x5EED0FF0); nosplash = true end
+  local pr = PRESSES[1]
+  if pr and lasttick >= pr[1] then
+    local mask = pr[2] == "UP" and 0x10 or 0x20
+    if not pr.t then press("CPC_SEG11", mask, 1); pr.t = t
+    elseif t > pr.t + 0.3 then press("CPC_SEG11", mask, 0); print(string.format("awlcd: PAGE %s at tick %d", pr[2], lasttick)); table.remove(PRESSES, 1) end
+  end
   if finish then M:exit() end
 end)

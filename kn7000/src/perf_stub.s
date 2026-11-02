@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU General Public License v3 or later
 #
 # perf_stub.s -- the SP7001 build's (MAME only) stand-ins for perf.s, the KN7APP.BIN build's speed
-# measurement: no clock, no figures, the help screen's fourth page empty, the new blit only. The block
+# measurement: no clock, no figures, the help screen's fourth page empty, the enlarged window only. The block
 # at VM_PERF_BASE still holds the blit's state (display.s), so PerfInit clears it.
 
 PerfInit:
@@ -29,11 +29,6 @@ psi_pal:
 PerfPageBuild:
     mov     0xFFFF, d0
     movhu   d0, (PF_ITEMS)
-    rets
-
-PerfOverlay:
-    clr     d0
-    mov     d0, (PF_OVL_DUE)
     rets
 
 PerfPhase:

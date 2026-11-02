@@ -20,9 +20,10 @@
 --            each press (it still handles OCTAVE and SUSTAIN while parked) is listed
 --   keybed   holding C4 sets the hero's action variable var[0xFA] to 1
 --   help     HELP shows the help screens (the VM pauses), PAGE DOWN turns to page 2, EXIT returns
---   speed    the speed figures (perf.s): HELP and PAGE DOWN three times show the fourth page; PAGE UP
---            turns the overlay on and off; PAGE DOWN switches to the old blit and back, the VM running
---            on in both; the figures the game measured (in MAME's time) are printed
+--   speed    the speed figures (perf.s): HELP and PAGE DOWN three times show the fourth page; then the
+--            display modes: enlarged from the start, PAGE DOWN the original resolution (twice: it stays),
+--            PAGE UP enlarged again (twice: it stays), the VM running on in both; the figures the game
+--            measured (in MAME's time) are printed
 --   report   (after NO) at each quit the game wrote its speed figures to a new file: the first quit
 --            AWPERF0.TXT, the second (after YES) AWPERF1.TXT, never over the first (CV_REPORT = 1,
 --            CV_REPORT_K = 1); the second's text is saved as AWT_OUT/awperf_ram.txt, which
@@ -398,33 +399,33 @@ local function game()
   f0 = frame(); wait(2)
   result("help", paused and p0 == 0 and p1 == 1 and frame() > f0,
     string.format("VM paused %s, page %d then %d after PAGE DOWN, running again after EXIT %s", tostring(paused), p0, p1, tostring(frame() > f0)))
-  -- the speed figures: the fourth help page, the overlay, the old blit and back
+  -- the speed figures: the fourth help page; the display modes
   local hb = sp:read_range(0x84000000, 0x840007A3, 8)
   press("CPC_SEG5", 0x02); wait(2)                        -- HELP
   for i = 1, 3 do press("CPC_SEG11", 0x20); wait(1.5) end -- PAGE DOWN x3: the speed page
   local p3 = sp:read_u32(HELP_PAGE)
   M.video:snapshot()
   press("CPC_SEG11", 0x80); wait(3)                       -- EXIT
-  press("CPC_SEG11", 0x10); wait(3)                       -- PAGE UP: the overlay on
-  local ovl = sp:read_u32(PF_STATE) & 1
-  M.video:snapshot()
-  press("CPC_SEG11", 0x20); wait(1)                       -- PAGE DOWN: the old blit
+  local m0 = sp:read_u32(PF_MODE)                         -- enlarged (0) from the start
+  press("CPC_SEG11", 0x20); wait(1)                       -- PAGE DOWN: the original resolution
+  press("CPC_SEG11", 0x20); wait(1)                       -- ... again: it stays
   local m1, f1 = sp:read_u32(PF_MODE), frame(); wait(3)
   local run1 = frame() > f1
   M.video:snapshot()
-  press("CPC_SEG11", 0x20); wait(1)                       -- PAGE DOWN: the new blit again
+  press("CPC_SEG11", 0x10); wait(1)                       -- PAGE UP: enlarged
+  press("CPC_SEG11", 0x10); wait(1)                       -- ... again: it stays
   local m2, f2 = sp:read_u32(PF_MODE), frame(); wait(3)
   local run2 = frame() > f2
-  press("CPC_SEG11", 0x10); wait(2)                       -- PAGE UP: the overlay off
-  local ovl2 = sp:read_u32(PF_STATE) & 1
+  M.video:snapshot()
   local hd = (sp:read_range(0x84000000, 0x840007A3, 8) == hb) and "unchanged" or "CHANGED"
   local fig = {}
   for i, k in ipairs({ "fps x10", "frame ms x10", "longest x10", "LCD px/frame" }) do fig[#fig + 1] = k .. " " .. sp:read_u32(PF_SHOW + 4 * (i - 1)) end
   local bn = {}
   for i = 0, 8 do bn[#bn + 1] = tostring(sp:read_u32(PF_BENCH + 4 * i)) end
-  result("speed", p3 == 3 and ovl == 1 and m1 == 1 and run1 and m2 == 0 and run2 and ovl2 == 0,
-    string.format("speed page %d; overlay on %d, off %d; old blit %d running %s, new blit %d running %s; IC23 header %s; last window (MAME's time): %s; bench ns x10 %s",
-      p3, ovl, ovl2, m1, tostring(run1), m2, tostring(run2), hd, table.concat(fig, ", "), table.concat(bn, " ")))
+  local sw = sp:read_u32(PERF + 0x94)                     -- PF_SWITCHES: the two changes, not four
+  result("speed", p3 == 3 and m0 == 0 and m1 == 1 and run1 and m2 == 0 and run2 and sw == 2,
+    string.format("speed page %d; mode at start %d; after PAGE DOWN x2 %d running %s; after PAGE UP x2 %d running %s; switches %d; IC23 header %s; last window (MAME's time): %s; bench ns x10 %s",
+      p3, m0, m1, tostring(run1), m2, tostring(run2), sw, hd, table.concat(fig, ", "), table.concat(bn, " ")))
   ok, s = to_part("HTDC", 0x3E83)
   result("prison", ok, "HTDC: " .. s .. string.format("; %d ms", sp:read_u32(LD_MS)))
   ok, s = to_part("CLLD", 0x3E84)

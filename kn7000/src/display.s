@@ -122,16 +122,15 @@ ht_dec:
 
 # =================================================================================
 # BlitPage(a0 = a 320x200 8-bit-indexed page): show it centred in the 640x240 RGB565 LCD frame through
-# the 16-entry palette. The LCD is slow to write (README-CNV.md, "Speed"), so only what it does not show
-# already is written: SHADOW holds the colour indices the window shows, PF_PAL the palette it was drawn
-# with, and each group of four pixels whose indices differ from SHADOW is written as two 32-bit stores of
-# two pixels each (PF_PAIR: the RGB565 of both pixels of an index pair). The window is written whole when
-# the palette has changed, and border and window both when the LCD may not hold what was drawn
-# (PF_DAMAGE: nothing shown yet, the load bar, the overlay going off, a sentinel pixel that changed
-# under us, the periodic repaint, the stop screen, a switch of the blit mode). The page shown last,
-# when nothing has drawn on it since (PF_DIRTY), is not even compared. Phase BLIT (BORD for the
-# border). In the old blit mode (PF_MODE = 1, PAGE DOWN: perf.s) it does what it did before
-# 2026-10-20 instead, for comparison on the instrument: BlitOld and FillBorder, every time.
+# the 16-entry palette, enlarged (PF_MODE 0, the default and PAGE UP: BlitBig, 384x240) or at the original
+# resolution (PF_MODE 1, PAGE DOWN: BlitWindow, 320x200). The LCD is slow to write (README-CNV.md, "Speed"),
+# so only what it does not show already is written: SHADOW holds the colour indices the window shows, PF_PAL
+# the palette it was drawn with, and pixels whose indices differ from SHADOW are written two to a 32-bit
+# store (PF_PAIR: the RGB565 of both pixels of an index pair). The window is written whole when the palette
+# has changed, and border and window both when the LCD may not hold what was drawn (PF_DAMAGE: nothing shown
+# yet, the load bar, a sentinel pixel that changed under us, the periodic repaint, the stop screen, a switch
+# of the mode, a part's load). The page shown last, when nothing has drawn on it since (PF_DIRTY), is not
+# even compared. Phase BLIT (BORD for the border).
 BlitPage:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -139,20 +138,6 @@ BlitPage:
     mov     PH_BLIT, d0
     call    PerfPhase, 0, 0
     mov     d0, (0x10, sp)          # the phase to go back to
-    mov     (PF_MODE), d0
-    cmp     0, d0
-    beq     bp_new
-    mov     a2, a0                  # the old blit
-    call    BlitOld, 0, 0
-    call    FillBorder, 0, 0
-    clr     d0
-    mov     d0, (PF_LAST_SRC)       # (the shadow no longer says what the LCD shows)
-    mov     (PF_FRAME_PX), d0
-    add     AW_W * AW_H, d0
-    mov     d0, (PF_FRAME_PX)
-    call    PerfOverlay, 0, 0       # the border fill wiped it
-    bra     bp_done
-bp_new:
     call    PalCheck, 0, 0          # d0 = 1: a new palette, the pair table rebuilt
     mov     d0, d3                  # d3 = 1: write the whole window
     mov     (PF_DAMAGE), d0
@@ -165,8 +150,6 @@ bp_new:
     mov     (PF_REPAINTS), d0
     inc     d0
     mov     d0, (PF_REPAINTS)
-    mov     1, d0
-    mov     d0, (PF_OVL_DUE)
     mov     1, d3
     bra     bp_write
 bp_shown:
@@ -181,56 +164,188 @@ bp_shown:
     mov     (PF_SKIPS), d0
     inc     d0
     mov     d0, (PF_SKIPS)
-    bra     bp_overlay
+    bra     bp_done
 bp_write:
     mov     a2, a0
     mov     d3, d0
+    mov     (PF_MODE), d1
+    cmp     0, d1
+    bne     bp_orig
+    call    BlitBig, 0, 0
+    bra     bp_written
+bp_orig:
     call    BlitWindow, 0, 0
+bp_written:
     mov     a2, (PF_LAST_SRC)
     mov     a2, a0
     call    PageClean, 0, 0
     mov     (PF_BLITS), d0
     inc     d0
     mov     d0, (PF_BLITS)
-bp_overlay:
-    mov     (PF_OVL_DUE), d0        # the overlay, after a repaint or when it was turned on
-    cmp     0, d0
-    beq     bp_done
-    call    PerfOverlay, 0, 0
 bp_done:
     mov     (0x10, sp), d0
     call    PerfPhase, 0, 0
     ret     [d2,d3,a2,a3], 0x30
 
-# BlitOld(a0 = page): the blit as it was before 2026-10-20 (the old blit mode): every pixel, through the
-# palette, one 16-bit store each.
-BlitOld:
+# BlitBig(a0 = page, d0 = 1 to write every pixel, 0 to write only those SHADOW does not hold): the page into
+# the enlarged window (BIG_X0, 0; 384x240), through PF_PAIR, and into SHADOW. Each group of 5 source pixels
+# p0..p4 becomes 6 on the LCD, p0 p1 p2 p2 p3 p4: three pairs, three 32-bit stores; each source row k of
+# every 5 becomes one LCD row, but k = 2, which becomes two (the same stores again one row down). The rows
+# are compared with SHADOW 20 pixels at a time as five words, then group by group. Counts the source pixels
+# written (PF_FRAME_PX).
+BlitBig:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x10, sp
-    mov     a0, a2                  # source page
-    mov     FB + (AW_Y0*FB_STRIDE) + (AW_X0*2), a3
-    mov     AW_H, d3
-bo_row:
-    mov     a3, a1
-    mov     AW_W, d2
-bo_px:
-    movbu   (a2), d0
-    inc     a2
+    add     -0x30, sp
+    mov     a0, a2                  # a2 = the page
+    mov     d0, (0x10, sp)          # write all
+    mov     SHADOW, a3              # a3 = what the window shows
+    mov     FB + BIG_X0*2, a1       # a1 = the LCD row's first pixel
+    mov     PF_PAIR, a0
+    mov     AW_H, d0
+    mov     d0, (0x14, sp)          # source rows left
+    clr     d0
+    mov     d0, (0x18, sp)          # k: the source row within its 5
+    mov     d0, (0x1C, sp)          # groups of five pixels written
+bb_row:
+    mov     a1, (0x20, sp)          # this row's start
+    mov     AW_W / 20, d0
+    mov     d0, (0x24, sp)          # blocks of 20 pixels left
+bb_block:
+    mov     (0x10, sp), d0
+    cmp     0, d0
+    bne     bb_groups
+    mov     (a2), d0                # the five words alike: nothing to do
+    mov     (a3), d1
+    cmp     d1, d0
+    bne     bb_groups
+    mov     (4, a2), d0
+    mov     (4, a3), d1
+    cmp     d1, d0
+    bne     bb_groups
+    mov     (8, a2), d0
+    mov     (8, a3), d1
+    cmp     d1, d0
+    bne     bb_groups
+    mov     (12, a2), d0
+    mov     (12, a3), d1
+    cmp     d1, d0
+    bne     bb_groups
+    mov     (16, a2), d0
+    mov     (16, a3), d1
+    cmp     d1, d0
+    bne     bb_groups
+    add     20, a2
+    add     20, a3
+    add     48, a1
+    bra     bb_next_block
+bb_groups:
+    mov     4, d2                   # four groups of five
+bb_group:
+    mov     (0x10, sp), d0
+    cmp     0, d0
+    bne     bb_put
+    movbu   (a2), d0                # the group's five pixels alike: nothing to do
+    movbu   (a3), d1
+    cmp     d1, d0
+    bne     bb_put
+    movbu   (1, a2), d0
+    movbu   (1, a3), d1
+    cmp     d1, d0
+    bne     bb_put
+    movbu   (2, a2), d0
+    movbu   (2, a3), d1
+    cmp     d1, d0
+    bne     bb_put
+    movbu   (3, a2), d0
+    movbu   (3, a3), d1
+    cmp     d1, d0
+    bne     bb_put
+    movbu   (4, a2), d0
+    movbu   (4, a3), d1
+    cmp     d1, d0
+    beq     bb_next_group
+bb_put:
+    movbu   (a2), d0                # p0 p1: PF_PAIR[(i0 & 15) | (i1 & 15) << 4]
+    movbu   d0, (a3)
     and     15, d0
-    asl     1, d0
-    mov     palette, a0
-    add     d0, a0
-    movhu   (a0), d0
-    movhu   d0, (a1)
-    add     2, a1
+    movbu   (1, a2), d1
+    movbu   d1, (1, a3)
+    and     15, d1
+    asl     4, d1
+    or      d1, d0
+    asl     2, d0
+    mov     (d0, a0), d3
+    mov     d3, (0x28, sp)
+    movbu   (2, a2), d0             # p2 p2
+    movbu   d0, (2, a3)
+    and     15, d0
+    mov     d0, d1
+    asl     4, d1
+    or      d1, d0
+    asl     2, d0
+    mov     (d0, a0), d3
+    mov     d3, (0x2C, sp)
+    movbu   (3, a2), d0             # p3 p4
+    movbu   d0, (3, a3)
+    and     15, d0
+    movbu   (4, a2), d1
+    movbu   d1, (4, a3)
+    and     15, d1
+    asl     4, d1
+    or      d1, d0
+    asl     2, d0
+    mov     (d0, a0), d3
+    mov     (0x28, sp), d0
+    mov     (0x2C, sp), d1
+    mov     d0, (a1)
+    mov     d1, (4, a1)
+    mov     d3, (8, a1)
+    mov     (0x18, sp), d0          # k = 2: the same row again, one down
+    cmp     2, d0
+    bne     bb_counted
+    mov     (0x28, sp), d0
+    mov     d0, (FB_STRIDE, a1)
+    mov     d1, (FB_STRIDE + 4, a1)
+    mov     d3, (FB_STRIDE + 8, a1)
+bb_counted:
+    mov     (0x1C, sp), d0
+    inc     d0
+    mov     d0, (0x1C, sp)
+bb_next_group:
+    add     5, a2
+    add     5, a3
+    add     12, a1
     add     -1, d2
-    bne     bo_px
-    mov     a3, d0
-    add     FB_STRIDE, d0
-    mov     d0, a3
-    add     -1, d3
-    bne     bo_row
-    ret     [d2,d3,a2,a3], 0x20
+    bne     bb_group
+bb_next_block:
+    mov     (0x24, sp), d0
+    add     -1, d0
+    mov     d0, (0x24, sp)
+    bne     bb_block
+    mov     (0x20, sp), a1          # the next LCD row: one down, or two after k = 2
+    add     FB_STRIDE, a1
+    mov     (0x18, sp), d0
+    cmp     2, d0
+    bne     bb_k
+    add     FB_STRIDE, a1
+bb_k:
+    inc     d0
+    cmp     5, d0
+    bne     bb_k_set
+    clr     d0
+bb_k_set:
+    mov     d0, (0x18, sp)
+    mov     (0x14, sp), d0
+    add     -1, d0
+    mov     d0, (0x14, sp)
+    bne     bb_row
+    mov     (0x1C, sp), d0          # source pixels written
+    mov     5, d1
+    mul     d1, d0
+    mov     (PF_FRAME_PX), d1
+    add     d0, d1
+    mov     d1, (PF_FRAME_PX)
+    ret     [d2,d3,a2,a3], 0x40
 
 # BlitWindow(a0 = page, d0 = 1 to write every pixel, 0 to write only those SHADOW does not hold): the
 # page into the window, through PF_PAIR, and into SHADOW. Counts the pixels written (PF_FRAME_PX).
@@ -469,10 +584,10 @@ PageClean:
 pcl_ret:
     rets
 
-# FillBorder: paint everything around the 320x200 game window black -- the 20-row bands above and
-# below it and the 160-pixel strips beside it -- so that the firmware's screen behind the game never
-# shows. Done when BlitPage repaints everything (PF_DAMAGE), no longer on every blit (but in the old
-# blit mode). 32-bit stores, 8 per loop. Phase BORD.
+# FillBorder: paint everything around the game's window black, so that the firmware's screen behind the
+# game never shows: enlarged (PF_MODE 0), the 128-pixel strips beside the 384x240 window; at the original
+# resolution, the 20-row bands above and below the 320x200 window and the 160-pixel strips beside it. Done
+# when BlitPage repaints everything (PF_DAMAGE). 32-bit stores, 8 per loop. Phase BORD.
 FillBorder:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -480,6 +595,24 @@ FillBorder:
     call    PerfPhase, 0, 0
     mov     d0, (0x10, sp)
     clr     d0
+    mov     (PF_MODE), d1
+    cmp     0, d1
+    bne     fb_orig
+    mov     FB, a1                  # enlarged: the side strips, every row
+    mov     FB_H, d2
+fb_big_row:
+    mov     a1, a0                  # left strip: x 0..BIG_X0-1
+    mov     BIG_X0 * 2 / 32, d1
+    call    fb_run, 0, 0
+    mov     a1, a0                  # right strip: x BIG_X0+BIG_W..FB_W-1
+    add     (BIG_X0 + BIG_W) * 2, a0
+    mov     (FB_W - BIG_X0 - BIG_W) * 2 / 32, d1
+    call    fb_run, 0, 0
+    add     FB_STRIDE, a1
+    add     -1, d2
+    bne     fb_big_row
+    bra     fb_done
+fb_orig:
     mov     FB, a0                  # top band: rows 0..AW_Y0-1, full width
     mov     AW_Y0 * FB_STRIDE / 32, d1
     call    fb_run, 0, 0
@@ -499,6 +632,7 @@ fb_row:
     add     FB_STRIDE, a1
     add     -1, d2
     bne     fb_row
+fb_done:
     mov     (0x10, sp), d0
     call    PerfPhase, 0, 0
     ret     [d2,d3,a2,a3], 0x30

@@ -414,15 +414,15 @@ run through the loader exactly as the acceptance tests do (`run_perf.sh`: the ow
 of the real card with `CARDFILES` added, fresh NVRAM, program 893; the game's `AWPERFn.TXT` files are
 copied off the card before it is deleted):
 
-| file                  | question                                                                                                                                                                           |
-|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `run_perf.sh`         | the runner: one MAME run with a given autoboot script and card files; the card copy is deleted after                                                                               |
-| `awcnv_perf.lua`      | per VM tick: the game's stores into the LCD frame (by size), its loads from it, its accesses to the pages and to the rest of its RAM; the firmware's LCD stores; the emulated time |
-| `awcnv_fwlcd.lua`     | while the game runs, when and where does the firmware draw on the LCD? 10 s with no input, then each panel button and a key, 4 s each; or (`AWL_INTRO=1`) through the intro        |
-| `awcnv_loadblack.lua` | is the screen black while a part loads, and does the firmware draw nothing while the game runs? the intro into the lake, then the quit (`src/fwdraw.s`)                            |
-| `lcd_cost.py`         | what the counted LCD accesses cost at the unit's measured times (pass 9), or at others given                                                                                       |
-| `awcnv_lcd.lua`       | at every VM tick of the intro and the lake: is the whole LCD frame what the old blit made of the same VM state? snapshots for a byte comparison between builds                     |
-| `awcnv_speed.lua`     | the owner's run on the instrument, in MAME: the overlay, the old blit and back, the speed page, quitting; what the game measures in MAME's time; `AWPERF0.TXT`                     |
+| file                  | question                                                                                                                                                                              |
+|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `run_perf.sh`         | the runner: one MAME run with a given autoboot script and card files; the card copy is deleted after                                                                                  |
+| `awcnv_perf.lua`      | per VM tick: the game's stores into the LCD frame (by size), its loads from it, its accesses to the pages and to the rest of its RAM; the firmware's LCD stores; the emulated time    |
+| `awcnv_fwlcd.lua`     | while the game runs, when and where does the firmware draw on the LCD? 10 s with no input, then each panel button and a key, 4 s each; or (`AWL_INTRO=1`) through the intro           |
+| `awcnv_loadblack.lua` | is the screen black while a part loads, and does the firmware draw nothing while the game runs? the intro into the lake, then the quit (`src/fwdraw.s`)                               |
+| `lcd_cost.py`         | what the counted LCD accesses cost at the unit's measured times (pass 9), or at others given                                                                                          |
+| `awcnv_lcd.lua`       | at every VM tick of the intro and the lake: is the whole LCD frame the picture of the front page for the display mode in use? (`AWL_PRESS`: PAGE UP / DOWN at given ticks); snapshots |
+| `awcnv_speed.lua`     | the owner's run on the instrument, in MAME: the overlay, the old blit and back, the speed page, quitting; what the game measures in MAME's time; `AWPERF0.TXT`                        |
 
 **Why it was slow.** Before (`KN7APP.BIN` `b952c2aa...`, the intro, ticks 1-300, mean per tick):
 
@@ -537,6 +537,26 @@ and 152,960 after EXIT (the split between the two moves with the timing of the f
     T=~/compartilhado/tmp/aw-loadblack
     AWLB_OUT=$T/new probes/cnv/run_perf.sh $T/new probes/cnv/awcnv_loadblack.lua
     AWLB_OUT=$T/old CARDFILES=$T/oldcard probes/cnv/run_perf.sh $T/old probes/cnv/awcnv_loadblack.lua   # build/sdcard, the old KN7APP.BIN
+
+## Two display modes (2026-11-02)
+
+The overlay (PAGE UP) and the old blit (PAGE DOWN) are gone; PAGE UP shows the picture enlarged to 384x240 (the
+default: `display.s` BlitBig, 6/5 both ways, the middle pixel and row of every 5 doubled), PAGE DOWN at the original
+320x200. `awcnv_lcd.lua` now reads the mode at every tick and checks the whole LCD frame against that mode's
+picture of the front page; `AWL_PRESS` presses the buttons. Program 893, the intro from tick 0 into the lake, ticks
+0-3600, PAGE DOWN at 800, UP at 1600, DOWN at 2700, UP at 3000 (and, as it happened, presses of Felipe's in the
+MAME window during the intro):
+
+| ticks checked                  | enlarged | 320x200 | differ | mode switches |
+|--------------------------------|----------|---------|--------|---------------|
+| 3601 (`KN7APP.BIN` `9a2f2db4`) | 1705     | 1896    | 0      | 4             |
+
+No firmware store into the LCD after tick 0 (the screen it left before the game). `awcnv_speed.lua` drives the
+overlay and the old blit, and so serves only builds before this one.
+
+    T=~/compartilhado/tmp/aw-bigscreen
+    AWL_OUT=$T/lcd AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) AWL_MAX=3600 \
+      AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" probes/cnv/run_perf.sh $T/lcd probes/cnv/awcnv_lcd.lua
 
 ## What the platform does with a converter
 
