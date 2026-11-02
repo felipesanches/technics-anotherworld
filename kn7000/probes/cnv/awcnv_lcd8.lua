@@ -32,7 +32,8 @@ local CV = 0x502DF000
 local MISC, PERF = 0x502E3000, 0x502E6000
 local CUR_PAGE_2, FRAME_NO, NO_SPLASH, PART = 0x502E1000 + 0x100C, MISC + 0x7C, MISC + 0x58, 0x502E1000 + 0x102A
 local PG_W = MISC + 0x64
-local AMB_LUT, AMB_GEOM, LCD_OWNED = PERF + 0x600 + 0x60, PERF + 0x600 + 0x284, PERF + 0x600 + 0x288
+local LCD8 = 0x502DAA00                              -- platformcnv.inc LCD8_VARS (vm.inc AMB_*, LCD_*)
+local AMB_LUT, AMB_GEOM, LCD_OWNED = LCD8 + 0x60, LCD8 + 0x284, LCD8 + 0x288
 local FB8, LCDC = 0x9CE50000, 0x9CC00000
 local screen = M.screens[":screen"]
 if not PAL then print("awlcd8: AWL_PAL (the build's palette label) is required"); M:exit() end

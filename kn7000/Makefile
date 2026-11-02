@@ -44,7 +44,7 @@ $(RES_OUT)/awres.inc: tools/aw_extract.py $(AW_DATA)/MEMLIST.BIN
 # The SP7001 build lives in CS1 (IC23) and the TPAD pool: tools/ic23_guard.py must FIND that (were it
 # ever to call this build clean, the check itself would be broken), and the build goes on only with
 # MAME_ONLY=1.
-build/another.bin: src/main.s src/display.s src/platform.inc src/vm.s src/vm.inc src/interp.s src/help.s src/perf_stub.s src/inplog_stub.s src/audio_stub.s src/lcd8.s $(RES_OUT)/awres.inc $(DISASM_REPO)/tools/xapasm.py tools/ic23_guard.py
+build/another.bin: src/main.s src/display.s src/platform.inc src/vm.s src/vm.inc src/interp.s src/help.s src/perf_stub.s src/inplog_stub.s src/audio_stub.s src/lcd8.s src/prefs.s $(RES_OUT)/awres.inc $(DISASM_REPO)/tools/xapasm.py tools/ic23_guard.py
 	@mkdir -p build
 	@if $(PYTHON) -I tools/ic23_guard.py $(DISASM_REPO)/tools src/main.s -I src -I $(RES_OUT) > build/another.guard; then \
 	  echo "ic23_guard calls the SP7001 build clean, which it is not: the guard is broken"; exit 1; fi
@@ -97,7 +97,7 @@ FLOPPY_SHA1   := b7a67de602694fd2257d59ce4509ca154b0b3064
 # The published overlay build (program 941 is its default KN7000 BIOS; -bios v13 is program 893, the owner's).
 MAME941     ?= ../../kn7000-emulator/run.sh
 SD941       ?= ../../kn7000-emulator/sdcard_from_real_kn7000.img
-APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s
+APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s src/prefs.s
 # MAME's disassembler, which checks every word of the effects DSP's mixer (tools/dsp_mixer.py --check): the
 # build stops when it is not there (make UNIDASM=/path/to/unidasm).
 UNIDASM     ?= $(HOME)/compartilhado/mame-sony-video/unidasm
@@ -111,10 +111,21 @@ $(RES_OUT)/awpart.inc: tools/aw_extract.py tools/aw_partinfo.py tools/aw_sound_m
 	$(PYTHON) -I tools/aw_extract.py $(AW_DATA) $(RES_OUT) --parts $@ src/platformcnv.inc $(FONT_DIR)
 
 # The effects DSP's sample mixer (tools/dsp_mixer.py): its words, each checked against MAME's SHARC disassembler,
-# and the addresses src/dsp.s needs.
-$(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc: tools/dsp_mixer.py tools/sharc_enc.py
+# and the addresses src/dsp.s needs. DSP_GAIN: its output gain (MIX = sum x GAIN), 2 as ProTracker's since 2026-11-02
+# (kn5000_homebrew 26bd920: on the owner's unit 128 put a comfortable level at the bottom of MAIN VOLUME's travel, 16 at
+# a quarter of it; 2 is 36 dB below 128). make DSP_GAIN=n builds another (1 to 128; each doubling 6 dB).
+DSP_GAIN ?= 2
+$(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc: tools/dsp_mixer.py tools/sharc_enc.py $(RES_OUT)/dsp_gain
 	@mkdir -p $(RES_OUT)
-	$(PYTHON) -I tools/dsp_mixer.py $(RES_OUT) --check $(UNIDASM) --listing $(RES_OUT)/dsp.lst
+	$(PYTHON) -I tools/dsp_mixer.py $(RES_OUT) --check $(UNIDASM) --listing $(RES_OUT)/dsp.lst --gain $(DSP_GAIN)
+
+# rewritten only when DSP_GAIN changes, so that a new gain makes a new mixer
+$(RES_OUT)/dsp_gain: FORCE
+	@mkdir -p $(RES_OUT)
+	@echo $(DSP_GAIN) | cmp -s - $@ || echo $(DSP_GAIN) > $@
+
+.PHONY: FORCE
+FORCE:
 
 # Is the loader the owner's? (its SHA-1 and its floppy image's, as released on 2026-10-19)
 build/loader.ok: $(LOADER_CNV) $(LOADER_FLOPPY)

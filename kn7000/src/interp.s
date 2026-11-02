@@ -943,6 +943,11 @@ nps_noteon:
     movhu   (NS_MASK, a0), d1
     or      d0, d1
     movhu   d1, (NS_MASK, a0)
+    movbu   (NS_D1, a3), d0         # and the note's press, latched (NOTES_HIT)
+    mov     NOTES_HIT, a0
+    add     d0, a0
+    mov     1, d0
+    movbu   d0, (a0)
     bra     nps_loop
 nps_noteoff:
     movbu   (NS_D1, a3), d0

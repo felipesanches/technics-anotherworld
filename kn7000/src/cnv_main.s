@@ -121,6 +121,11 @@ ce_first:                           # a fresh load: everything here is zero
     clr     d0                      # (but the input log's area, which the loader leaves: no log yet)
     mov     d0, (IL_STATE)
     call    LaunchFolder, 0, 0      # the folder the program menu started us from, if it did
+    call    PrefsInit, 0, 0         # the settings' defaults (prefs.s); PrefsRead after the search
+    call    FwdrawHook, 0, 0        # the firmware's wallpaper repaints off from now (fwdraw.s: program 893's only)
+    call    LcdOwn, 0, 0            # the LCD the game's, black: nothing of the instrument's screen while it loads
+    clr     d0
+    call    LoadShow, 0, 0          # "Loading...  0%" (lcd8.s)
     mov     1, d0
     mov     d0, (CV_STATE)
 ce_search:                          # one step of the firmware search per call
@@ -136,6 +141,7 @@ ce_search:                          # one step of the firmware search per call
     mov     (CV_STEP), d0
     cmp     FW_STEPS, d0
     blt     ce_park
+    call    PrefsRead, 0, 0         # the player's settings, AWPREFS.CFG, if the card has them
     mov     2, d0                   # all found: the global files next
     mov     d0, (CV_STATE)
     mov     GlobalList, a0
@@ -191,6 +197,10 @@ ce_global_fail:
     mov     0x200, d0
 ce_fail_now:
     mov     d0, (CV_FAIL)
+    clr     d1                      # the firmware's screen again, for its message box with the reason (AnswerText)
+    mov     d1, (LOAD_ON)
+    call    LcdRelease, 0, 0
+    call    FwdrawUnhook, 0, 0
     mov     4, d0
     mov     d0, (CV_STATE)
     mov     1, d0
@@ -219,6 +229,7 @@ ce_load:                            # a part the game task waits for: one of its
     cmp     0, d0
     bne     ce_load_step
     call    InpLogFlush, 0, 0       # between lists: a full half of the input log onto the card (inplog.s)
+    call    PrefsFlush, 0, 0        # and the settings, if they changed
     mov     (LD_REQ), d0
     cmp     0, d0
     beq     ce_poll_exit
@@ -323,6 +334,11 @@ ce_answer:
     beq     ce_park                 # wait for the game task to leave first
     call    DspQuit, 0, 0           # the effects DSP's slots as the firmware had them, read back (once)
     call    InpLogFinish, 0, 0      # the rest of the input log onto the card (once; inplog.s)
+    mov     (PR_DIRTY), d0          # the settings, if they changed since last saved
+    cmp     0, d0
+    beq     ce_prefs_kept
+    call    PrefsSave, 0, 0
+ce_prefs_kept:
     mov     (CV_REPORT), d0         # the speed report, once, before the end (perf.s ReportBuild)
     cmp     0, d0
     bne     ce_end
@@ -914,44 +930,169 @@ le_count:
     mov     d1, (LD_ERRORS)
     rets
 
-# Progress(d0 = done, d1 = total): a white bar along the LCD's bottom rows, 600 * done / total
-# pixels (the black border; the game's next blit repaints it: PF_DAMAGE). Only before the game task runs: a
-# part's load keeps the screen black (EnsurePart).
+# Progress(d0 = done, d1 = total): the loading screen's percentage (lcd8.s LoadShow), each stage a share of it, by
+# CV_STATE: the firmware search 0-5 %, the global files 5-35 %, the DSP's sample bank 35-75 %; then (display.s) the
+# game task's first 2.5 s 75-90 %, and the first part's files 90-100 % (a part's load once the game runs: LoadShow
+# shows nothing after the game's first picture). Until 2026-11-02 a white bar along the firmware's screen's bottom.
 Progress:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     (CV_STATE), d2
-    cmp     3, d2
-    beq     pg_done
-    mov     (PF_DAMAGE), d2
-    or      PFD_BAR, d2
-    mov     d2, (PF_DAMAGE)
+    mov     d0, d2                  # done
+    mov     (CV_STATE), d0
+    mov     0, a0                   # a0 = the stage's first percent, a1 = its share
+    mov     5, a1
+    cmp     1, d0
+    beq     pg_go
+    mov     5, a0
+    mov     30, a1
+    cmp     2, d0
+    beq     pg_go
+    mov     35, a0
+    mov     40, a1
+    cmp     5, d0
+    beq     pg_go
+    mov     90, a0
+    mov     10, a1
+    cmp     3, d0
+    bne     pg_ret
+pg_go:
+    clr     d0
     cmp     0, d1
-    beq     pg_done
+    beq     pg_show
+    cmp     d1, d2                  # (no more than the whole)
+    bls     pg_frac
     mov     d1, d2
-    mov     600, d1
-    mulu    d0, d1
-    clr     d3
-    mov     d3, mdr
-    divu    d2, d1
-    cmp     0, d1
-    beq     pg_done
-    mov     FB + 228*FB_STRIDE + 20*2, a1
-    mov     6, d3                   # rows
-pg_row:
-    mov     a1, a0
-    mov     d1, d2
-pg_px:
-    mov     0xFFFF, d0
-    movhu   d0, (a0)
-    add     2, a0
-    add     -1, d2
-    bne     pg_px
-    add     FB_STRIDE, a1
-    add     -1, d3
-    bne     pg_row
-pg_done:
+pg_frac:
+    mov     d1, d3
+    mov     a1, d0
+    mulu    d2, d0                  # share * done / total
+    clr     d1
+    mov     d1, mdr
+    divu    d3, d0
+pg_show:
+    mov     a0, d1
+    add     d1, d0
+    call    LoadShow, 0, 0
+pg_ret:
     ret     [d2,d3,a2,a3], 0x20
+
+# PrefsRead: the player's settings from AWPREFS.CFG in the card's root (prefs.s), on the main task once the
+# firmware's file routines are found: 16 valid bytes replace the defaults (PR_STATUS 1); a missing file (2), or one
+# of another length or with values this build does not know (3), leaves them.
+PrefsRead:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     1, d0                   # the file layer to the SD card
+    mov     (FW_SETEXT), a3
+    calls   (a3)
+    mov     prefs_name, a0
+    mov     mode_rb, a1
+    mov     (FW_OPEN), a3
+    calls   (a3)
+    exth    d0
+    cmp     0, d0
+    blt     prr_none
+    mov     PR_FILE_LEN + 1, d0     # one byte more than the file: a longer one is not ours
+    mov     d0, (0x14, sp)
+    mov     PR_BUF, a0
+    mov     (FW_READ), a3
+    calls   (a3)                    # d0 = bytes read
+    mov     d0, d2
+    mov     (FW_CLOSE), a3
+    calls   (a3)
+    mov     (FW_RESETEXT), a3
+    calls   (a3)
+    mov     3, d3
+    cmp     PR_FILE_LEN, d2
+    bne     prr_status
+    mov     PR_BUF, a0
+    call    PrefsValid, 0, 0
+    cmp     0, d0
+    beq     prr_status
+    mov     PR_BUF, a0              # the settings
+    mov     PREFS_AT, a1
+    mov     PR_FILE_LEN / 4, d1
+prr_copy:
+    mov     (a0), d0
+    mov     d0, (a1)
+    add     4, a0
+    add     4, a1
+    add     -1, d1
+    bne     prr_copy
+    mov     1, d3
+    bra     prr_status
+prr_none:
+    mov     (FW_RESETEXT), a3
+    calls   (a3)
+    mov     2, d3
+prr_status:
+    mov     d3, (PR_STATUS)
+    ret     [d2,d3,a2,a3], 0x30
+
+# PrefsFlush: the settings onto the card if they changed, and no panel button is down (a write keeps the main task
+# busy for a moment, and a button's release must not be the panel event it misses: InpLogFlush's rule).
+PrefsFlush:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     (PR_DIRTY), d0
+    cmp     0, d0
+    beq     prf_ret
+    call    PanelIdle, 0, 0
+    cmp     0, d0
+    bne     prf_ret
+    call    PrefsSave, 0, 0
+prf_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# PrefsSave: AWPREFS.CFG, the 16 bytes at PREFS_AT, written over in the card's root (as the input log's files are),
+# when the loader found a write routine. Once per change: PR_DIRTY is cleared first (a change made meanwhile marks it
+# again), and a failed write is counted (PR_FAILS), not retried.
+PrefsSave:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    clr     d0
+    mov     d0, (PR_DIRTY)
+    mov     (FW_WRITE), d0
+    cmp     0, d0
+    beq     prs_fail
+    mov     1, d0
+    mov     (FW_SETEXT), a3
+    calls   (a3)
+    mov     prefs_name, a0
+    mov     mode_wb, a1
+    mov     (FW_OPEN), a3
+    calls   (a3)
+    exth    d0
+    cmp     0, d0
+    blt     prs_back_fail
+    mov     PREFS_AT, a0
+    mov     PR_FILE_LEN, d0
+    mov     (FW_WRITE), a3
+    calls   (a3)                    # d0 = bytes written
+    mov     d0, d2
+    mov     (FW_CLOSE), a3
+    calls   (a3)
+    mov     (FW_RESETEXT), a3
+    calls   (a3)
+    cmp     PR_FILE_LEN, d2
+    bne     prs_fail
+    mov     (PR_WROTE), d0
+    inc     d0
+    mov     d0, (PR_WROTE)
+    bra     prs_ret
+prs_back_fail:
+    mov     (FW_RESETEXT), a3
+    calls   (a3)
+prs_fail:
+    mov     (PR_FAILS), d0
+    inc     d0
+    mov     d0, (PR_FAILS)
+prs_ret:
+    ret     [d2,d3,a2,a3], 0x30
+
+prefs_name:
+    .asciz  "AWPREFS.CFG"
+    .align  4
 
 # ReportWrite: the speed figures (perf.s ReportBuild) into a new file in the SD card's root folder,
 # AWPERF0.TXT .. AWPERF9.TXT, the first of those names that does not exist yet (it never writes over a
@@ -1215,10 +1356,10 @@ report_name:
     .asciz  "AWPERF0.TXT"           # ReportWrite's names: the digit is k
 msg_play:
     .asciz  "HOLD EXIT TO QUIT"
-msg_load:
-    .asciz  "LOADING ANOTHER WORLD"
+msg_load:                           # (the firmware's text box: shown only before the game's first call takes the LCD)
+    .asciz  "Loading..."
 msg_snd:
-    .asciz  "LOADING ANOTHER WORLD: SOUNDS"
+    .asciz  "Loading..."
 msg_file:
     .asciz  "AW: A GAME FILE IS MISSING OR BAD"
 msg_task:
@@ -1238,5 +1379,6 @@ msg_fw_n:
 .include "dsp.s"                    # the effects DSP: its sample mixer, the bank, the voices
 .include "fwdraw.s"                 # the firmware's screen kept from drawing while the game runs
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
+.include "prefs.s"                  # the player's settings
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

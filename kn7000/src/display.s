@@ -11,9 +11,27 @@
 # refuses a write (vm.inc GUARD_*), which stops the game.
 GameTask:
     add     -0x10, sp
-    mov     2500, d0                # let the firmware reach its static screen first
+    clr     d0
+    mov     d0, (LOAD_SETTLE)
+gt_settle:                          # let the firmware reach its static screen first: 2.5 s, the loading screen's 75-90 %
+    mov     100, d0
     mov     DLY_TSK, a1
     calls   (a1)
+    mov     (LOAD_SETTLE), d0
+    inc     d0
+    mov     d0, (LOAD_SETTLE)
+    mov     15, d1
+    mulu    d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     25, d1
+    divu    d1, d0
+    add     75, d0
+    call    LoadShow, 0, 0
+    mov     (LOAD_SETTLE), d0
+    cmp     25, d0
+    bne     gt_settle
+    call    PrefsInit, 0, 0         # the settings (prefs.s): the defaults, unless read from the card
     call    PerfInit, 0, 0          # the speed measurement (perf.s): from here on
     call    PerfRegs, 0, 0
     call    PerfBench, 0, 0
@@ -161,6 +179,8 @@ bp_write:
     mov     a2, a0
     mov     d3, d0
     call    BlitPacked, 0, 0
+    clr     d0                      # the game's first picture: the loading screen is over (lcd8.s LoadShow)
+    mov     d0, (LOAD_ON)
     mov     a2, (PF_LAST_SRC)
     mov     a2, a0
     call    PageClean, 0, 0
@@ -172,6 +192,7 @@ bp_write:
     cmp     0, d0
     blt     bp_done
     mov     a2, a0
+    mov     palette, a1
     call    AmbiUpdate, 0, 0
 bp_done:
     mov     (0x10, sp), d0
@@ -310,6 +331,12 @@ ShadowOut:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
     call    PalCheck, 0, 0
+    mov     (AMB_GEOM), d0          # the border's pattern, if the window's size is new (a setting changed it)
+    mov     (PG_W), d1
+    cmp     d1, d0
+    beq     so_go
+    call    AmbiFill, 0, 0
+so_go:
     call    WinBase, 0, 0
     mov     a1, (0x14, sp)
     mov     SHADOW, a3
@@ -438,7 +465,7 @@ di_mode:
     mov     DISP_ORIG_MAGIC, d0
     cmp     d0, d1
     beq     di_orig
-    clr     d0
+    movbu   (PR_RES), d0            # the setting (prefs.s)
     bra     di_set
 di_orig:
     mov     1, d0
@@ -464,6 +491,28 @@ dg_orig:
     mov     AW_W * AW_H, d0
     mov     d0, (PG_SIZE)
     rets
+
+# ModeSwitch(d0 = PF_MODE wanted): to that display mode, unless it is the one in use (or the build has no room for
+# the high resolution): the speed figures' window closed (each mode's stay its own), the pages converted, the next
+# blit a full one (perf.s PerfInput: PAGE UP / DOWN; prefs.s: the resolution setting).
+ModeSwitch:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     HIRES_OK, d1
+    cmp     0, d1
+    beq     msw_ret
+    mov     (PF_MODE), d1
+    cmp     d1, d0
+    beq     msw_ret
+    mov     d0, d2
+    call    PerfWindowEnd, 0, 0
+    mov     d2, (PF_MODE)
+    mov     (PF_SWITCHES), d0
+    inc     d0
+    mov     d0, (PF_SWITCHES)
+    call    DisplayConvert, 0, 0
+msw_ret:
+    ret     [d2,d3,a2,a3], 0x20
 
 # DisplayConvert: PF_MODE has changed (perf.s PerfInput): the four pages to its size, in place (PageUp, PageDown:
 # what they hold carries on, scaled, until the game draws it again), then the next blit repaints everything.

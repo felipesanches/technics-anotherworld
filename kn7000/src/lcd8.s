@@ -50,16 +50,21 @@ LcdOwn:
     movbu   (LCDC + 0x47), d0
     movbu   d0, (LCD_SAVE + 5)
     call    LutBlack, 0, 0          # everything black until the game's palette and the ambilight are set
-    mov     FB8, a0                 # the frame: entry 0 everywhere
+    mov     1, d0                   # but the loading screen's text (entry 1)
+    mov     LOAD_TEXT_COL, d1
+    call    LutSet, 0, 0
+    mov     FB8, a0                 # the frame: entry 0 everywhere (the border's pattern: the first blit's)
     mov     FB8_STRIDE * FB_H / 32, d1
     clr     d0
     call    fb_run, 0, 0
     clr     d0
     mov     d0, (AMB_GEOM)
-    call    AmbiFill, 0, 0
     call    LcdSet, 0, 0
     mov     1, d0
     mov     d0, (LCD_OWNED)
+    mov     d0, (LOAD_ON)
+    mov     -1, d0
+    mov     d0, (LOAD_PCT)
 lco_ret:
     ret     [d2,d3,a2,a3], 0x20
 
@@ -198,10 +203,139 @@ lbk_amb:
     bne     lbk_amb
     rets
 
-# LcdBlack: the whole LCD black while a part loads (cnv_main.s EnsurePart): every entry black. The frame is not
-# touched; the next blit puts the palette and the ambilight back.
+# LcdBlack: the whole LCD black while a part loads (cnv_main.s EnsurePart): every entry black, but the loading
+# screen's text while it shows (the first part's load). The frame is not touched; the next blit puts the palette
+# and the ambilight back.
 LcdBlack:
-    bra     LutBlack
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    call    LutBlack, 0, 0
+    mov     (LOAD_ON), d0
+    cmp     0, d0
+    beq     lbl_ret
+    mov     1, d0
+    mov     LOAD_TEXT_COL, d1
+    call    LutSet, 0, 0
+lbl_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# LoadShow(d0 = 0..100): the loading screen's "Loading... NN%", when it shows and the number changed: 16x16 letters
+# (the game's 8x8 font, each dot 2x2) in entry 1, in the middle of the LCD, inside either window (the game's first
+# blit writes over it). The firmware's own screen is not shown: the LCD is the game's from its first call
+# (cnv_main.s), so nothing of the instrument's interface shows while the game loads.
+LoadShow:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     (LOAD_ON), d1
+    cmp     0, d1
+    beq     lsh_ret
+    mov     (LCD_OWNED), d1
+    cmp     0, d1
+    beq     lsh_ret
+    cmp     100, d0
+    bls     lsh_pct
+    mov     100, d0
+lsh_pct:
+    mov     (LOAD_PCT), d1
+    cmp     d1, d0
+    beq     lsh_ret
+    mov     d0, (LOAD_PCT)
+    mov     d0, d2
+    mov     LOAD_LINE, a0           # "Loading... NN%" into the line buffer
+    mov     load_text, a1
+lsh_cpy:
+    movbu   (a1), d0
+    cmp     0, d0
+    beq     lsh_num
+    movbu   d0, (a0)
+    inc     a0
+    inc     a1
+    bra     lsh_cpy
+lsh_num:
+    cmp     100, d2
+    bcs     lsh_lt100
+    mov     0x31, d0                # "100"
+    movbu   d0, (a0)
+    mov     0x30, d0
+    movbu   d0, (1, a0)
+    movbu   d0, (2, a0)
+    add     3, a0
+    bra     lsh_sign
+lsh_lt100:
+    mov     d2, d0
+    clr     d1
+    mov     d1, mdr
+    mov     10, d1
+    divu    d1, d0                  # d0 = tens, mdr = units
+    add     0x30, d0
+    cmp     0x30, d0
+    bne     lsh_tens
+    mov     0x20, d0                # one digit: a space before it
+lsh_tens:
+    movbu   d0, (a0)
+    mov     mdr, d0
+    add     0x30, d0
+    movbu   d0, (1, a0)
+    add     2, a0
+lsh_sign:
+    mov     0x25, d0                # "%"
+    movbu   d0, (a0)
+    inc     a0
+    clr     d0
+    movbu   d0, (a0)
+    mov     FB8 + LOAD_Y * FB8_STRIDE + LOAD_X, a0   # the line's area black (entry 0)
+    mov     16, d2
+lsh_clr:
+    mov     a0, a1
+    mov     LOAD_CHARS * 16 / 4, d1
+    clr     d0
+lsh_clrw:
+    mov     d0, (a1)
+    add     4, a1
+    add     -1, d1
+    bne     lsh_clrw
+    add     FB8_STRIDE, a0
+    add     -1, d2
+    bne     lsh_clr
+    mov     LOAD_LINE, a2           # the letters
+    mov     FB8 + LOAD_Y * FB8_STRIDE + LOAD_X, a3
+lsh_char:
+    movbu   (a2), d0
+    cmp     0, d0
+    beq     lsh_ret
+    inc     a2
+    add     -0x20, d0
+    asl     3, d0
+    mov     AW_FONT, a0
+    add     d0, a0                  # the glyph's 8 rows
+    mov     a3, a1
+    mov     8, d3
+lsh_row:
+    movbu   (a0), d2
+    inc     a0
+    mov     8, d1
+lsh_dot:
+    btst    0x80, d2
+    beq     lsh_nodot
+    mov     0x0101, d0              # 2x2 of entry 1
+    movhu   d0, (a1)
+    movhu   d0, (FB8_STRIDE, a1)
+lsh_nodot:
+    asl     1, d2
+    add     2, a1
+    add     -1, d1
+    bne     lsh_dot
+    add     2 * FB8_STRIDE - 16, a1
+    add     -1, d3
+    bne     lsh_row
+    add     16, a3
+    bra     lsh_char
+lsh_ret:
+    ret     [d2,d3,a2,a3], 0x30
+
+load_text:
+    .asciz  "Loading... "
+    .align  4
 
 # AmbRand -> d0: the next of a xorshift32 sequence (the dither). Leaf; uses d1.
 AmbRand:
@@ -222,14 +356,14 @@ arn_go:
     mov     d0, (AMB_RNG)
     rets
 
-.equ AMB_X0,          PF_PAIR + 0x2A0   # the window: x X0 .. X1-1, y Y0 .. Y1-1 (AmbiFill's)
-.equ AMB_X1,          PF_PAIR + 0x2A4
-.equ AMB_Y0,          PF_PAIR + 0x2A8
-.equ AMB_Y1,          PF_PAIR + 0x2AC
-.equ AMB_DMAX,        PF_PAIR + 0x2B0   # the farthest distance from it
-.equ AMB_H,           PF_PAIR + 0x2B4   # its rows
-.equ AMB_SECH,        PF_PAIR + 0x2B8   # a band's rows
-.equ AMB_WIDTH,       PF_PAIR + 0x2BC   # the window's width
+.equ AMB_X0,          LCD8_VARS + 0x2A0   # the window: x X0 .. X1-1, y Y0 .. Y1-1 (AmbiFill's)
+.equ AMB_X1,          LCD8_VARS + 0x2A4
+.equ AMB_Y0,          LCD8_VARS + 0x2A8
+.equ AMB_Y1,          LCD8_VARS + 0x2AC
+.equ AMB_DMAX,        LCD8_VARS + 0x2B0   # the farthest distance from it
+.equ AMB_H,           LCD8_VARS + 0x2B4   # its rows
+.equ AMB_SECH,        LCD8_VARS + 0x2B8   # a band's rows
+.equ AMB_WIDTH,       LCD8_VARS + 0x2BC   # the window's width
 
 # AmbiFill: the border's pattern for the window size now (PG_W), every byte of FB8 outside the window (AmbPixel's).
 # Four pixels a 32-bit store: the windows' edges are on multiples of 4.
@@ -482,11 +616,14 @@ apx_entry:
     add     AMB_BASE, d0
     ret     [d2,d3,a2,a3], 0x28
 
-# AmbiUpdate(a0 = the page just shown): each side's and band's colour, and its 15 entries where they changed.
+# AmbiUpdate(a0 = the page just shown, a1 = the palette it is shown in): each side's and band's colour, and its 15
+# entries where they changed; with the ambilight off (prefs.s PR_AMBI), black. The levels' brightness: the light
+# scatter setting's table (PR_REACH).
 AmbiUpdate:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x30, sp
+    add     -0x38, sp
     mov     a0, (0x10, sp)          # the page
+    mov     a1, (0x34, sp)          # its palette
     clr     d0
     mov     d0, (0x14, sp)          # g = side * 8 + band
 aup_region:
@@ -556,7 +693,7 @@ aup_px:
     mov     d0, (0x28, sp)
     mov     d0, (0x2C, sp)
     mov     d0, (0x30, sp)
-    mov     palette, a2
+    mov     (0x34, sp), a2
     clr     d2
 aup_sum:
     mov     d2, d0
@@ -616,8 +753,11 @@ aup_snext:
     call    AmbChan, 0, 0
     clr     d2                      # the 15 levels
 aup_lvl:
+    movbu   (PR_REACH), d0          # this level's brightness, of 256, in the scatter setting's table
+    asl     4, d0
     mov     amb_bright, a0
-    movbu   (d2, a0), d3            # this level's brightness, of 256
+    add     d0, a0
+    movbu   (d2, a0), d3
     movhu   (a2), d0
     mov     d3, d1
     call    AmbLevel, 0, 0
@@ -635,6 +775,11 @@ aup_lvl:
     call    AmbLevel, 0, 0
     mov     (0x28, sp), d1
     or      d0, d1                  # d1 = the entry's colour
+    movbu   (PR_AMBI), d0           # (black with the ambilight off)
+    cmp     0, d0
+    bne     aup_on
+    clr     d1
+aup_on:
     mov     (0x14, sp), d0          # its index among the ambilight's: g * 15 + level
     mov     AMB_LVLS, d3
     mulu    d3, d0
@@ -657,7 +802,7 @@ aup_lnext:
     mov     d0, (0x14, sp)
     cmp     2 * AMB_SECS, d0
     bne     aup_region
-    ret     [d2,d3,a2,a3], 0x40
+    ret     [d2,d3,a2,a3], 0x48
 
 # AmbChan(d0 = a channel's sum, d1 = samples, a0 = that channel's colour now, u16): the colour now goes half way to
 # the samples' average (4 bits x 256). Leaf; uses a1.
@@ -686,7 +831,11 @@ AmbLevel:
 alv_ret:
     rets
 
-# the levels' brightness, of 256: 230 x ((15 - level) / 15)^2
+# the levels' brightness, of 256: 230 x ((15 - level) / 15)^p, a table of 16 bytes for each light scatter setting
+# (prefs.s PR_REACH): p = 4 short, 2 medium (the default), 1 long, 0.5 very long
 amb_bright:
-    .byte   230, 200, 173, 147, 124, 102, 83, 65, 50, 37, 26, 16, 9, 4, 1
+    .byte   230, 175, 130, 94, 67, 45, 30, 19, 11, 6, 3, 1, 0, 0, 0, 0
+    .byte   230, 200, 173, 147, 124, 102, 83, 65, 50, 37, 26, 16, 9, 4, 1, 0
+    .byte   230, 215, 199, 184, 169, 153, 138, 123, 107, 92, 77, 61, 46, 31, 15, 0
+    .byte   230, 222, 214, 206, 197, 188, 178, 168, 157, 145, 133, 119, 103, 84, 59, 0
     .align  4

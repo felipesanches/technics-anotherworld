@@ -501,8 +501,12 @@ def write_inc(out, words, labels):
 
 
 def main():
+    global GAIN
     out = sys.argv[1]
     args = sys.argv[2:]
+    if "--gain" in args:   # the output gain (the variable GAIN, a data word: the code is the same); the default 128
+        GAIN = int(args[args.index("--gain") + 1], 0)  # stays for the other programs that import this module
+        assert 0 < GAIN <= 128, "--gain: 1 to 128"
     words, labels = program()
     assert PM_CODE + len(words) <= PM_END, f"the code ({len(words)} words) must stay in PM 0x{PM_CODE:04X}-0x{PM_END - 1:04X}"
     assert VARS_END <= STAGE and STAGE + STAGE_WORDS <= 0x9F00
@@ -522,7 +526,7 @@ def main():
                 f.write(f"{pc:04x}: {w:012x}  {text}\n")
     write_inc(out, words, labels)
     print(f"dsp_mixer: {out}/dsp_equ.inc, dsp_data.inc: {len(words)} PM words at 0x{PM_CODE:04X} "
-          f"(E0 0x{labels['E0']:04X}, E9 0x{labels['E9']:04X})")
+          f"(E0 0x{labels['E0']:04X}, E9 0x{labels['E9']:04X}), GAIN {GAIN}")
 
 
 if __name__ == "__main__":

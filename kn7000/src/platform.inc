@@ -89,6 +89,8 @@
 .equ VM_MISC_BASE,    0x44080000
 .equ SHADOW,          0x44150000    # the window as the LCD shows it, 4 bits a pixel (display.s): 32,000 bytes
 .equ BITMAP_BUF,      SHADOW
+.equ LCD8_VARS,       0x44171000    # lcd8.s: the LCD's and the ambilight's state, 0x300 bytes
+.equ PREFS_AT,        0x44170000    # prefs.s: the settings (not kept: this build writes no file), 0x60 bytes
 .equ VM_PERF_BASE,    0x44160000    # vm.inc: the speed measurement and the blit's tables, 0x1000 bytes
 .equ AW_FONT,         0x44480000    # anotherworld_chargen.rom, 768 bytes (8x8, chars 0x20+)
 .equ AW_STRIDX,       0x44490000    # str_index.rom, 2048 bytes (LE u16 offset per string id)

@@ -6,6 +6,7 @@
 
 AudioInit:
 AudioPoll:
+PrefsKeys:
 AudioSound:
 AudioMusic:
 AudioStopAll:

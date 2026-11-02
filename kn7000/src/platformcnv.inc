@@ -82,6 +82,7 @@
 .equ AUDIO_VARS,      0x502DA000    # audio.s: the MIDI producer, the music player, the note slots, 0x200 bytes
 .equ SND_TAB,         0x502DA200    # AWSND.AW: each sound's program, note and length (tools/aw_sound_map.py)
 .equ SND_TAB_MAX,     0x400
+.equ LCD8_VARS,       0x502DAA00    # lcd8.s: the LCD's and the ambilight's state, 0x300 bytes (in the free 0x502DAA00-0x502DAFFF)
 .equ DSP_HOST,        0x502DA600    # dsp.s: the effects DSP's routines, state, command records, readback, 0x400 bytes
 .equ MUSIC_BUF,       0x502DB000    # the current part's music module (0x07 intro, 0x8A final), unpacked in
 .equ MUSIC_MAX,       0x4000        #   place (aw_extract.py --parts puts it in the part's list), to 0x502DEFFF
@@ -95,6 +96,7 @@
 .equ AW_PATHBUF,      AW_PATHS+0x10 #   32 bytes: AW_PREFIX and a file name
 .equ AW_PATHNAME,     AW_PATHS+0x30 #   the name AppPath was given
 .equ AW_PATHS_LEN,    0x40
+.equ PREFS_AT,        0x502DF900    # prefs.s: the settings (AWPREFS.CFG's 16 bytes) and the settings page's state, 0x60
 .equ VM_POLY_BASE,    0x502E0000    # vm.inc: rasterizer scratch, 0x200 bytes
 .equ FWDRAW_AT,       0x502E0400    # fwdraw.s: its variables, then the copy of program 893's view records
 .equ FD_HOOKED,       FWDRAW_AT + 0x00  # u32: the class table points at FD_COPY

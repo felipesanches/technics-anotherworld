@@ -44,9 +44,16 @@ hs_poll:
     movbu   (BTN_HELP_OFS, a0), d0
     and     BTN_HELP_BIT, d0
     bne     hs_exit
+    mov     (HELP_PAGE_NO), d0      # the settings page: the keybed's keys are its own (prefs.s)
+    cmp     3, d0
+    bne     hs_keys_exit
+    call    PrefsInput, 0, 0
+    bra     hs_snd_chk
+hs_keys_exit:
     call    HelpGameInput, 0, 0
     cmp     0, d0
     bne     hs_exit
+hs_snd_chk:
     call    HelpSoundState, 0, 0    # PART SELECT RIGHT 2 / RIGHT 1 pressed here (audio.s AudioPoll runs in
     mov     (HELP_SNDSTATE), d1     # every HelpSleep): the first page's status lines again, at once
     cmp     d1, d0
@@ -176,9 +183,13 @@ HelpDrawPage:
     mov     d0, (HELP_SNDSTATE)
     call    DspModeText, 0, 0       # the status lines (page 1)
     mov     (HELP_PAGE_NO), d0
-    cmp     3, d0                   # the speed page: its text, now
-    bne     hd_page
-    call    PerfPageBuild, 0, 0
+    cmp     3, d0                   # the settings page: its items, now (prefs.s)
+    beq     hd_prefs
+    clr     d0                      # another page: the settings page's keys taken in afresh when it is shown
+    mov     d0, (PR_ARMED)
+    bra     hd_page
+hd_prefs:
+    call    PrefsPageBuild, 0, 0
 hd_page:
     mov     (HELP_PAGE_NO), d0
     asl     2, d0

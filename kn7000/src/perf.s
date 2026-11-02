@@ -393,17 +393,8 @@ pip_ret:
 pip_set:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     (PF_MODE), d1
-    cmp     d1, d0
-    beq     pis_ret
-    mov     d0, d2
     mov     d3, (PF_STATE)
-    call    PerfWindowEnd, 0, 0     # the window so far belongs to the mode it ran in
-    mov     d2, (PF_MODE)
-    mov     (PF_SWITCHES), d0
-    inc     d0
-    mov     d0, (PF_SWITCHES)
-    call    DisplayConvert, 0, 0    # the pages to the mode's size; the next blit repaints everything
+    call    ModeSwitch, 0, 0        # (display.s)
 pis_ret:
     ret     [d2,d3,a2,a3], 0x20
 

@@ -23,7 +23,7 @@ local FD = 0x502E0400                 -- fwdraw.s FWDRAW_AT: hooked, quiet, skip
 local GROUP4_RECS, DRAW_ENABLE, DRAW_KEEP = 0x5011FAD4, 0x5002A018, 0x5002A01C
 local CODE_LO, CODE_HI = 0x502BA000, 0x502C8000
 local FB, FB_LEN = 0x9CE00000, 0x140000          -- all of display memory (the firmware's frame, the game's FB8)
-local LCDC, LCD_SAVE, LCD_OWNED = 0x9CC00000, 0x502E6000 + 0x600 + 0x28C, 0x502E6000 + 0x600 + 0x288
+local LCDC, LCD_SAVE, LCD_OWNED = 0x9CC00000, 0x502DAA00 + 0x28C, 0x502DAA00 + 0x288   -- vm.inc LCD8_VARS
 local screen = M.screens[":screen"]
 local function now() return M.time:as_double() end
 local outf = io.open(OUT .. "/loadblack.txt", "w")

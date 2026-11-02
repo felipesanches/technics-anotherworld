@@ -379,6 +379,7 @@ ti_ret:
 
 .include "display.s"
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
+.include "prefs.s"                  # the player's settings
 path_font:
     .asciz "C:\TECHNICS\DATA\AWFONT.AW"
     .align 2

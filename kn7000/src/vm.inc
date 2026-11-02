@@ -105,6 +105,26 @@
 # The pages' geometry now (display.s DisplayInit, DisplayConvert): 384x240 in the high-resolution mode (PF_MODE 0),
 # 320x200 at the original resolution (PF_MODE 1). A probe that compares pages with the reference VM starts the game
 # at 320x200 by writing DISP_ORIG_MAGIC to DISP_ORIG before the game task starts (as NO_SPLASH).
+# The player's settings (prefs.s; PREFS_AT per platform): AWPREFS.CFG's 16 bytes, then the settings page's state.
+.equ PR_MAGIC_V,      0x31505741     # "AWP1"
+.equ PR_RES,          PREFS_AT + 4
+.equ PR_AMBI,         PREFS_AT + 5
+.equ PR_REACH,        PREFS_AT + 6
+.equ PR_KEYS,         PREFS_AT + 7
+.equ PR_LEDS,         PREFS_AT + 8
+.equ PR_FILE_LEN,     16
+.equ PR_DIRTY,        PREFS_AT + 0x10   # u32: changed since last saved
+.equ PR_SEL,          PREFS_AT + 0x14   # u32: the row chosen on the page
+.equ PR_STATUS,       PREFS_AT + 0x18   # u32: AWPREFS.CFG at the start: 0 not looked for, 1 read, 2 not there, 3 not valid
+.equ PR_WROTE,        PREFS_AT + 0x1C   # u32: files written
+.equ PR_FAILS,        PREFS_AT + 0x20   # u32: writes that failed
+.equ PR_ARMED,        PREFS_AT + 0x28   # u32: the page's keys taken in since it was shown (prefs.s PrefsInput)
+.equ PR_KEYPREV,      PREFS_AT + 0x24   # u32: the page's keys held at the last look (bits: up, down, left, right)
+.equ PR_BUF,          PREFS_AT + 0x40   # 32 bytes: the file as read (17 asked for: a longer one is not ours)
+.equ PR_ROWS,         5
+.equ PR_ROW_Y0,       58
+.equ PR_ROW_DY,       14
+
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320
@@ -226,6 +246,8 @@
                                      #   lib 0x4C024CBC on 941, refuses a byte at 0 and decrements it)
 .equ NOTES_MIDI,      VM_MISC_BASE + 0x1000     # note tracker for MIDI IN 1
 .equ NOTES_KBD,       VM_MISC_BASE + 0x1200     # note tracker for the keybed (the MIDI OUT 1 stream)
+.equ NOTES_HIT,       VM_MISC_BASE + 0x1380     # u8[128]: 1 once a note-on came for that note (either tracker), until a reader
+                                                #   clears it: a press shorter than a busy moment is not lost (prefs.s)
 .equ NS_HDR,          0x00           # u32: ring header address
 .equ NS_RP,           0x04           # u32: private read pointer (0 = resync on the next poll)
 .equ NS_STATUS,       0x08           # u8: running status (0 = none)
@@ -339,7 +361,8 @@
 .equ PF_PAL,          VM_PERF_BASE + 0x520  # 16 x u16: the palette the LCD shows
 .equ PF_DIGITS,       VM_PERF_BASE + 0x560  # 32 bytes: FmtNum's scratch
 .equ PF_PAIR,         VM_PERF_BASE + 0x600  # 256 x u32: two pixels' RGB565 for a pair of colour indices
-# (PF_PAIR's 1 KB: the RGB565 pair table until 2026-11-02; now lcd8.s's state, below.)
+# (PF_PAIR's 1 KB: the RGB565 pair table until 2026-11-02, unused since. lcd8.s's state: LCD8_VARS, per platform,
+# kept out of VM_PERF_BASE, which PerfInit clears when the game task starts: the LCD is the game's from its first call.)
 # The LCD in 8 bits a pixel (lcd8.s): the game's own frame in display memory past the firmware's (FB8: lines of 640
 # bytes, each byte a look-up table entry), shown by the controller's start address; the firmware's 16-bit frame (FB)
 # is left as it was and shown again when the game gives the LCD back. Entries 0-15: the game's palette; 16-255: the
@@ -353,13 +376,21 @@
 .equ AMB_BASE,        16             # the first ambilight entry
 .equ AMB_SECS,        8              # bands of rows, each side
 .equ AMB_LVLS,        15             # brightness levels, from the window outwards: 2 x 8 x 15 = 240 entries
-.equ AMB_CUR,         PF_PAIR + 0x000   # 16 x 3 x u16: each band's colour now, 4-bit channels x 256 (smoothed)
-.equ AMB_LUT,         PF_PAIR + 0x060   # 240 x u16: each ambilight entry as last written (0x0RGB; 0xFFFF: unknown)
-.equ AMB_HIST,        PF_PAIR + 0x240   # 16 x u32: a band's colour count
-.equ AMB_RNG,         PF_PAIR + 0x280   # u32: the dither's random state
-.equ AMB_GEOM,        PF_PAIR + 0x284   # u32: the PG_W the border pattern was drawn for (0: none)
-.equ LCD_OWNED,       PF_PAIR + 0x288   # u32: 1 while the LCD shows FB8
-.equ LCD_SAVE,        PF_PAIR + 0x28C   # 6 bytes: REG[040h], [042h]-[044h], [046h]-[047h] as the firmware had them
+.equ AMB_CUR,         LCD8_VARS + 0x000   # 16 x 3 x u16: each band's colour now, 4-bit channels x 256 (smoothed)
+.equ AMB_LUT,         LCD8_VARS + 0x060   # 240 x u16: each ambilight entry as last written (0x0RGB; 0xFFFF: unknown)
+.equ AMB_HIST,        LCD8_VARS + 0x240   # 16 x u32: a band's colour count
+.equ AMB_RNG,         LCD8_VARS + 0x280   # u32: the dither's random state
+.equ AMB_GEOM,        LCD8_VARS + 0x284   # u32: the PG_W the border pattern was drawn for (0: none)
+.equ LCD_OWNED,       LCD8_VARS + 0x288   # u32: 1 while the LCD shows FB8
+.equ LCD_SAVE,        LCD8_VARS + 0x28C   # 6 bytes: REG[040h], [042h]-[044h], [046h]-[047h] as the firmware had them
+.equ LOAD_ON,         LCD8_VARS + 0x2C0  # u32: 1 while the loading screen shows (until the game's first picture)
+.equ LOAD_PCT,        LCD8_VARS + 0x2C4  # u32: the percentage it shows (-1: none yet)
+.equ LOAD_SETTLE,     LCD8_VARS + 0x2C8  # u32: the game task's first 100 ms waits so far (display.s GameTask)
+.equ LOAD_TEXT_COL,   0xCCC              # its colour: entry 1 until the game's palette takes it
+.equ LOAD_CHARS,      15             # "Loading... 100%"
+.equ LOAD_X,          (FB_W - LOAD_CHARS * 16) / 2   # 200: inside both windows
+.equ LOAD_Y,          112
+.equ LOAD_LINE,       LCD8_VARS + 0x2D0   # 16 bytes: the line
 .equ PF_TEXT,         VM_PERF_BASE + 0xA00  # 64 bytes: a line of the overlay
 .equ PF_ITEMS,        VM_PERF_BASE + 0xA40  # the speed help page's items (help.s format), 24 x 12 bytes + end
 .equ PF_LINES,        VM_PERF_BASE + 0xB80  # ... and their text, 24 x 48 bytes, to the block's end

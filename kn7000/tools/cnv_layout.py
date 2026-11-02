@@ -85,6 +85,8 @@ regions = [  # name, start, end, what
     ("CNV_VARS", L["CNV_VARS"], L["CNV_VARS"] + 0x400, "the entry's and the part loader's variables"),
     ("FW_VARS", L["FW_VARS"], L["FW_VARS"] + 0x100, "what fwfind.s found, and its scratch"),
     ("AW_PATHS", L["AW_PATHS"], L["AW_PATHS"] + L["AW_PATHS_LEN"], "the game's folder, from the menu's launch block"),
+    ("LCD8_VARS", L["LCD8_VARS"], L["LCD8_VARS"] + 0x300, "lcd8.s: the LCD's and the ambilight's state"),
+    ("PREFS_AT", L["PREFS_AT"], L["PREFS_AT"] + 0x60, "prefs.s: the settings (AWPREFS.CFG) and the settings page"),
     ("VM_POLY_BASE", L["VM_POLY_BASE"], L["VM_POLY_BASE"] + BLOCKS["VM_POLY_BASE"], "rasterizer scratch"),
     ("FWDRAW_AT", L["FWDRAW_AT"], L["FWDRAW_AT"] + L["FWDRAW_LEN"], "fwdraw.s: the firmware's view records, ours"),
     ("VM_INTERP_BASE", L["VM_INTERP_BASE"], L["VM_INTERP_BASE"] + BLOCKS["VM_INTERP_BASE"],

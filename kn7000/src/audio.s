@@ -426,7 +426,16 @@ as_drums:
     call    SetProg, 0, 0
     ret     [d2,d3,a2,a3], 0x20
 
-# AudioInit: a new game (GameReset). Sound on, nothing playing, the channels set up.
+# PrefsKeys: the keybed's own sound as the setting says (prefs.s PR_KEYS; AU_KEYWANT 1 = muted): KeysSync tells the
+# instrument at the next poll. Leaf.
+PrefsKeys:
+    movbu   (PR_KEYS), d0
+    xor     1, d0
+    mov     d0, (AU_KEYWANT)
+    rets
+
+# AudioInit: a new game (GameReset). Sound on, nothing playing, the channels set up; the keybed's sound as the
+# settings say.
 AudioInit:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -465,6 +474,7 @@ ai_midi:
     and     AU_KBTN_BIT, d0
     mov     d0, (AU_KBTN)
     call    AudioSetup, 0, 0
+    call    PrefsKeys, 0, 0
     ret     [d2,d3,a2,a3], 0x20
 
 # AudioStopAll: no module, no note (a part switch, LOAD 0, the stop screen).
@@ -980,6 +990,10 @@ ap_time:
     mov     (AU_KEYWANT), d0
     xor     1, d0
     mov     d0, (AU_KEYWANT)
+    xor     1, d0                   # the setting follows (prefs.s), and is saved
+    movbu   d0, (PR_KEYS)
+    mov     1, d0
+    mov     d0, (PR_DIRTY)
 ap_keys:
     call    KeysSync, 0, 0          # tell the instrument (again, if the ring was full)
     mov     (FWV_KERNEL_MS), a0
