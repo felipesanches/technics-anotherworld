@@ -19,6 +19,8 @@
 -- Output in AWP_OUT: perf.tsv (one line per tick), perf_fw.txt; and the means over the ticks printed as
 -- "awperf: ..." lines.
 --   probes/cnv/run_perf.sh OUT probes/cnv/awcnv_perf.lua      (env AWP_FROM, default 1; AWP_MAX, default 400)
+-- Since 2026-11-02 the game starts enlarged (display.s BlitBig); AWP_ORIGINAL=1 holds PAGE DOWN from the game's start
+-- until it shows 320x200 (vm.inc PF_MODE = 1), so that the counts are that mode's (count from AWP_FROM=10 or so).
 -- Addresses: src/platformcnv.inc, src/vm.inc, src/cnv_main.s.
 local M = manager.machine
 local cpu = M.devices[":maincpu"]
@@ -47,6 +49,7 @@ local SUM, MAX, N = {}, {}, 0
 for _, k in ipairs(COLS) do SUM[k] = 0; MAX[k] = 0 end
 local FWPC = {}
 local on, finish, nosplash = false, false, false
+local orig_done = false
 local function pc() return cpu.state["PC"].value end
 local function game() local p = pc(); return p >= CODE_LO and p < CODE_HI end
 
@@ -138,5 +141,9 @@ AWP_TICK = emu.register_periodic(function()
   if s and t > s[1] then press(s[2], s[3], 1); s.down = s.down or t end
   if s and s.down and t > s.down + 0.4 then press(s[2], s[3], 0); print("awperf: pressed " .. s[4]); step = step + 1 end
   if not nosplash and sp:read_u32(CV) >= 2 then sp:write_u32(NO_SPLASH, 0x5EED0FF0); nosplash = true end
+  if os.getenv("AWP_ORIGINAL") and nosplash and not orig_done then
+    if sp:read_u32(0x502E6000 + 0x80) == 1 then press("CPC_SEG11", 0x20, 0); orig_done = true; print("awperf: 320x200 (PAGE DOWN)")
+    elseif sp:read_u32(CV) == 3 then press("CPC_SEG11", 0x20, 1) end
+  end
   if finish then M:exit() end
 end)

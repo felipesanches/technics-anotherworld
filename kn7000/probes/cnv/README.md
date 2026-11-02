@@ -551,12 +551,24 @@ MAME window during the intro):
 |--------------------------------|----------|---------|--------|---------------|
 | 3601 (`KN7APP.BIN` `9a2f2db4`) | 1705     | 1896    | 0      | 4             |
 
-No firmware store into the LCD after tick 0 (the screen it left before the game). `awcnv_speed.lua` drives the
+No firmware store into the LCD after tick 0 (the screen it left before the game). The cost, `awcnv_perf.lua` over the intro's ticks
+10-300 (`AWP_ORIGINAL=1` holds PAGE DOWN from the start), mean per tick:
+
+| mode     | LCD 32-bit stores | LCD loads (sentinels) | page loads | at the unit's 888 ns a store |
+|----------|-------------------|-----------------------|------------|------------------------------|
+| enlarged | 2,273.7           | 45                    | 49,968     | 2.0 ms                       |
+| 320x200  | 1,623.5           | 47                    | 45,874     | 1.4 ms                       |
+
+A full repaint is 76,800 stores in both (window and border cover the whole LCD). The acceptance tests (`run_cnv_tests.sh
+ic23`, blank IC23, 893 and 941) pass all checks with this build; `speed` now checks the modes: enlarged at the start,
+PAGE DOWN twice 320x200, PAGE UP twice enlarged, two switches, the VM running in both. `awcnv_speed.lua` drives the
 overlay and the old blit, and so serves only builds before this one.
 
     T=~/compartilhado/tmp/aw-bigscreen
     AWL_OUT=$T/lcd AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) AWL_MAX=3600 \
       AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" probes/cnv/run_perf.sh $T/lcd probes/cnv/awcnv_lcd.lua
+    AWP_OUT=$T/perf-big AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-big probes/cnv/awcnv_perf.lua
+    AWP_OUT=$T/perf-orig AWP_ORIGINAL=1 AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-orig probes/cnv/awcnv_perf.lua
 
 ## What the platform does with a converter
 
