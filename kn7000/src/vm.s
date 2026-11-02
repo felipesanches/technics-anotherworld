@@ -11,15 +11,34 @@
 # 16-bit values are sign-extended with `exth` before a comparison/multiply.
 
 # ================================================================================
-# Scale(d0 = byte) -> d0 = (byte * CUR_ZOOM) >> 6. Zoom scaling for bbox/vertices.
+# Scale(d0 = byte) -> d0 = (byte * CUR_ZOOM) >> 6, the zoom scaling for bbox/vertices; in the high-resolution
+# mode (PG_W = BIG_W) the same on the 384x240 page, (byte * CUR_ZOOM * 6) / 320: the polygons are drawn at that
+# resolution, not enlarged afterwards. ScaleLo: the 320x200 value in either mode.
 Scale:
     movm    [a2,a3], (sp)
     add     -8, sp
     and     0xff, d0
     movhu   (CUR_ZOOM), d1
     mulu    d1, d0                  # product < 2^24, fits in d0
+    mov     (PG_W), d1
+    cmp     BIG_W, d1
+    beq     sc_hi
     lsr     6, d0
     ret     [a2,a3], 0x10
+sc_hi:
+    mov     6, d1
+    mulu    d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     320, d1
+    divu    d1, d0
+    ret     [a2,a3], 0x10
+ScaleLo:
+    and     0xff, d0
+    movhu   (CUR_ZOOM), d1
+    mulu    d1, d0
+    lsr     6, d0
+    rets
 
 # ================================================================================
 # The run-time guard's checks (vm.inc GUARD_*). Every write the VM makes goes through a page
@@ -30,11 +49,21 @@ Scale:
 #
 # GuardPage(a0 = page) -> d0 = 0 when a0 is one of the four pages, else 1 (recorded). Leaf.
 GuardPage:
-    mov     a0, d0
-    mov     PAGE_BITMAP_0, d1
-    sub     d1, d0                  # page - page 0: 0, 0x10000, 0x20000 or 0x30000
-    and     0xFFFCFFFF, d0
+    mov     a0, d1
+    mov     PAGE_BITMAP_0, d0
+    cmp     d0, d1
+    beq     gpg_ok
+    mov     PAGE_BITMAP_1, d0
+    cmp     d0, d1
+    beq     gpg_ok
+    mov     PAGE_BITMAP_2, d0
+    cmp     d0, d1
+    beq     gpg_ok
+    mov     PAGE_BITMAP_3, d0
+    cmp     d0, d1
     bne     gpg_bad
+gpg_ok:
+    clr     d0
     rets
 gpg_bad:
     mov     GUARD_PAGE, d0
@@ -50,13 +79,13 @@ GuardTrip:
     rets
 
 # ================================================================================
-# FillPage(d0 = colour): memset CUR_PAGE to a colour index.
+# FillPage(d0 = colour): memset CUR_PAGE (PG_SIZE bytes) to a colour index.
 FillPage:
     movm    [d2,d3,a2,a3], (sp)
     add     -8, sp
     mov     d0, d1
     mov     (CUR_PAGE), a2
-    mov     PAGE_SIZE, d2
+    mov     (PG_SIZE), d2
 fp_loop:
     movbu   d1, (a2)
     inc     a2
@@ -65,7 +94,7 @@ fp_loop:
     ret     [d2,d3,a2,a3], 0x18
 
 # ================================================================================
-# DrawPoint(d0 = x, d1 = y): CUR_PAGE[y*320 + x] = DRAW_COLOR. Clipped to the page
+# DrawPoint(d0 = x, d1 = y): CUR_PAGE[y*PG_W + x] = DRAW_COLOR. Clipped to the page
 # (the KN5000 source does not clip; we do, to protect the scratch RAM from stray
 # off-screen "point" polygons -- on-screen output is identical).
 DrawPoint:
@@ -75,25 +104,19 @@ DrawPoint:
     exth    d2
     cmp     0, d2
     blt     dp_ret
-    cmp     320, d2
+    mov     (PG_W), d0
+    cmp     d0, d2
     bge     dp_ret
     mov     d1, d3                  # y
     exth    d3
     cmp     0, d3
     blt     dp_ret
-    cmp     200, d3
+    mov     (PG_H), d0
+    cmp     d0, d3
     bge     dp_ret
-    mov     d3, d0                  # y*320
-    asl     8, d0                   # y*256
-    mov     d3, a2
-    add     a2, a2                  # 2y
-    add     a2, a2                  # 4y
-    add     a2, a2                  # 8y
-    add     a2, a2                  # 16y
-    add     a2, a2                  # 32y
-    add     a2, a2                  # a2 = y*64 (six doublings)
-    add     a2, d0                  # d0 = y*256 + y*64 = y*320
-    add     d2, d0                  # + x
+    mov     (PG_W), d0              # y*PG_W + x
+    mul     d3, d0
+    add     d2, d0
     mov     (CUR_PAGE), a2
     add     d0, a2
     movbu   (DRAW_COLOR), d0
@@ -164,7 +187,7 @@ dn_done:
 # ================================================================================
 # DrawSpanP: copy a span from PAGE_BITMAP_0 to CUR_LINE (drawLineP: "transparent to
 # the background" segments copy the backdrop page through). Both rows lie at the same offset in their
-# 0x10000-aligned pages, so a span of 8 or more is copied 4 bytes at a time between its ends.
+# pages (PAGE_STRIDE apart, a multiple of 4), so a span of 8 or more is copied 4 bytes at a time between its ends.
 DrawSpanP:
     movm    [d2,d3,a2,a3], (sp)
     add     -8, sp
@@ -194,11 +217,11 @@ dpn_max:
     add     d2, a3                  # dst = CUR_LINE + xmin
     movhu   (HLINEY), d0
     exth    d0
-    mov     320, d1
-    mul     d1, d0                  # HLINEY*320
+    mov     (PG_W), d1
+    mul     d1, d0                  # HLINEY*PG_W
     mov     PAGE_BITMAP_0, a2
     add     d0, a2
-    add     d2, a2                  # src = page0 + HLINEY*320 + xmin
+    add     d2, a2                  # src = page0 + HLINEY*PG_W + xmin
     cmp     8, d3
     bcs     dpn_loop                # short: a byte at a time
 dpn_head:
@@ -343,6 +366,12 @@ ReadVertices:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
     mov     a0, a2                  # cursor
+    movbu   (a2), d0                # bbox_w
+    call    ScaleLo, 0, 0           # (FillPolygon's point test: on the 320x200 values, in either mode)
+    movhu   d0, (POLY_BBOX_W_LO)
+    movbu   (1, a2), d0
+    call    ScaleLo, 0, 0
+    movhu   d0, (POLY_BBOX_H_LO)
     movbu   (a2), d0                # bbox_w
     inc     a2
     call    Scale, 0, 0
@@ -546,11 +575,11 @@ fp_lineP:
     mov     1, d0
 fp_setfunc:
     movbu   d0, (DRAW_FUNC)
-    # point fast path: bbox_w == 0 && bbox_h == 1 && numPoints == 4
-    movhu   (POLY_BBOX_W), d0
+    # point fast path: bbox_w == 0 && bbox_h == 1 && numPoints == 4 (the 320x200 bbox)
+    movhu   (POLY_BBOX_W_LO), d0
     cmp     0, d0
     bne     fp_poly
-    movhu   (POLY_BBOX_H), d0
+    movhu   (POLY_BBOX_H_LO), d0
     cmp     1, d0
     bne     fp_poly
     movbu   (POLY_NUM_POINTS), d0
@@ -582,7 +611,8 @@ fp_poly:
     # clip whole polygon
     movhu   (POLY_XMIN), d0
     exth    d0
-    cmp     320, d0
+    mov     (PG_W), d1
+    cmp     d1, d0
     bge     poly_done
     movhu   (POLY_XMAX), d0
     exth    d0
@@ -590,7 +620,8 @@ fp_poly:
     blt     poly_done
     movhu   (POLY_YMIN), d0
     exth    d0
-    cmp     200, d0
+    mov     (PG_H), d1
+    cmp     d1, d0
     bge     poly_done
     movhu   (POLY_YMAX), d0
     exth    d0
@@ -647,10 +678,10 @@ poly_raster:
     mov     a2, a1
     add     -4, a1
     call    CalcStep, 0, 0
-    # CUR_LINE = CUR_PAGE + HLINEY*320
+    # CUR_LINE = CUR_PAGE + HLINEY*PG_W
     movhu   (HLINEY), d0
     exth    d0
-    mov     320, d1
+    mov     (PG_W), d1
     mul     d1, d0
     mov     (CUR_PAGE), a2
     add     d0, a2
@@ -689,7 +720,8 @@ poly_hloop:
     movhu   d0, (X2)
     movhu   (X1), d0
     exth    d0
-    cmp     320, d0
+    mov     (PG_W), d1
+    cmp     d1, d0
     bge     poly_after_draw
     movhu   (X2), d0
     exth    d0
@@ -704,10 +736,11 @@ poly_hloop:
 poly_x1ok:
     movhu   (X2), d0
     exth    d0
-    cmp     319, d0
+    mov     (PG_W), d1
+    add     -1, d1
+    cmp     d1, d0
     ble     poly_x2ok
-    mov     319, d0
-    movhu   d0, (X2)
+    movhu   d1, (X2)
 poly_x2ok:
     movbu   (DRAW_FUNC), d0
     cmp     0, d0
@@ -735,12 +768,14 @@ poly_after_draw:
     add     1, d0
     movhu   d0, (HLINEY)
     mov     (CUR_LINE), a2
-    add     320, a2
+    mov     (PG_W), d0
+    add     d0, a2
     mov     a2, (CUR_LINE)
     movhu   (HLINEY), d0
     exth    d0
-    cmp     199, d0
-    bgt     poly_done
+    mov     (PG_H), d1
+    cmp     d1, d0
+    bge     poly_done
     movhu   (POLY_H), d0
     add     -1, d0
     movhu   d0, (POLY_H)
@@ -819,13 +854,15 @@ dstr_done:
     ret     [d2,d3,a2,a3], 0x28
 
 # ================================================================================
-# DrawChar(d0 = x, d1 = y, d2 = colour, d3 = char): plot an 8x8 glyph at (x,y) on
-# CUR_PAGE_1. Clipped to the 320x200 page (the KN5000 page is 320x240; ours is 200).
+# DrawChar(d0 = x, d1 = y, d2 = colour, d3 = char): plot an 8x8 glyph at (x,y) of the 320x200 game on
+# CUR_PAGE_1, clipped to it (the KN5000 page is 320x240; ours is 200). In the high-resolution mode the glyph
+# goes where (x,y) is on the 384x240 page (ToPg: 6/5) and stays 8x8, drawn pixel for pixel: the text is crisp,
+# and each character starts where the game put it.
 DrawChar:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x10, sp
-    mov     d2, (0, sp)             # colour (no calls here, so (0,sp) is safe)
-    mov     d3, (4, sp)             # char
+    add     -0x18, sp
+    mov     d2, (8, sp)             # colour
+    mov     d3, (0xc, sp)           # char
     exth    d0
     cmp     0, d0                   # clip x to [0, 312] (col 0..39; glyph fits 8 px)
     blt     dchr_ret
@@ -836,17 +873,25 @@ DrawChar:
     blt     dchr_ret
     cmp     193, d1
     bge     dchr_ret
-    mov     (4, sp), d2             # char -> font pointer
+    mov     d1, (0x14, sp)
+    call    ToPg, 0, 0              # x on the page
+    mov     d0, (0x10, sp)
+    mov     (0x14, sp), d0
+    call    ToPg, 0, 0              # y on the page
+    mov     (0xc, sp), d2           # char -> font pointer
     and     0xff, d2
     add     -0x20, d2
     asl     3, d2
     mov     AW_FONT, a2
     add     d2, a2
-    mov     320, d2                 # dst = CUR_PAGE_1 + y*320 + x
-    mul     d2, d1
+    mov     (PG_W), d2              # dst = CUR_PAGE_1 + y*PG_W + x
+    mul     d2, d0
     mov     (CUR_PAGE_1), a3
-    add     d1, a3
     add     d0, a3
+    mov     (0x10, sp), d0
+    add     d0, a3
+    add     -8, d2
+    mov     d2, (0x14, sp)          # PG_W - 8: the next scanline's start
     mov     8, d3                   # 8 rows
 dchr_jloop:
     movbu   (a2), d1                # row bits (bit 7 = leftmost)
@@ -856,15 +901,16 @@ dchr_iloop:
     mov     d1, d0
     and     0x80, d0
     beq     dchr_noplot
-    movbu   (0, sp), d0             # colour
+    movbu   (8, sp), d0             # colour
     movbu   d0, (a3)
 dchr_noplot:
     asl     1, d1
     inc     a3
     add     -1, d2
     bne     dchr_iloop
-    add     312, a3                 # next scanline (back 8, down 320)
+    mov     (0x14, sp), d0          # next scanline (back 8, down a row)
+    add     d0, a3
     add     -1, d3
     bne     dchr_jloop
 dchr_ret:
-    ret     [d2,d3,a2,a3], 0x20
+    ret     [d2,d3,a2,a3], 0x28

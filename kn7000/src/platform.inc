@@ -59,11 +59,14 @@
 .equ AW_H,            200
 .equ AW_X0,           160           # (640-320)/2
 .equ AW_Y0,           20            # (240-200)/2
-# The enlarged window (display.s BlitBig, PF_MODE 0, the default): the page scaled by 6/5 both ways, 384x240,
-# the LCD's whole height, centred; in every 5 pixels and every 5 rows the middle one is shown twice.
+# The high-resolution display mode (PF_MODE 0, the default): the four VM pages are 384x240, the game's 320x200
+# scaled by 6/5 and drawn at that resolution (vm.s, interp.s: README-CNV.md, "The screen"), and the window is the
+# LCD's whole height, centred. PF_MODE 1: 320x200 pages, the original resolution, in the AW_X0, AW_Y0 window.
 .equ BIG_W,           384
 .equ BIG_H,           240
 .equ BIG_X0,          128           # (640-384)/2
+.equ BIG_SIZE,        BIG_W*BIG_H   # 92,160 bytes, one colour index per pixel
+.equ HIRES_OK,        0             # 320x200 only (PF_MODE 1): the pages are 0x10000 apart
 
 # ---- RAM for the game (MAME ONLY, see the top) ------------------------------------
 # Work RAM 0x50000000-0x503FFFFF is real but heavily used by the firmware, and is
@@ -80,11 +83,12 @@
 .equ PAGE_BITMAP_2,   0x44120000
 .equ PAGE_BITMAP_3,   0x44130000
 .equ PAGE_SIZE,       AW_W*AW_H     # 64000 bytes, one colour index per pixel
+.equ PAGE_STRIDE,     0x10000
 .equ VM_POLY_BASE,    0x44050000    # vm.inc's three blocks
 .equ VM_INTERP_BASE,  0x44070000
 .equ VM_MISC_BASE,    0x44080000
-.equ HELP_BUF,        0x44140000    # 64000 bytes (the pages end at 0x44140000)
-.equ SHADOW,          0x44150000    # 64000 bytes: the page as the LCD shows it now (display.s BlitPage)
+.equ SHADOW,          0x44150000    # the window as the LCD shows it, 4 bits a pixel (display.s): 32,000 bytes
+.equ BITMAP_BUF,      SHADOW
 .equ VM_PERF_BASE,    0x44160000    # vm.inc: the speed measurement and the blit's tables, 0x1000 bytes
 .equ AW_FONT,         0x44480000    # anotherworld_chargen.rom, 768 bytes (8x8, chars 0x20+)
 .equ AW_STRIDX,       0x44490000    # str_index.rom, 2048 bytes (LE u16 offset per string id)

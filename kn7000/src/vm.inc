@@ -34,6 +34,8 @@
 .equ CUR_PAGE,        VM_STATE + 0x34   # u32 base of the page being drawn
 .equ DRAW_COLOR,      VM_STATE + 0x38   # byte
 .equ DRAW_FUNC,       VM_STATE + 0x39   # byte: 0 = flat (N), 1 = copy page0 (P), 2 = blend
+.equ POLY_BBOX_W_LO,  VM_STATE + 0x3A   # u16: the bbox at 320x200 (vm.s FillPolygon's point test)
+.equ POLY_BBOX_H_LO,  VM_STATE + 0x3C   # u16
 
 # POLY_POINTS: up to 50 (x,y) pairs, u16 each, interleaved. Kept last.
 # Spans VM_STATE+0x40 .. +0x108 (200 bytes). The interpreter state below starts a
@@ -100,6 +102,14 @@
 .equ LOAD_PACK,       VM_MISC_BASE + 0x0050     # u32: LoadGameData's pack loop index
 .equ LOAD_FILE,       VM_MISC_BASE + 0x0054     # u32: LoadGameData's open FILE*
 
+# The pages' geometry now (display.s DisplayInit, DisplayConvert): 384x240 in the high-resolution mode (PF_MODE 0),
+# 320x200 at the original resolution (PF_MODE 1). A probe that compares pages with the reference VM starts the game
+# at 320x200 by writing DISP_ORIG_MAGIC to DISP_ORIG before the game task starts (as NO_SPLASH).
+.equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
+.equ DISP_ORIG_MAGIC, 0x0A1D0320
+.equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320
+.equ PG_H,            VM_MISC_BASE + 0x0068     # u32: 240 or 200
+.equ PG_SIZE,         VM_MISC_BASE + 0x006C     # u32: PG_W * PG_H
 .equ DRAW_BUDGET,     VM_MISC_BASE + 0x0070     # per-VIDEO-op polygon budget (anti-hang guard)
 .equ DRAW_BUDGET_MAX, 4000
 .equ DRAW_DEPTH,      VM_MISC_BASE + 0x0074     # polygon-hierarchy recursion depth (stack guard)
@@ -168,9 +178,8 @@
 .equ PART_PASSWORD,   0x3E88         # the level-code screen (rawgl kPartPassword)
 .equ PART_PROTECTION, 0x3E80         # the copy-protection part, whose start is the splash
 
-# Help screen state. The pages are drawn into their own 320x200 buffer (HELP_BUF, per platform),
-# clear of the four VM pages, and shown through their own 4-colour palette; the game's palette is
-# saved and put back.
+# Help screen state. The pages are drawn into SHADOW (display.s ShadowOut), clear of the four VM pages, and
+# shown through their own 4-colour palette; the game's palette is saved and put back.
 .equ HELP_PAGE_NO,    VM_MISC_BASE + 0x005C     # u32: the help page shown (0..HELP_PAGES-1)
 .equ HELP_PAL_SAVE,   VM_MISC_BASE + 0x0100     # 32 bytes: the game's palette while the help is up
 .equ HELP_PAGES,      4              # the fourth: the speed figures (perf.s)
@@ -343,6 +352,7 @@
 .equ PFD_LOAD,        0x80           #   5 and 30 frames after a part's load (the firmware repaints its own
                                      #   screen around the loads: probes/cnv/README.md, "Speed")
 .equ PFD_BLACK,       0x100          #   the screen was painted black for a part's load (LcdBlack)
+.equ PFD_SHADOW,      0x200          #   SHADOW was used for something else (a bitmap's planes, the help or stop screen)
 .equ POSTLOAD_FRAMES, 30
 .equ REPAINT_FRAMES,  500            # a full repaint at least this often (frames)
 # the benchmark (perf.s PerfBench): ns per access x 10, in PF_BENCH

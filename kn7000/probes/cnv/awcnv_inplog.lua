@@ -30,7 +30,7 @@ local sp = cpu.spaces["program"]
 local CV, INTERP, MISC = 0x502DF000, 0x502E1000, 0x502E3000
 local CV_STATE, CV_QUIT, CV_DONE, CV_TASK, CV_ENDED, LD_CUR = CV, CV + 4, CV + 8, CV + 0x1C, CV + 0x30, CV + 0x44
 local PART, CUR_PAGE_2, REQ_NEXT_PART, CURRENT_THREAD = INTERP + 0x102A, INTERP + 0x100C, INTERP + 0x102C, INTERP + 0x1000
-local FRAME_NO, AU_MARK, IL_STATE = MISC + 0x7C, 0x502DA038, 0x50372000
+local FRAME_NO, AU_MARK, IL_STATE = MISC + 0x7C, 0x502DA038, 0x5031C000  -- inplog.inc IL_STATE (INPLOG_AT)
 local function VAR(i) return INTERP + 2 * i end
 local V_ACT, V_LR, V_UD, V_JMP, V_PMASK, V_AMASK, V_MARK = VAR(0xFA), VAR(0xFC), VAR(0xE5), VAR(0xFB), VAR(0xFD), VAR(0xFE), VAR(0xF4)
 
@@ -131,7 +131,7 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   clast = v
   local tick = chi + v - 1                                   -- the frame just ended (awcnv_cksum.lua's tick)
   local front = sp:read_u32(CUR_PAGE_2)
-  binf:write(sp:read_range(front, front + 63999, 8))
+  binf:write(sp:read_range(front, front + sp:read_u32(MISC + 0x6C) - 1, 8))  -- PG_SIZE: 64000 or 92160
   if varf then varf:write(sp:read_range(INTERP, INTERP + 511, 8)) end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
@@ -173,6 +173,9 @@ local function session()
     press("CPR_SEG6", 0x01)
     if wait_until(function() return sp:read_u32(CV_STATE) >= 2 end, 12) then break end
   end
+  -- the pages at 320x200, as rustyworld's (vm.inc DISP_ORIG; the game reads it when its task starts), unless
+  -- AW_HIRES=1: the game's own default, 384x240 pages (then the pages compare with nothing)
+  if not os.getenv("AW_HIRES") then sp:write_u32(MISC + 0x60, 0x0A1D0320) end
   if not wait_until(function() return sp:read_u32(CV_STATE) == 3 and sp:read_u32(CV_TASK) ~= 0 end, 120) then
     log("the game did not start"); return
   end

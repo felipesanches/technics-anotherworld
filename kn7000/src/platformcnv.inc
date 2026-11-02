@@ -30,11 +30,14 @@
 .equ AW_H,            200
 .equ AW_X0,           160           # (640-320)/2
 .equ AW_Y0,           20            # (240-200)/2
-# The enlarged window (display.s BlitBig, PF_MODE 0, the default): the page scaled by 6/5 both ways, 384x240,
-# the LCD's whole height, centred; in every 5 pixels and every 5 rows the middle one is shown twice.
+# The high-resolution display mode (PF_MODE 0, the default): the four VM pages are 384x240, the game's 320x200
+# scaled by 6/5 and drawn at that resolution (vm.s, interp.s: README-CNV.md, "The screen"), and the window is the
+# LCD's whole height, centred. PF_MODE 1: 320x200 pages, the original resolution, in the AW_X0, AW_Y0 window.
 .equ BIG_W,           384
 .equ BIG_H,           240
 .equ BIG_X0,          128           # (640-384)/2
+.equ BIG_SIZE,        BIG_W*BIG_H   # 92,160 bytes, one colour index per pixel
+.equ HIRES_OK,        1             # this build has room for the 384x240 pages
 
 # ---- the converter area, the loader and the mailbox -------------------------------------
 # kn7cnv.inc: CNV_BASE 0x502B8000 (where the firmware loads KN7LOAD.CNV), CNV_END 0x502E8000 (end of
@@ -65,8 +68,14 @@
 .equ AW_LO,           APP_BASE      # every byte the game writes is in [AW_LO, AW_HI) ...
 .equ AW_HI,           0x5037A000    # ... (0x5037A000 on holds boot data) minus the mailbox page
 .equ IMAGE_END_MAX,   0x502C8000    # KN7APP.BIN itself (header, code, tables) must end before this
-.equ HELP_BUF,        0x502C8000    # 64,000 bytes: help pages, the stop screen, and the buffer a
-.equ BITMAP_BUF,      HELP_BUF      #   packed bitmap is unpacked into before LoadBitmap draws it
+.equ SHADOW,          0x502C8000    # the window as the LCD shows it, 4 bits a pixel (display.s): 46,080 bytes at
+                                    #   384x240, 32,000 at 320x200; the help and stop screens are drawn in it
+.equ SHADOW_MAX,      46080         # BIG_SIZE / 2
+.equ BITMAP_BUF,      SHADOW        # a packed bitmap's 32,000 bytes of planes are unpacked here before LoadBitmap
+                                    #   draws them (and the next blit repaints everything: PFD_SHADOW)
+.equ BENCH_BUF,       0x502C8000    # 64,000 bytes the benchmark writes before the game starts (perf.s)
+.equ REPORT_BUF,      0x502D4000    # 8 KB: the text of AWPERF.TXT, written to the SD card at quit (cnv_main.s)
+.equ REPORT_MAX,      0x2000
 .equ AW_FONT,         0x502D8000    # anotherworld_chargen.rom, 768 bytes
 .equ AW_STRIDX,       0x502D8300    # str_index.rom, 2048 bytes
 .equ AW_STRDAT,       0x502D8B00    # str_data.rom, 4096 bytes, to 0x502D9AFF
@@ -107,15 +116,14 @@
 .equ PART_AREA,       0x502EE400    # the current part's palette, bytecode, polygons, bitmaps (and, before the
 .equ PART_END,        0x5031B000    #   first part, the sample bank's coded files, dsp.s BankRead) (largest part,
                                     #   the city: 164,407 bytes; aw_extract.py --parts)
-.equ PAGE_BITMAP_0,   0x50320000    # four 320x200 pages, one per 0x10000 (interp.s GetPagePtr)
-.equ PAGE_BITMAP_1,   0x50330000
-.equ PAGE_BITMAP_2,   0x50340000
-.equ PAGE_BITMAP_3,   0x50350000    # to 0x5035F9FF
-.equ SHADOW,          0x50360000    # 64,000 bytes: the page as the LCD shows it now (display.s BlitPage)
-.equ REPORT_BUF,      0x50370000    # 8 KB: the text of AWPERF.TXT, written to the SD card at quit (cnv_main.s)
-.equ REPORT_MAX,      0x2000
-.equ INPLOG_AT,       0x50372000    # 32 KB to AW_HI: the input log (inplog.s), not zeroed by the loader
-.equ PAGE_SIZE,       AW_W*AW_H
+.equ INPLOG_AT,       0x5031C000    # 16 KB, after the mailbox page: the input log (inplog.s), not zeroed by the loader
+.equ INPLOG_END,      0x50320000
+.equ PAGE_STRIDE,     BIG_SIZE      # four pages, 384x240 or 320x200 at their start (interp.s GetPagePtr), to AW_HI
+.equ PAGE_BITMAP_0,   0x50320000
+.equ PAGE_BITMAP_1,   PAGE_BITMAP_0 + PAGE_STRIDE
+.equ PAGE_BITMAP_2,   PAGE_BITMAP_0 + 2*PAGE_STRIDE
+.equ PAGE_BITMAP_3,   PAGE_BITMAP_0 + 3*PAGE_STRIDE  # to 0x50379FFF
+.equ PAGE_SIZE,       AW_W*AW_H     # 64,000: a 320x200 page
 
 # ---- MIDI IN as game input ----------------------------------------------------------
 # The game's own sound goes into the MIDI IN 1 receive ring on channels 4-16 (audio.s), so the note

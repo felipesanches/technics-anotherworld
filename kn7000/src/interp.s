@@ -52,9 +52,10 @@ gp_not_ff:
     rets
 gp_not_fe:
     and     3, d0
-    asl     16, d0                  # (id & 3) * 0x10000  (page stride)
+    mov     PAGE_STRIDE, d1
+    mulu    d1, d0                  # (id & 3) * PAGE_STRIDE
     mov     PAGE_BITMAP_0, a0
-    add     d0, a0                  # a0 = PAGE_BITMAP_0 + (id & 3) * 0x10000
+    add     d0, a0                  # a0 = PAGE_BITMAP_0 + (id & 3) * PAGE_STRIDE
     rets
 
 # ================================================================================
@@ -97,7 +98,9 @@ ResPtr:
 # bit k of every pixel, and within a byte the MSB is the leftmost of its 8 pixels
 # (rustyworld video.rs load_bg). Page 0 is cleared, then each plane ORs its bit in. The
 # platform's BitmapData gives the planes (the KN7APP.BIN build keeps bitmaps packed and
-# unpacks one here); a bitmap that is not there leaves page 0 alone.
+# unpacks one here, into SHADOW: the next blit repaints everything); a bitmap that is not there
+# leaves page 0 alone. In the high-resolution mode the 320x200 picture is then scaled to the
+# 384x240 page (display.s PageUp): the bitmaps exist at 320x200 only.
 LoadBitmap:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -181,6 +184,15 @@ lb_next:
     asl     1, d3
     cmp     0x10, d3
     bne     lb_plane
+    mov     (PG_W), d0
+    cmp     BIG_W, d0
+    bne     lb_shadow
+    mov     PAGE_BITMAP_0, a0
+    call    PageUp, 0, 0
+lb_shadow:
+    mov     (PF_DAMAGE), d0         # (BITMAP_BUF is SHADOW)
+    or      PFD_SHADOW, d0
+    mov     d0, (PF_DAMAGE)
 lb_ret:
     mov     (0x10, sp), d0
     call    PerfPhase, 0, 0
@@ -454,7 +466,8 @@ FillPageOp:
     and     0xff, d3
     mov     0x01010101, d0
     mul     d0, d3                  # d3 = the colour, four times
-    mov     PAGE_SIZE / 32, d2
+    mov     (PG_SIZE), d2
+    lsr     5, d2
 fpo_loop:
     mov     d3, (a2)
     mov     d3, (4, a2)
@@ -521,8 +534,9 @@ CopyPage:
 cp_novscroll:
     cmp     0, d3
     bne     cp_scrolled
-    # plain full-page copy, 32-bit words, 8 a turn (pages are 0x10000-aligned, PAGE_SIZE % 32 == 0)
-    mov     PAGE_SIZE/32, d2
+    # plain full-page copy, 32-bit words, 8 a turn (PG_SIZE % 32 == 0 in both modes)
+    mov     (PG_SIZE), d2
+    lsr     5, d2
 cp_loop:
     mov     (a2), d0
     mov     (4, a2), d1
@@ -559,32 +573,19 @@ cp_absrange:
     cmp     199, d2
     bgt     cp_ret
 cp_off:
-    # off_bytes = abs*320 -> a1
-    mov     d2, d0
-    asl     8, d0                   # abs*256
-    mov     d2, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0                  # abs*64
-    add     a0, d0                  # abs*320
+    mov     d2, d0                  # the scroll in the page's rows (6/5 of it in the high-resolution mode)
+    call    ToPg, 0, 0
+    mov     d0, d2
+    # off_bytes = abs*PG_W -> a1
+    mov     (PG_W), d1
+    mulu    d1, d0
     mov     d0, a1                  # a1 = off_bytes
-    # n_bytes = (200-abs)*320 -> d2
-    mov     200, d0
+    # n_bytes = (PG_H-abs)*PG_W -> d2
+    mov     (PG_H), d0
     sub     d2, d0                  # n_rows
-    mov     d0, d1
-    asl     8, d1                   # n_rows*256
-    mov     d0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0
-    add     a0, a0                  # n_rows*64
-    add     a0, d1                  # n_rows*320
-    mov     d1, d2                  # d2 = n_bytes
+    mov     (PG_W), d1
+    mulu    d1, d0
+    mov     d0, d2                  # d2 = n_bytes
     # vscroll >= 0 shifts content DOWN (dst += off); < 0 shifts UP (src += off)
     cmp     0, d3
     blt     cp_up
@@ -593,7 +594,7 @@ cp_off:
 cp_up:
     add     a1, a2
 cp_scopy:
-    lsr     2, d2                   # n_words = n_bytes / 4 (both offsets are 320-aligned)
+    lsr     2, d2                   # n_words = n_bytes / 4 (both offsets are whole rows, 4-aligned)
     cmp     0, d2
     beq     cp_ret
 cp_sloop:
@@ -2010,9 +2011,14 @@ DrawPolyTop:
     mov     d0, d3                  # the phase to go back to
     mov     (CUR_PAGE_1), a0
     call    PerfMarkDirty, 0, 0
+    mov     (0x14, sp), d0          # the centre on the page: 6/5 of it in the high-resolution mode
+    call    ToPgSigned, 0, 0
+    mov     d0, (0x14, sp)
+    mov     (0x18, sp), d0
+    call    ToPgSigned, 0, 0
+    mov     d0, d1
     mov     (0x10, sp), a0
     mov     (0x14, sp), d0
-    mov     (0x18, sp), d1
     call    ReadAndDrawPolygon, 0, 0
     mov     d3, d0
     call    PerfPhase, 0, 0

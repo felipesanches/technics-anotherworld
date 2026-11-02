@@ -48,7 +48,7 @@ AWCNV_TAP = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awframe", function(off
       M.time:as_double(), sp:read_u32(CV + 0x64), sp:read_u32(CV + 0x70), sp:read_u32(CV + 0x1C)))
   end
   local front = sp:read_u32(CUR_PAGE_2)
-  binf:write(sp:read_range(front, front + 63999, 8))
+  binf:write(sp:read_range(front, front + sp:read_u32(0x502E3000 + 0x6C) - 1, 8))  -- PG_SIZE: 64000 or 92160
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
   if tick >= MAXTICK then
@@ -65,6 +65,10 @@ AWCNV_TICK = emu.register_periodic(function()
   local s = STEPS[step]
   if s and t > s[1] then press(s[2], s[3], 1); s.down = s.down or t end
   if s and s.down and t > s.down + 0.4 then press(s[2], s[3], 0); print("awcnv: pressed " .. s[4]); step = step + 1 end
-  if not nosplash and sp:read_u32(CV) >= 2 then sp:write_u32(NO_SPLASH, 0x5EED0FF0); nosplash = true end
+  if not nosplash and sp:read_u32(CV) >= 2 then
+    sp:write_u32(NO_SPLASH, 0x5EED0FF0); nosplash = true
+    -- the pages at 320x200, as the reference's (vm.inc DISP_ORIG), unless AWCK_HIRES=1
+    if not os.getenv("AWCK_HIRES") then sp:write_u32(0x502E3000 + 0x60, 0x0A1D0320) end
+  end
   if finish then M:exit() end
 end)

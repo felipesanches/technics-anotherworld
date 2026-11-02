@@ -13,11 +13,10 @@
 -- and the last) it also writes the frame to AWL_OUT/lcd_TTTT.bin, for a byte comparison between two
 -- builds (cmp). Prints "awlcd: ..." lines: the ticks checked, the ticks and pixels that differ (and the
 -- first few), and the snapshots written.
--- Since 2026-11-02 the game has two display modes (vm.inc PF_MODE, read at each check): 1, the original
--- resolution, checked as above; 0, the enlarged window (the default): 128-pixel black strips beside a
--- 384x240 window, LCD pixel (x, y) of the window = palette[page[sy * 320 + sx] & 15] with sx, sy =
--- 5 * (n / 6) + (0, 1, 2, 2, 3, 4)[n % 6] of x, y (display.s BlitBig). AWL_PRESS="T:UP,T:DOWN,..." presses
--- PAGE UP or PAGE DOWN (0.3 s) once the game has reached tick T, to check both modes and the switches.
+-- Since 2026-11-02 the game has two display modes (vm.inc PF_MODE; the pages' width PG_W is read at each check):
+-- 320x200 pages, checked as above; 384x240 pages (the default, high resolution): 128-pixel black strips beside a
+-- 384x240 window, LCD pixel (x, y) of the window = palette[page[y * 384 + x] & 15]. AWL_PRESS="T:UP,T:DOWN,..."
+-- presses PAGE UP or PAGE DOWN (0.3 s) once the game has reached tick T, to check both modes and the switches.
 --   AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) probes/cnv/run_perf.sh OUT probes/cnv/awcnv_lcd.lua
 -- env: AWL_PAL (required), AWL_MAX (last tick, default 3600), AWL_SNAPS ("all", "none" or the step, default 100),
 -- AWL_TRACE ("FIRST-LAST": for those ticks, a line each with the firmware's LCD stores since the last tick,
@@ -34,8 +33,6 @@ local CUR_PAGE_2, FRAME_NO, NO_SPLASH, PART = 0x502E1000 + 0x100C, 0x502E3000 + 
 local FB, W, H, X0, Y0 = 0x9CE00000, 640, 240, 160, 20
 local BX0 = 128
 local ZBIG = string.rep("\0", BX0 * 2)
-local BMAP = {}                       -- the enlarged window's source index for each of its 384 columns / 240 rows
-for n = 0, 383 do BMAP[n] = 5 * (n // 6) + ({ 0, 1, 2, 2, 3, 4 })[n % 6 + 1] end
 local permode = { [0] = { n = 0, bad = 0 }, [1] = { n = 0, bad = 0 } }
 local PRESSES = {}
 for t, b in (os.getenv("AWL_PRESS") or ""):gmatch("(%d+):(%a+)") do PRESSES[#PRESSES + 1] = { tonumber(t), b } end
@@ -72,24 +69,19 @@ local function check(tick)
   end
   local page = sp:read_u32(CUR_PAGE_2)
   local lcd = sp:read_range(FB, FB + W * H * 2 - 1, 8)
-  local pix = sp:read_range(page, page + 320 * 200 - 1, 8)
+  local pgw = sp:read_u32(0x502E3000 + 0x64)            -- vm.inc PG_W
+  local mode = pgw == 384 and 0 or 1
+  local pix = sp:read_range(page, page + (mode == 0 and 384 * 240 or 320 * 200) - 1, 8)
   local bad = 0
-  local mode = sp:read_u32(PERF + 0x80)
-  local bigrows = {}
   for y = 0, H - 1 do
     local row = lcd:sub(y * W * 2 + 1, (y + 1) * W * 2)
     local want
     if mode == 0 then
-      local sy = BMAP[y]
-      want = bigrows[sy]
-      if not want then
-        local t = { ZBIG }
-        local base = sy * 320
-        for x = 0, 383 do t[#t + 1] = pal[pix:byte(base + BMAP[x] + 1) & 15] end
-        t[#t + 1] = ZBIG
-        want = table.concat(t)
-        bigrows[sy] = want
-      end
+      local t = { ZBIG }
+      local base = y * 384
+      for x = 1, 384 do t[#t + 1] = pal[pix:byte(base + x) & 15] end
+      t[#t + 1] = ZBIG
+      want = table.concat(t)
     elseif y < Y0 or y >= Y0 + 200 then
       want = ZROW
     else
@@ -144,7 +136,7 @@ AWL_TAP = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awl_frame", function(off
     table.sort(pl)
     print(string.format("awlcd: ticks 0-%d: %d checked, %d differ from the old blit's picture (%d pixels)%s; parts %s; %d snapshots in %s",
       tick, checked, badticks, badpx, #firstbad > 0 and (": " .. table.concat(firstbad, ", ")) or "", table.concat(pl, " "), snaps, OUT))
-    print(string.format("awlcd: enlarged: %d ticks checked, %d differ; original resolution: %d checked, %d differ; mode switches %d",
+    print(string.format("awlcd: 384x240: %d ticks checked, %d differ; original resolution: %d checked, %d differ; mode switches %d",
       permode[0].n, permode[0].bad, permode[1].n, permode[1].bad, sp:read_u32(PERF + 0x94)))
   end
 end)

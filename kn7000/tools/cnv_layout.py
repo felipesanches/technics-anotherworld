@@ -94,7 +94,9 @@ regions = [  # name, start, end, what
     ("RES_TAB", L["RES_TAB"], L["RES_TAB"] + 4 * 146, "where each resource is now"),
     ("VM_PERF_BASE", L["VM_PERF_BASE"], L["VM_PERF_BASE"] + BLOCKS["VM_PERF_BASE"],
      "speed figures, the blit's palette and pixel pairs"),
-    ("HELP_BUF", L["HELP_BUF"], L["HELP_BUF"] + 64000, "help pages, stop screen, bitmap unpacking"),
+    ("SHADOW", L["SHADOW"], L["SHADOW"] + L["SHADOW_MAX"],
+     "the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes"),
+    ("REPORT_BUF", L["REPORT_BUF"], L["REPORT_BUF"] + L["REPORT_MAX"], "the text of AWPERF.TXT"),
     ("AUDIO_VARS", L["AUDIO_VARS"], L["AUDIO_VARS"] + 0x200, "audio.s: MIDI producer, music player, note slots"),
     ("SND_TAB", L["SND_TAB"], L["SND_TAB"] + L["SND_TAB_MAX"], "each sound's program, note, length, from AWSND.AW"),
     ("DSP_HOST", L["DSP_HOST"], L["DSP_HOST"] + 0x400, "dsp.s: the effects DSP's routines, state, commands, readback"),
@@ -104,11 +106,9 @@ regions = [  # name, start, end, what
     ("VIDEO2_AT", L["VIDEO2_AT"], L["PART_AREA"], "the shared polygons (0x11)"),
     ("PART_AREA", L["PART_AREA"], L["PART_END"], "the current part's files"),
     ("LB_ADDR", C["LB_ADDR"], C["LB_ADDR"] + C["LB_LEN"], "the program menu's launch block (kn7cnv.inc): read, never ours"),
-] + [(f"PAGE_BITMAP_{k}", L[f"PAGE_BITMAP_{k}"], L[f"PAGE_BITMAP_{k}"] + 64000, f"VM page {k}") for k in range(4)] + [
-    ("SHADOW", L["SHADOW"], L["SHADOW"] + 64000, "the page as the LCD shows it (the blit)"),
-    ("REPORT_BUF", L["REPORT_BUF"], L["REPORT_BUF"] + L["REPORT_MAX"], "the text of AWPERF.TXT"),
-    ("INPLOG_AT", L["INPLOG_AT"], L["AW_HI"], "the input log: its variables and two halves (inplog.s)"),
-]
+    ("INPLOG_AT", L["INPLOG_AT"], L["INPLOG_END"], "the input log: its variables and two halves (inplog.s)"),
+] + [(f"PAGE_BITMAP_{k}", L[f"PAGE_BITMAP_{k}"], L[f"PAGE_BITMAP_{k}"] + L["BIG_SIZE"],
+      f"VM page {k}: 384x240, or 320x200 at its start") for k in range(4)]
 lo, hi, mb, mbe = L["AW_LO"], L["AW_HI"], L["MAILBOX_PAGE"], L["MAILBOX_PAGE_END"]
 for name, a, b, _ in regions:
     if a < lo or b > hi:
@@ -123,9 +123,12 @@ for (n1, a1, b1, _), (n2, a2, b2, _) in zip(srt, srt[1:]):
         problems.append(f"{n1} and {n2} overlap")
 if not (mb <= C["MAILBOX"] < mbe):
     problems.append("the mailbox is not on the mailbox page")
-if L["PAGE_BITMAP_1"] - L["PAGE_BITMAP_0"] != 0x10000 or any(
-        L[f"PAGE_BITMAP_{k + 1}"] - L[f"PAGE_BITMAP_{k}"] != 0x10000 for k in range(3)):
-    problems.append("the pages are not 0x10000 apart (interp.s GetPagePtr)")
+if any(L[f"PAGE_BITMAP_{k + 1}"] - L[f"PAGE_BITMAP_{k}"] != L["PAGE_STRIDE"] for k in range(3)):
+    problems.append("the pages are not PAGE_STRIDE apart (interp.s GetPagePtr)")
+if L["BENCH_BUF"] != L["SHADOW"] or L["BENCH_BUF"] + 64000 > L["AW_FONT"]:
+    problems.append("the benchmark's 64,000 bytes (BENCH_BUF) are not SHADOW's, REPORT_BUF's and free RAM before AW_FONT")
+if L["BITMAP_BUF"] != L["SHADOW"] or L["SHADOW_MAX"] < 32000 or L["SHADOW_MAX"] * 2 != L["BIG_SIZE"]:
+    problems.append("SHADOW does not hold a bitmap's planes and a 384x240 window at 4 bits a pixel")
 rows = [("range", "what")] + [(f"`0x{a:08X}`-`0x{b - 1:08X}`", f"{n}: {w}") for n, a, b, w in loader + srt]
 rows.insert(1 + len(loader) + next(i for i, r in enumerate(srt) if r[1] > mb), (f"`0x{mb:08X}`-`0x{mbe - 1:08X}`",
             "the firmware's mailbox page (0x5031BC00..): never written by the game but the request"))

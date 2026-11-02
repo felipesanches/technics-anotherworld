@@ -373,8 +373,8 @@ PerfSentinels:
     bne     psn_ret
     mov     sent_big, a2
     mov     SENT_BIG, d3
-    mov     (PF_MODE), d0
-    cmp     0, d0
+    mov     (PG_W), d0
+    cmp     BIG_W, d0
     beq     psn_one
     mov     sent_tab, a2
     mov     SENT_COUNT, d3
@@ -384,8 +384,15 @@ psn_one:
     mov     (4, a2), d0             # the window's pixel offset, or -1 for the border (black)
     cmp     -1, d0
     beq     psn_black
+    mov     d0, d1                  # SHADOW: 4 bits a pixel, the even one low
+    lsr     1, d1
     mov     SHADOW, a1
-    movbu   (d0, a1), d0
+    movbu   (d1, a1), d1
+    btst    1, d0
+    beq     psn_lo
+    lsr     4, d1
+psn_lo:
+    mov     d1, d0
     and     15, d0
     asl     1, d0
     mov     PF_PAL, a1
@@ -422,9 +429,9 @@ mt_ret:
 
 # =================================================================================
 # PerfInput: called from ReadInput every frame (not while the help screen runs, which turns its pages
-# with PAGE UP and PAGE DOWN). On a press: PAGE UP the enlarged window (PF_MODE 0), PAGE DOWN the original
-# resolution (PF_MODE 1); a change of mode closes the window of figures first, so that each mode's figures
-# stay its own, and the next blit repaints everything.
+# with PAGE UP and PAGE DOWN). On a press: PAGE UP the high-resolution mode (PF_MODE 0, 384x240 pages), PAGE
+# DOWN the original resolution (PF_MODE 1, 320x200); a change of mode closes the window of figures first, so
+# that each mode's figures stay its own, converts the pages (display.s DisplayConvert) and repaints everything.
 PerfInput:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -470,9 +477,7 @@ pip_set:
     mov     (PF_SWITCHES), d0
     inc     d0
     mov     d0, (PF_SWITCHES)
-    mov     (PF_DAMAGE), d0         # the other window's size: start from a full repaint
-    or      PFD_MODE, d0
-    mov     d0, (PF_DAMAGE)
+    call    DisplayConvert, 0, 0    # the pages to the mode's size; the next blit repaints everything
 pis_ret:
     ret     [d2,d3,a2,a3], 0x20
 
@@ -1226,9 +1231,9 @@ sent_tab:
     .long   FB + 180*FB_STRIDE + 320*2, (180-AW_Y0)*AW_W + 320-AW_X0
     .long   FB + 180*FB_STRIDE + 440*2, (180-AW_Y0)*AW_W + 440-AW_X0
 
-# The enlarged window's sentinels: the side strips at x 2, 125 (left) and 514, 637 (right), at y 10, every 30 rows
-# to 220, and 236; and the same 3 x 3 grid of source pixels as sent_tab's, (40, 160, 280) x (40, 100, 160), where
-# BlitBig shows them: x and y in 6 * (n / 5) + (0, 1, 2, 4, 5)[n % 5], here 48, 192, 336 across, 48, 120, 192 down.
+# The high-resolution window's sentinels: the side strips at x 2, 125 (left) and 514, 637 (right), at y 10, every
+# 30 rows to 220, and 236; and a 3 x 3 grid in the window, x 48, 192, 336 across and y 48, 120, 192 down of the
+# 384x240 page (where sent_tab's grid of the 320x200 page lies, scaled).
 sent_big:
     .long   FB + 10*FB_STRIDE + 2*2, -1
     .long   FB + 10*FB_STRIDE + 125*2, -1
@@ -1266,15 +1271,15 @@ sent_big:
     .long   FB + 236*FB_STRIDE + 125*2, -1
     .long   FB + 236*FB_STRIDE + 514*2, -1
     .long   FB + 236*FB_STRIDE + 637*2, -1
-    .long   FB + 48*FB_STRIDE + (BIG_X0+48)*2, 40*AW_W + 40
-    .long   FB + 48*FB_STRIDE + (BIG_X0+192)*2, 40*AW_W + 160
-    .long   FB + 48*FB_STRIDE + (BIG_X0+336)*2, 40*AW_W + 280
-    .long   FB + 120*FB_STRIDE + (BIG_X0+48)*2, 100*AW_W + 40
-    .long   FB + 120*FB_STRIDE + (BIG_X0+192)*2, 100*AW_W + 160
-    .long   FB + 120*FB_STRIDE + (BIG_X0+336)*2, 100*AW_W + 280
-    .long   FB + 192*FB_STRIDE + (BIG_X0+48)*2, 160*AW_W + 40
-    .long   FB + 192*FB_STRIDE + (BIG_X0+192)*2, 160*AW_W + 160
-    .long   FB + 192*FB_STRIDE + (BIG_X0+336)*2, 160*AW_W + 280
+    .long   FB + 48*FB_STRIDE + (BIG_X0+48)*2, 48*BIG_W + 48
+    .long   FB + 48*FB_STRIDE + (BIG_X0+192)*2, 48*BIG_W + 192
+    .long   FB + 48*FB_STRIDE + (BIG_X0+336)*2, 48*BIG_W + 336
+    .long   FB + 120*FB_STRIDE + (BIG_X0+48)*2, 120*BIG_W + 48
+    .long   FB + 120*FB_STRIDE + (BIG_X0+192)*2, 120*BIG_W + 192
+    .long   FB + 120*FB_STRIDE + (BIG_X0+336)*2, 120*BIG_W + 336
+    .long   FB + 192*FB_STRIDE + (BIG_X0+48)*2, 192*BIG_W + 48
+    .long   FB + 192*FB_STRIDE + (BIG_X0+192)*2, 192*BIG_W + 192
+    .long   FB + 192*FB_STRIDE + (BIG_X0+336)*2, 192*BIG_W + 336
 
 # The benchmark: kernel, target, turns of 8 accesses, accesses (in BN_ order).
 bench_tab:
@@ -1282,11 +1287,11 @@ bench_tab:
     .long   bk_w16, FB, 512, 4096                       # BN_LCD_W16: 8 KB of the top border rows
     .long   bk_w32, FB, 512, 4096                       # BN_LCD_W32: 16 KB
     .long   bk_r16, FB, 512, 4096                       # BN_LCD_R16
-    .long   bk_w8, HELP_BUF, 8000, 64000                # BN_RAM_W8: the help buffer, free until the game starts
-    .long   bk_w32, HELP_BUF, 2000, 16000               # BN_RAM_W32
-    .long   bk_r8, HELP_BUF, 8000, 64000                # BN_RAM_R8
-    .long   bk_r32, HELP_BUF, 2000, 16000               # BN_RAM_R32
-    .long   bk_r32, HELP_BUF + 0x40000000, 2000, 16000  # BN_UNC_R32: its uncached view, read only
+    .long   bk_w8, BENCH_BUF, 8000, 64000               # BN_RAM_W8: SHADOW and REPORT_BUF, free until the game starts
+    .long   bk_w32, BENCH_BUF, 2000, 16000              # BN_RAM_W32
+    .long   bk_r8, BENCH_BUF, 8000, 64000               # BN_RAM_R8
+    .long   bk_r32, BENCH_BUF, 2000, 16000              # BN_RAM_R32
+    .long   bk_r32, BENCH_BUF + 0x40000000, 2000, 16000 # BN_UNC_R32: its uncached view, read only
 
 
 # The help page's lines: kind (PageValues), colour (help_palette: 1 white, 2 cyan, 3 yellow), label,

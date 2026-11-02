@@ -9,10 +9,10 @@
 -- of FRAME_NO), every access the game's code makes (PC in KN7APP.BIN's image 0x502BA000-0x502BFFFF):
 --   lcd_w16 / lcd_w32 / lcd_w8   stores into the LCD frame 0x9CE00000-0x9CE4AFFF, by size
 --   lcd_r                        loads from it
---   page_r / page_w              loads / stores in the four VM pages and what follows them (the blit's
---                                shadow): 0x50320000-0x5036FFFF
+--   page_r / page_w              loads / stores in the four VM pages: 0x50320000-0x50379FFF (since 2026-11-02;
+--                                before, the pages and the blit's shadow, 0x50320000-0x5036FFFF)
 --   data_r / data_w              loads / stores in the rest of the game's RAM 0x502C8000-0x5031AFFF (VM
---                                state, help buffer, the part's bytecode and polygons)
+--                                state, the blit's 4-bit shadow since 2026-11-02, the part's bytecode and polygons)
 -- and, from any other PC, fw_lcd_w: the firmware's (or the loader's) stores into the LCD frame, with the
 -- PCs and the rectangle they covered (perf_fw.txt). Also per tick: the emulated time it took (dt_ms) and
 -- the converter calls the firmware made meanwhile.
@@ -75,10 +75,10 @@ AWP_TAPS = {
   sp:install_read_tap(FB, FB_END - 1, "awp_lcdr", function(offset, data, mask)
     if on and game() then C.lcd_r = C.lcd_r + 1 end
   end),
-  sp:install_read_tap(0x50320000, 0x5036FFFF, "awp_pager", function(offset, data, mask)
+  sp:install_read_tap(0x50320000, 0x50379FFF, "awp_pager", function(offset, data, mask)
     if on and game() then C.page_r = C.page_r + 1 end
   end),
-  sp:install_write_tap(0x50320000, 0x5036FFFF, "awp_pagew", function(offset, data, mask)
+  sp:install_write_tap(0x50320000, 0x50379FFF, "awp_pagew", function(offset, data, mask)
     if on and game() then C.page_w = C.page_w + 1 end
   end),
   sp:install_read_tap(0x502C8000, 0x5031AFFF, "awp_datar", function(offset, data, mask)

@@ -9,8 +9,8 @@
 
 # ================================================================================
 # HelpScreen: called from ReadInput while HELP is held. The VM does not run meanwhile. The pages
-# are drawn into HELP_BUF with their own palette; the game's palette is saved and put back and the
-# game's front page is blitted again on the way out.
+# are drawn into SHADOW (display.s ShadowOut) with their own palette, at the pages' resolution; the game's
+# palette is saved and put back and the game's front page is blitted again on the way out.
 HelpScreen:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -85,8 +85,7 @@ hs_page_wait:                       # wait for PAGE UP / DOWN to be released
     movbu   (BTN_PAGE_OFS, a0), d0
     and     BTN_PAGEUP_BIT | BTN_PAGEDN_BIT, d0
     bne     hs_page_wait
-    mov     HELP_BUF, a0            # show the page again: the firmware may have repainted
-    call    BlitPage, 0, 0          # the screen for the button press
+    call    HelpReshow, 0, 0        # the firmware may have repainted the screen for the button press
     bra     hs_poll
 hs_idle:                            # nothing pressed: re-show the page every HELP_REFRESH
     mov     (HELP_TICK), d0         # polls, in case the firmware repainted the screen (the blit
@@ -96,9 +95,7 @@ hs_idle:                            # nothing pressed: re-show the page every HE
     blt     hs_poll
     clr     d0
     mov     d0, (HELP_TICK)
-    call    PerfSentinels, 0, 0
-    mov     HELP_BUF, a0
-    call    BlitPage, 0, 0
+    call    HelpReshow, 0, 0
     bra     hs_poll
 hs_exit:                            # wait until every control is released
     call    HelpSleep, 0, 0
@@ -138,6 +135,18 @@ hs_cp_loop:
     bne     hs_cp_loop
     rets
 
+# HelpReshow: the page again, all of it, if a sentinel finds the LCD not as shown (perf.s PerfSentinels).
+HelpReshow:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    call    PerfSentinels, 0, 0
+    mov     (PF_DAMAGE), d0
+    cmp     0, d0
+    beq     hr_ret
+    call    ShadowOut, 0, 0
+hr_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
 # HelpSleep: wait 30 ms, keeping the keybed/MIDI note trackers up to date.
 HelpSleep:
     movm    [d2,d3,a2,a3], (sp)
@@ -158,22 +167,11 @@ HelpGameInput:
     call    NotesAnyHeld, 0, 0
     ret     [d2,d3,a2,a3], 0x20
 
-# HelpDrawPage: draw page HELP_PAGE_NO (help_pages) into HELP_BUF and show it.
+# HelpDrawPage: draw page HELP_PAGE_NO (help_pages) into SHADOW and show it.
 HelpDrawPage:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     HELP_BUF, a0            # black page
-    mov     PAGE_SIZE / 4, d1
-    clr     d0
-hd_clear:
-    mov     d0, (a0)
-    add     4, a0
-    add     -1, d1
-    bne     hd_clear
-    mov     (CUR_PAGE_1), d0        # DrawChar draws on CUR_PAGE_1
-    mov     d0, (4, sp)
-    mov     HELP_BUF, a0
-    mov     a0, (CUR_PAGE_1)
+    call    ShadowClear, 0, 0
     call    HelpSoundState, 0, 0
     mov     d0, (HELP_SNDSTATE)
     call    DspModeText, 0, 0       # the status lines (page 1)
@@ -198,50 +196,98 @@ hd_item:
     add     12, a2
     bra     hd_item
 hd_done:
-    mov     (4, sp), d0
-    mov     d0, (CUR_PAGE_1)
-    mov     HELP_BUF, a0
-    call    BlitPage, 0, 0
+    call    ShadowOut, 0, 0
     ret     [d2,d3,a2,a3], 0x20
 
-# HelpText(a3 = NUL-terminated text, d0 = x, d1 = y, d2 = colour): 8x8 glyphs from AW_FONT, but '.' (a solid
-# 2x2 dot). The pages' items all lie inside the 320x200 page (DrawChar's clip).
+# HelpText(a3 = NUL-terminated text, d0 = x, d1 = y, d2 = colour): into SHADOW, 8x8 glyphs from AW_FONT, but '.'
+# (a solid 2x2 dot). x and y are the 320x200 game's (the pages' items all lie inside it); in the high-resolution
+# mode each glyph goes where its place is on the 384x240 page (ToPg) and stays 8x8, pixel for pixel, as the
+# game's text (vm.s DrawChar). Keeps d2, a2.
 HelpText:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x10, sp
-    mov     d0, (4, sp)
-    mov     d1, (8, sp)
+    add     -0x28, sp
+    mov     d0, (0x10, sp)          # x, y of the 320x200 game
+    mov     d1, (0x14, sp)
 ht_loop:
     movbu   (a3), d3
     cmp     0, d3
     beq     ht_done
     inc     a3
-    mov     (4, sp), d0
-    mov     (8, sp), d1
     cmp     0x2E, d3                # '.': the game font's is a small ring at the baseline, which read as
     bne     ht_glyph                # "github°com" on the URL page: a solid dot instead, the size of ':''s
-    mov     320, d3
-    add     5, d1
-    mulu    d3, d1
+    mov     (0x10, sp), d0
     add     3, d0
-    add     d1, d0
-    mov     (CUR_PAGE_1), a0
-    add     d0, a0
-    movbu   d2, (a0)
-    movbu   d2, (1, a0)
-    movbu   d2, (320, a0)
-    movbu   d2, (321, a0)
-    mov     0x2E, d3
+    call    ToPg, 0, 0
+    mov     d0, (0x18, sp)
+    mov     (0x14, sp), d0
+    add     5, d0
+    call    ToPg, 0, 0
+    mov     d0, (0x1C, sp)
+    mov     (0x18, sp), d0
+    mov     (0x1C, sp), d1
+    call    ShadowPlot, 0, 0
+    mov     (0x18, sp), d0
+    inc     d0
+    mov     (0x1C, sp), d1
+    call    ShadowPlot, 0, 0
+    mov     (0x18, sp), d0
+    mov     (0x1C, sp), d1
+    inc     d1
+    call    ShadowPlot, 0, 0
+    mov     (0x18, sp), d0
+    inc     d0
+    mov     (0x1C, sp), d1
+    inc     d1
+    call    ShadowPlot, 0, 0
     bra     ht_next
 ht_glyph:
-    call    DrawChar, 0, 0          # preserves d2 (colour), d3, a2, a3
+    mov     (0x10, sp), d0
+    call    ToPg, 0, 0
+    mov     d0, (0x18, sp)          # X
+    mov     (0x14, sp), d0
+    call    ToPg, 0, 0
+    mov     d0, (0x1C, sp)          # Y
+    and     0xff, d3                # the glyph
+    add     -0x20, d3
+    asl     3, d3
+    mov     AW_FONT, a2
+    add     d3, a2
+    clr     d0
+    mov     d0, (0x20, sp)          # row
+ht_row:
+    movbu   (a2), d3                # row bits (bit 7 = leftmost)
+    inc     a2
+    clr     d0
+    mov     d0, (0x24, sp)          # column
+ht_col:
+    btst    0x80, d3
+    beq     ht_skip
+    mov     (0x18, sp), d0
+    mov     (0x24, sp), d1
+    add     d1, d0
+    mov     (0x20, sp), d1
+    mov     (0x1C, sp), a0
+    add     a0, d1
+    call    ShadowPlot, 0, 0        # keeps d2, d3
+ht_skip:
+    asl     1, d3
+    mov     (0x24, sp), d0
+    inc     d0
+    mov     d0, (0x24, sp)
+    cmp     8, d0
+    bne     ht_col
+    mov     (0x20, sp), d0
+    inc     d0
+    mov     d0, (0x20, sp)
+    cmp     8, d0
+    bne     ht_row
 ht_next:
-    mov     (4, sp), d0
+    mov     (0x10, sp), d0
     add     8, d0
-    mov     d0, (4, sp)
+    mov     d0, (0x10, sp)
     bra     ht_loop
 ht_done:
-    ret     [d2,d3,a2,a3], 0x20
+    ret     [d2,d3,a2,a3], 0x38
 
 # ================================================================================
 # The pages. Each item: .word x, y, colour, 0 then .long text (12 bytes, 4-byte aligned for the

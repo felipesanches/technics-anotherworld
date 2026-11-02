@@ -26,7 +26,7 @@
 .equ IL_SEQ,        INPLOG_AT + 0x40    # halves started
 .equ IL_NAME,       INPLOG_AT + 0x50    # 16 bytes: AWINnn.BIN
 .equ IL_BUF0,       INPLOG_AT + 0x100
-.equ IL_HALF_BYTES, 0x3F80
+.equ IL_HALF_BYTES, 0x1F80          # two halves in 16 KB (INPLOG_AT to INPLOG_END); a file each
 .equ IL_HALF_RECS,  IL_HALF_BYTES / 8
 .equ IL_BUF1,       IL_BUF0 + IL_HALF_BYTES
 

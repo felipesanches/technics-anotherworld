@@ -13,12 +13,16 @@
 #   python3 -I cksum_pages.py <pages.bin> <pages.idx> <out.log>
 import sys, zlib
 
-PAGE = 320 * 200  # 64000 bytes, one palette index per pixel
+PAGE = 320 * 200  # 64000 bytes, one palette index per pixel; 384 * 240 = 92160 in the KN7000 build's
+                  # high-resolution mode (since 2026-11-02): the size is taken from the file
 
 def main():
     binpath, idxpath, outpath = sys.argv[1], sys.argv[2], sys.argv[3]
     ticks = [int(line.split()[0]) for line in open(idxpath) if line.strip()]
     data = open(binpath, "rb").read()
+    global PAGE
+    if ticks and len(data) == len(ticks) * 384 * 240:
+        PAGE = 384 * 240
     assert len(data) == len(ticks) * PAGE, \
         f"{len(data)} bytes != {len(ticks)} ticks * {PAGE}"
     with open(outpath, "w") as out:
