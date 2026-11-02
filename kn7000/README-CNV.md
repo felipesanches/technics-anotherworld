@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                             |
 |--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 32,312  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
+| `KN7APP.BIN`                         | 33,440  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
@@ -49,7 +49,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
 
-1,041,428 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,042,556 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -61,8 +61,10 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`94910f68eec0fd4839ab2eb2842311e4ed07028f` (round 3, `7f8ed09a...`: the coded bank, the keybed-only controls, the
-keybed-sound key; then UP moved to A♭5 or B♭5; `build/sdcard.txt` lists it with the rest). The builds before it that ran on Felipe's KN7000: `a2fbbaa6...`
+`7b07e0f1ea0032e0595f0d3b52bdbda22257006a` (SHR shifts logically, found by replaying Felipe's first input log;
+`build/sdcard.txt` lists it with the rest). Before it: `6f58c18f...` (the input log, played on Felipe's KN7000 on
+2026-11-01), `94910f68...` (round 3, `7f8ed09a...`: the coded bank, the keybed-only controls, the keybed-sound key;
+then UP moved to A♭5 or B♭5). The builds before those that ran on Felipe's KN7000: `a2fbbaa6...`
 (the DSP sound) and `97fbd9e6...` (the first sound build, tone generator only).
 
 **With the program menu (2026-10-20): the game in a folder of its own, `AW\`.** The card's root
@@ -245,10 +247,14 @@ To replay and compare (`probes/cnv/README.md`):
     probes/cnv/run_inplog.sh OUT replay session.awr           # MAME: the session replayed, its pages (OUT/pages.log)
     replayawr session.awr ref.log                             # rustyworld (research-scratch kn7000-aw-reference/replay-mods)
     python3 probes/compare_frames.py OUT/pages.log ref.log    # the first frame where they differ, and the rest
+    REF_VARS=ref.vars replayawr session.awr ref.log           # rustyworld, with its 256 variables at every frame
+    python3 probes/varsdiff.py OUT/vars.bin ref.vars          # the first variable to differ, and when
+    python3 probes/pagediff.py OUT/pages.bin REF.bin FRAME -o DIR  # both pages side by side, the difference in red
+                                                              # (REF_BIN=REF.bin replayawr ... writes rustyworld's)
 
 `awcnv_inplog.lua` gives MAME's game what the log says, where the log says it: the input at ReadInput's last write,
-the marks when NextThread picks the thread that saw them first (the module player's own are undone), the requests
-after ReadInput. `replayawr` does the same in rustyworld (`Vm::run_awr`), starting with the port's splash.
+the marks when NextThread picks the thread that saw them first, or at the frame's end when no later thread runs (the
+module player's own are undone), the requests after ReadInput. `replayawr` does the same in rustyworld (`Vm::run_awr`), starting with the port's splash.
 `run_inplog.sh OUT record` plays a scripted session in MAME and logs it, for testing the log itself.
 
 ## How it works

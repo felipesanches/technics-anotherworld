@@ -22,7 +22,7 @@
 -- At the log's E frame it quits (EXIT held), so the replay's own log can be checked against the one replayed: its
 -- I, P and R records must be the same (the marks are not: the live ones are logged before they are undone).
 --
--- Env: AWCK_BIN, AWCK_IDX (the capture), AW_REPLAY, AW_INTRO_FRAMES, AW_MAP (build/kn7app.map: ReadInput's range).
+-- Env: AWCK_BIN, AWCK_IDX (the capture), AWCK_VARS (optional: the 256 VM variables at each capture, int16 LE), AW_REPLAY, AW_INTRO_FRAMES, AW_MAP (build/kn7app.map: ReadInput's range).
 -- Addresses: src/platformcnv.inc, src/vm.inc, src/cnv_main.s, src/audio.s.
 local M = manager.machine
 local cpu = M.devices[":maincpu"]
@@ -110,6 +110,9 @@ if REPLAY then
   AWIL_THR = sp:install_write_tap(CURRENT_THREAD & ~3, (CURRENT_THREAD & ~3) + 3, "awil_thr", function(offset, data, mask)
     if (mask & 0xff) == 0 then return end
     local t, f = data & 0xff, frame()
+    -- thread 0 is written at the frame's end (NextThread, before FRAME_NO counts on): no more of frame f's threads
+    -- run, and the end-of-frame yield comes next, where the log's thread-0 marks of frame f+1 appeared
+    if t == 0 then f, t = f + 1, 0 end
     while MARKS[mi] and (MARKS[mi][1] < f or (MARKS[mi][1] == f and MARKS[mi][2] <= t)) do
       sp:write_u16(V_MARK, s16(MARKS[mi][3])); mi = mi + 1; stats.marks = stats.marks + 1
     end
@@ -118,6 +121,7 @@ end
 
 -- ---- the capture: the front page at every FRAME_NO write (awcnv_cksum.lua's) ---------------------------------
 local binf, idxf = io.open(OUTBIN, "wb"), io.open(OUTIDX, "w")
+local varf = os.getenv("AWCK_VARS") and os.getenv("AWCK_VARS") ~= "" and io.open(os.getenv("AWCK_VARS"), "wb")
 local captured, capturing, chi, clast = 0, true, 0, 0
 AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function(offset, data, mask)
   if not capturing or offset ~= FRAME_NO then return end
@@ -128,11 +132,12 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   local tick = chi + v - 1                                   -- the frame just ended (awcnv_cksum.lua's tick)
   local front = sp:read_u32(CUR_PAGE_2)
   binf:write(sp:read_range(front, front + 63999, 8))
+  if varf then varf:write(sp:read_range(INTERP, INTERP + 511, 8)) end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
 end)
 local function stop_capture()
-  if capturing then capturing = false; binf:close(); idxf:close(); log(string.format("captured %d frames", captured)) end
+  if capturing then capturing = false; binf:close(); idxf:close(); if varf then varf:close() end; log(string.format("captured %d frames", captured)) end
 end
 
 -- ---- inputs --------------------------------------------------------------------------------------------------

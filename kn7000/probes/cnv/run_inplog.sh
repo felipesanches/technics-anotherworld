@@ -7,9 +7,10 @@
 # The input log (src/inplog.s; README-CNV.md, "Replaying a session") with awcnv_inplog.lua. Each run boots with the
 # owner's loader floppy and a copy of the real KN7000's card with build/sdcard/ added (run_cnv_tests.sh's way), -bios
 # $BIOS (default v13, program 893, the owner's). A run leaves in OUT: run.log, pages.bin/.idx (the front page at every
-# frame), pages.log (their CRC-32s, cksum_pages.py), AWIN*.BIN (the game's log, from the card) and session.awr
-# (tools/aw_inplog.py's text of it). A replay also checks its own log against the one replayed: the I, P and R
-# records must be the same (input.txt). OUT is scratch (~/compartilhado/tmp/..., never /tmp). Run `make sdcard`
+# frame), vars.bin (the 256 VM variables at every frame, int16 LE), pages.log (their CRC-32s, cksum_pages.py), AWIN*.BIN (the game's log, from the card) and session.awr
+# (tools/aw_inplog.py's text of it). A replay also checks its own log against the one replayed: the I and P
+# records must be the same (input.txt); R records are not, as the replay sets the requested part itself, past the
+# game's ReadInput, which is what logs them. OUT is scratch (~/compartilhado/tmp/..., never /tmp). Run `make sdcard`
 # first. Env: EMU (default ~/compartilhado/kn7000-emulator), BIOS, CARDFILES (default build/sdcard), DISPLAY.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -36,7 +37,7 @@ python3 -I "$DISASM_REPO/tools/sd_addfile.py" "$O/sd.img" "${args[@]}" > "$O/car
 cp "$FLOPPY" "$O/floppy.img"; chmod u+w "$O/floppy.img"
 { echo "KN7APP.BIN $(sha1sum < "$CARDFILES/KN7APP.BIN" | cut -c1-40), emulator $(md5sum < "$EMU/kn7000" | cut -c1-32), bios $BIOS"
   [ -n "$SESSION" ] && echo "replaying $SESSION $(sha1sum < "$SESSION" | cut -c1-40)"; } > "$O/versions.txt"
-( cd "$EMU" && AWCK_BIN="$O/pages.bin" AWCK_IDX="$O/pages.idx" AW_MAP="$KN/build/kn7app.map" AW_REPLAY="$SESSION" \
+( cd "$EMU" && AWCK_BIN="$O/pages.bin" AWCK_IDX="$O/pages.idx" AWCK_VARS="$O/vars.bin" AW_MAP="$KN/build/kn7app.map" AW_REPLAY="$SESSION" \
   DISPLAY="${DISPLAY:-:0}" timeout -k 10 "${TIMEOUT:-5400}" ./kn7000 kn7000 -bios "$BIOS" -rompath ./roms -pluginspath ./plugins \
   -skip_gameinfo -window -nothrottle -harddisk "$O/sd.img" -flop "$O/floppy.img" -nvram_directory "$O/nv" \
   -cfg_directory "$O/cfg" -snapshot_directory "$O/snap" -autoboot_script "$HERE/awcnv_inplog.lua" ) > "$O/run.log" 2>&1
@@ -48,11 +49,11 @@ for n in $(seq -w 0 99); do
 done
 python3 -I "$KN/tools/aw_inplog.py" "$O" -o "$O/session.awr"
 if [ -n "$SESSION" ]; then
-  # the replay's own log: its inputs, parts and requests as the replayed one's (up to where the replay quit)
+  # the replay's own log: its inputs and parts as the replayed one's (up to where the replay quit)
   last=$(awk '$1=="E"{print $2}' "$O/session.awr")
-  grep -E '^[IPR] ' "$SESSION" | awk -v L="$last" '$2 < L' > "$O/input.want"
-  grep -E '^[IPR] ' "$O/session.awr" | awk -v L="$last" '$2 < L' > "$O/input.got"
-  if cmp -s "$O/input.want" "$O/input.got"; then echo "input: the replay's I, P and R records are the replayed ones ($(wc -l < "$O/input.got") records)" | tee "$O/input.txt"
+  grep -E '^[IP] ' "$SESSION" | awk -v L="$last" '$2 < L' > "$O/input.want"
+  grep -E '^[IP] ' "$O/session.awr" | awk -v L="$last" '$2 < L' > "$O/input.got"
+  if cmp -s "$O/input.want" "$O/input.got"; then echo "input: the replay's I and P records are the replayed ones ($(wc -l < "$O/input.got") records)" | tee "$O/input.txt"
   else echo "input: DIFFERENT (diff $O/input.want $O/input.got)" | tee "$O/input.txt"; fi
 fi
 rm -f -- "$O/sd.img" "$O/floppy.img"

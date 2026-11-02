@@ -649,3 +649,25 @@ frame (pages.log), rustyworld's `replayawr` (research-scratch kn7000-aw-referenc
 
 In `rep1` the module player wrote 5 marks of its own, which the replay undid: the music does not keep the same time
 against the VM's frames from one run to the next, so the marks must come from the log.
+
+**Felipe's first session on the instrument (2026-11-01; `probes/sessions/2026-11-01-felipe-unit-aw.awr`, from
+`2026-11-01-felipe-unit-AWIN00.BIN`):** 1346 frames: the splash, the intro (2 marks), the code screen, a code, part
+0x3E86 played until the hero died. Replayed in MAME with KN7APP.BIN 6f58c18f, the build it was played on, against
+rustyworld's replay: frames 0-1142 identical, 1143-1291 different (149), the rest identical. A black bar was drawn in
+the upper room instead of the lower one, and rustyworld's death screen came a frame earlier. `varsdiff.py` named var
+0x4B first, at frame 1142: -436 against 588, 1024 apart; rustyworld's opcode trace (`WATCH_VAR=4b DUMP_TICK=1142`)
+showed thread 63 at pc 44067 doing SHR 6 on 0x8000. The port shifted arithmetically (0xFE00), rawgl's `op_shr` and
+rustyworld shift logically (0x0200). With SHR fixed in both ports (technics-anotherworld aeeeb5c, KN7APP.BIN 7b07e0f1):
+
+| run                                   | frames | sync marks | MAME's replay against rustyworld's                                |
+|---------------------------------------|--------|------------|-------------------------------------------------------------------|
+| Felipe's session, the build it played | 1346   | 2          | pages 1197/1346; first variable to differ 0x4B at frame 1142      |
+| Felipe's session, SHR fixed           | 1346   | 2          | pages 1346/1346; all 256 variables equal at every frame           |
+| `rec2`'s log, SHR fixed               | 3218   | 24         | pages 3218/3218 (and `rec2`'s own 3198/3198); all variables equal |
+
+The variables are compared at each frame's end (`vars.bin`, written beside the pages; rustyworld's `REF_VARS`). For
+them to compare equal, both replays now write a mark that no later thread of its frame sees at the frame's end: the
+MAME replay at NextThread's end-of-frame thread 0 write, rustyworld after its last chan (research-scratch 5a61c1d).
+Before that change, var 0xF4 differed at the end of 13 frames of these two sessions, all frames whose logged mark came
+after the last thread that ran, while the pages all agreed. The replay's own log has no R record, as the replay sets
+the requested part itself, past ReadInput, which logs them; `run_inplog.sh` checks the I and P records.
