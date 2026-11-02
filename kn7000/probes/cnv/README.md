@@ -759,6 +759,10 @@ first snapshot after the menu is up (0.2 s) still shows the firmware's own STYLE
 "KN7000 PROGRAM MENU": the firmware paints it at the menu's first request-5 answer, as whenever the loader starts the
 menu, before the menu draws over it (the menu's own start, not the game's quit).
 
+On the final build (`fafbe3d9`): the acceptance tests above, `ic23 v13 ... blank` and `ic23 v16 ... blank`, pass all
+eight checks (the saved IC23s `eb26c67b...`, `bc2305dd...` as before; area clean); `run_prefs.sh` passes all seven,
+"defaults" among them (light scatter 2, long, with no AWPREFS.CFG).
+
 Leaving the menu itself stays the firmware's: its message, then "Continue Next?". Tried and dropped: the menu calling
 the firmware's ChangeMode(1, 0) (what "Continue Next?" NO calls, 893 `loc_484796EC`) on its last call: the main screen
 came (title 0x01, 2.7 s after EXIT), but the firmware's dispatcher then opened "Continue Next?" over it (0x4C at 2.82 s,
