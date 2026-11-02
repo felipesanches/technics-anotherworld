@@ -7,7 +7,8 @@
 -- Starts the game as a player does (DISK MENU, STYLE CONVERT, OK on KN7LOAD.CNV), with the intro at tick 0
 -- (NO_SPLASH, as awcnv_cksum.lua), and from tick AWP_FROM to AWP_MAX counts, per VM tick (between two writes
 -- of FRAME_NO), every access the game's code makes (PC in KN7APP.BIN's image 0x502BA000-0x502BFFFF):
---   lcd_w16 / lcd_w32 / lcd_w8   stores into the LCD frame 0x9CE00000-0x9CE4AFFF, by size
+--   lcd_w16 / lcd_w32 / lcd_w8   stores into display memory 0x9CE00000-0x9CF3FFFF, by size (the 16-bit frame
+--                                until 2026-11-02, the game's 8-bit FB8 since: src/lcd8.s)
 --   lcd_r                        loads from it
 --   page_r / page_w              loads / stores in the four VM pages: 0x50320000-0x50379FFF (since 2026-11-02;
 --                                before, the pages and the blit's shadow, 0x50320000-0x5036FFFF)
@@ -31,7 +32,7 @@ local MAXTICK = tonumber(os.getenv("AWP_MAX") or "400")
 local CV = 0x502DF000
 local FRAME_NO, NO_SPLASH = 0x502E3000 + 0x7C, 0x502E3000 + 0x58
 local CODE_LO, CODE_HI = 0x502BA000, 0x502C8000
-local FB, FB_END = 0x9CE00000, 0x9CE00000 + 640 * 240 * 2
+local FB, FB_END = 0x9CE00000, 0x9CF40000           -- all of the S1D13806's 1280 KB
 local function press(tag, mask, v)
   local p = M.ioport.ports[":cpanel:" .. tag] or M.ioport.ports[":" .. tag]
   for _, f in pairs(p.fields) do if f.mask == mask then f:set_value(v) end end

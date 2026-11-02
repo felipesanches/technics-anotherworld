@@ -22,7 +22,9 @@ local FRAME_NO, NO_SPLASH = 0x502E3000 + 0x7C, 0x502E3000 + 0x58
 local FD = 0x502E0400                 -- fwdraw.s FWDRAW_AT: hooked, quiet, skipped, reasserts, lastcalls, lastms, watched
 local GROUP4_RECS, DRAW_ENABLE, DRAW_KEEP = 0x5011FAD4, 0x5002A018, 0x5002A01C
 local CODE_LO, CODE_HI = 0x502BA000, 0x502C8000
-local FB, FB_LEN = 0x9CE00000, 640 * 240 * 2
+local FB, FB_LEN = 0x9CE00000, 0x140000          -- all of display memory (the firmware's frame, the game's FB8)
+local LCDC, LCD_SAVE, LCD_OWNED = 0x9CC00000, 0x502E6000 + 0x600 + 0x28C, 0x502E6000 + 0x600 + 0x288
+local screen = M.screens[":screen"]
 local function now() return M.time:as_double() end
 local outf = io.open(OUT .. "/loadblack.txt", "w")
 local function log(s) print("awlb: " .. s); outf:write(s .. "\n"); outf:flush() end
@@ -45,11 +47,13 @@ AWLB_TAP = sp:install_write_tap(FB, FB + FB_LEN - 1, "awlb_lcd", function(offset
   fw.pcs[p] = (fw.pcs[p] or 0) + 1
 end)
 
+-- the pixels MAME's screen shows that are not black (since 2026-11-02 the game's frame is 8 bits a pixel through the
+-- look-up table, src/lcd8.s: the screen, not display memory, says what is seen)
 local function nonblack()
-  local s = sp:read_range(FB, FB + FB_LEN - 1, 8)
+  local px = screen:pixels()
   local n = 0
-  for i = 1, #s - 1, 2 do
-    if s:byte(i) ~= 0 or s:byte(i + 1) ~= 0 then n = n + 1 end
+  for i = 1, #px - 3, 4 do
+    if (string.unpack("<I4", px, i) & 0xFFFFFF) ~= 0 then n = n + 1 end
   end
   return n
 end
@@ -112,6 +116,10 @@ local co = coroutine.create(function()
   running = false
   wait(3); M.video:snapshot()
   log("after the quit: " .. fdvars())
+  log(string.format("the LCD after the quit: REG[040h] %02X, REG[042h]-[044h] %02X %02X %02X, REG[046h]-[047h] %02X %02X; the firmware's: %02X, %02X %02X %02X, %02X %02X; the game's owned %d",
+    sp:read_u8(LCDC + 0x40), sp:read_u8(LCDC + 0x42), sp:read_u8(LCDC + 0x43), sp:read_u8(LCDC + 0x44), sp:read_u8(LCDC + 0x46),
+    sp:read_u8(LCDC + 0x47), sp:read_u8(LCD_SAVE), sp:read_u8(LCD_SAVE + 1), sp:read_u8(LCD_SAVE + 2), sp:read_u8(LCD_SAVE + 3),
+    sp:read_u8(LCD_SAVE + 4), sp:read_u8(LCD_SAVE + 5), sp:read_u32(LCD_OWNED)))
   local pcs = {}
   for p, c in pairs(fw.pcs) do pcs[#pcs + 1] = string.format("%08X:%d", p, c) end
   table.sort(pcs)

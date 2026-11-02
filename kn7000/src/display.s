@@ -15,9 +15,9 @@ GameTask:
     mov     DLY_TSK, a1
     calls   (a1)
     call    PerfInit, 0, 0          # the speed measurement (perf.s): from here on
-    call    DisplayInit, 0, 0       # the pages' resolution (after PerfInit, which clears PF_MODE)
     call    PerfRegs, 0, 0
     call    PerfBench, 0, 0
+    call    DisplayInit, 0, 0       # the pages' resolution (after PerfInit, which clears PF_MODE); the LCD (lcd8.s)
     call    PerfRestart, 0, 0
     call    GameReset, 0, 0
 gt_loop:
@@ -109,16 +109,15 @@ ht_dec:
     rets
 
 # =================================================================================
-# BlitPage(a0 = a page): show it in the LCD's window through the 16-entry palette: 384x240 at (BIG_X0, 0) in
-# the high-resolution mode, 320x200 at (AW_X0, AW_Y0) at the original resolution (PG_W, PG_H: the pages are of
-# that size; DisplayInit, DisplayConvert). The LCD is slow to write (README-CNV.md, "Speed"), so only what it
-# does not show already is written: SHADOW holds the colour indices the window shows, 4 bits a pixel, PF_PAL the
-# palette it was drawn with, and pixels whose indices differ are written two to a 32-bit store (PF_PAIR: the
-# RGB565 of both pixels of a packed byte). The window is written whole when the palette has changed, and border
-# and window both when the LCD may not hold what was drawn (PF_DAMAGE: nothing shown yet, a sentinel pixel that
-# changed under us, the periodic repaint, a switch of the mode, a part's load, SHADOW used for something else).
-# The page shown last, when nothing has drawn on it since (PF_DIRTY), is not even compared. Phase BLIT (BORD for
-# the border).
+# BlitPage(a0 = a page): show it in the LCD's window: 384x240 at (BIG_X0, 0) of FB8 in the high-resolution mode,
+# 320x200 at (AW_X0, AW_Y0) at the original resolution (PG_W, PG_H: the pages are of that size; DisplayInit,
+# DisplayConvert). FB8 is 8 bits a pixel, each the look-up table entry the page holds (lcd8.s), so the palette is 16
+# entries (PalCheck) and only pixels that changed are written: SHADOW holds the window's entries, 4 bits a pixel
+# (BlitPacked). The window is written whole when the LCD may not hold what was drawn (PF_DAMAGE: nothing shown
+# yet, the controller set again, a switch of the mode, SHADOW used for something else), and the border's ambilight
+# pattern drawn when the window's size is new (lcd8.s AmbiFill); never otherwise. After a page of the game's, the
+# ambilight's colours (AmbiUpdate). The page shown last, when nothing has drawn on it since (PF_DIRTY), is not even
+# compared. Phase BLIT.
 BlitPage:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -126,12 +125,17 @@ BlitPage:
     mov     PH_BLIT, d0
     call    PerfPhase, 0, 0
     mov     d0, (0x10, sp)          # the phase to go back to
-    call    PalCheck, 0, 0          # d0 = 1: a new palette, the pair table rebuilt
+    call    PalCheck, 0, 0          # a new palette: its 16 look-up table entries (d0 = 0)
     mov     d0, d3                  # d3 = 1: write the whole window
     mov     (PF_DAMAGE), d0
     cmp     0, d0
     beq     bp_shown
-    call    FillBorder, 0, 0        # repaint everything
+    mov     (AMB_GEOM), d0          # the border's pattern, if the window's size is new (lcd8.s)
+    mov     (PG_W), d1
+    cmp     d1, d0
+    beq     bp_border
+    call    AmbiFill, 0, 0
+bp_border:
     clr     d0
     mov     d0, (PF_DAMAGE)
     mov     d0, (PF_SINCE_REP)
@@ -163,28 +167,34 @@ bp_write:
     mov     (PF_BLITS), d0
     inc     d0
     mov     d0, (PF_BLITS)
+    mov     a2, a0                  # a page of the game's: the ambilight from it (lcd8.s)
+    call    PageIdx, 0, 0
+    cmp     0, d0
+    blt     bp_done
+    mov     a2, a0
+    call    AmbiUpdate, 0, 0
 bp_done:
     mov     (0x10, sp), d0
     call    PerfPhase, 0, 0
     ret     [d2,d3,a2,a3], 0x30
 
-# WinBase -> a1 = the window's first LCD pixel for the pages' size now. Leaf; uses d0.
+# WinBase -> a1 = the window's first pixel in FB8 for the pages' size now. Leaf; uses d0.
 WinBase:
     mov     (PG_W), d0
     cmp     BIG_W, d0
     bne     wb_orig
-    mov     FB + BIG_X0*2, a1
+    mov     FB8 + BIG_X0, a1
     rets
 wb_orig:
-    mov     FB + AW_Y0*FB_STRIDE + AW_X0*2, a1
+    mov     FB8 + AW_Y0*FB8_STRIDE + AW_X0, a1
     rets
 
 # BlitPacked(a0 = page, d0 = 1 to write every pixel, 0 only those SHADOW does not hold): the page into the
-# window, through PF_PAIR, and into SHADOW. Eight pixels a turn: the page's two words w0 (pixels 0-3) and w1 (4-7),
-# each byte masked to its 4 bits, make SHADOW's word Q = w0 | w1 << 4 (byte k: pixel k low, pixel k+4 high); where Q
-# differs from SHADOW's, the low nibbles say pixels 0-3 changed and the high ones 4-7, and each such four is two
-# 32-bit stores of PF_PAIR entries made from its word. Every pixel (d0 = 1): BlitAll. Counts the pixels written
-# (PF_FRAME_PX).
+# window in FB8 and into SHADOW. Eight pixels a turn: the page's two words w0 (pixels 0-3) and w1 (4-7), each byte
+# masked to its 4 bits, make SHADOW's word Q = w0 | w1 << 4 (byte k: pixel k low, pixel k+4 high); where Q differs
+# from SHADOW's, the low nibbles say pixels 0-3 changed and the high ones 4-7, and each such four is one 32-bit store
+# of its word: at 8 bits a pixel a byte of the page is a look-up table entry (lcd8.s). Every pixel (d0 = 1):
+# BlitAll. Counts the pixels written (PF_FRAME_PX).
 BlitPacked:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x28, sp
@@ -195,9 +205,8 @@ BlitPacked:
     bra     bpk_ret
 bk_start:
     call    WinBase, 0, 0
-    mov     a1, (0x14, sp)          # a1 = this row's first LCD pixel
+    mov     a1, (0x14, sp)          # a1 = this row's first pixel in FB8
     mov     SHADOW, a3              # a3 = what the window shows
-    mov     PF_PAIR, a0
     mov     (PG_H), d0
     mov     d0, (0x18, sp)          # rows left
     clr     d0
@@ -219,53 +228,30 @@ bk_grp:
     beq     bk_next
     mov     d3, (a3)
     xor     d3, d2                  # what changed
-    mov     d2, (0x24, sp)
-    and     0x0F0F0F0F, d2
-    beq     bk_hi
-    mov     d0, d2                  # pixels 0-3: bytes 0 and 2 of w0 | w0 >> 4 are PF_PAIR indices
-    lsr     4, d2
-    or      d0, d2
     mov     d2, d3
-    and     0xFF, d3
-    asl     2, d3
-    mov     (d3, a0), d3
-    mov     d3, (a1)
-    lsr     14, d2
-    and     0x3FC, d2
-    mov     (d2, a0), d2
-    mov     d2, (4, a1)
-    mov     (0x1C, sp), d2
-    inc     d2
-    mov     d2, (0x1C, sp)
+    and     0x0F0F0F0F, d3
+    beq     bk_hi
+    mov     d0, (a1)                # pixels 0-3
+    mov     (0x1C, sp), d3
+    inc     d3
+    mov     d3, (0x1C, sp)
 bk_hi:
-    mov     (0x24, sp), d2
     and     0xF0F0F0F0, d2
     beq     bk_next
-    mov     d1, d2                  # pixels 4-7, from w1 the same way
-    lsr     4, d2
-    or      d1, d2
-    mov     d2, d3
-    and     0xFF, d3
-    asl     2, d3
-    mov     (d3, a0), d3
-    mov     d3, (8, a1)
-    lsr     14, d2
-    and     0x3FC, d2
-    mov     (d2, a0), d2
-    mov     d2, (12, a1)
-    mov     (0x1C, sp), d2
-    inc     d2
-    mov     d2, (0x1C, sp)
+    mov     d1, (4, a1)             # pixels 4-7
+    mov     (0x1C, sp), d3
+    inc     d3
+    mov     d3, (0x1C, sp)
 bk_next:
     add     8, a2
     add     4, a3
-    add     16, a1
+    add     8, a1
     mov     (0x20, sp), d0
     add     -1, d0
     mov     d0, (0x20, sp)
     bne     bk_grp
     mov     (0x14, sp), a1          # the next row
-    add     FB_STRIDE, a1
+    add     FB8_STRIDE, a1
     mov     a1, (0x14, sp)
     mov     (0x18, sp), d0
     add     -1, d0
@@ -288,39 +274,29 @@ BlitAll:
     call    WinBase, 0, 0
     mov     a1, (0x14, sp)
     mov     SHADOW, a3
-    mov     PF_PAIR, a0
-    mov     (PG_H), d0
-    mov     d0, (0x18, sp)          # rows left
+    mov     (PG_H), d3              # rows left
 ba_row:
-    mov     (PG_W), d0
-    lsr     3, d0
-    mov     d0, (0x1C, sp)          # groups of eight left in the row
+    mov     (PG_W), d2
+    lsr     3, d2                   # groups of eight left in the row
 ba_grp:
     mov     (a2), d0
     and     0x0F0F0F0F, d0          # w0
-    mov     (4, a2), d3
-    and     0x0F0F0F0F, d3          # w1
-    mov     d3, d2
-    asl     4, d2
-    or      d0, d2
-    mov     d2, (a3)                # Q
-    call    so_four, 0, 0           # pixels 0-3
-    add     8, a1
-    mov     d3, d0
-    call    so_four, 0, 0           # pixels 4-7
-    add     8, a1
+    mov     d0, (a1)
+    mov     (4, a2), d1
+    and     0x0F0F0F0F, d1          # w1
+    mov     d1, (4, a1)
+    asl     4, d1
+    or      d0, d1
+    mov     d1, (a3)                # Q
     add     8, a2
     add     4, a3
-    mov     (0x1C, sp), d0
-    add     -1, d0
-    mov     d0, (0x1C, sp)
+    add     8, a1
+    add     -1, d2
     bne     ba_grp
     mov     (0x14, sp), a1
-    add     FB_STRIDE, a1
+    add     FB8_STRIDE, a1
     mov     a1, (0x14, sp)
-    mov     (0x18, sp), d0
-    add     -1, d0
-    mov     d0, (0x18, sp)
+    add     -1, d3
     bne     ba_row
     mov     (PG_SIZE), d0
     mov     (PF_FRAME_PX), d1
@@ -328,60 +304,41 @@ ba_grp:
     mov     d1, (PF_FRAME_PX)
     ret     [d2,d3,a2,a3], 0x30
 
-# ShadowOut: SHADOW to the whole window, and the border black, through the palette now (the help and stop
-# screens, drawn in SHADOW: help.s HelpText). The next blit of a page compares it with what this showed.
+# ShadowOut: SHADOW to the whole window through the palette now (the help and stop screens, drawn in SHADOW: help.s
+# HelpText). The border is not touched. The next blit of a page compares it with what this showed.
 ShadowOut:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
     call    PalCheck, 0, 0
-    call    FillBorder, 0, 0
     call    WinBase, 0, 0
     mov     a1, (0x14, sp)
     mov     SHADOW, a3
-    mov     PF_PAIR, a0
     mov     (PG_H), d3              # rows
 so_row:
     mov     (PG_W), d2
     lsr     3, d2
 so_grp:
     mov     (a3), d0                # Q: pixels 0-3 in the low nibbles, 4-7 in the high ones
+    mov     d0, d1
     and     0x0F0F0F0F, d0
-    call    so_four, 0, 0
-    add     8, a1
-    mov     (a3), d0
-    lsr     4, d0
-    and     0x0F0F0F0F, d0
-    call    so_four, 0, 0
-    add     8, a1
+    mov     d0, (a1)
+    lsr     4, d1
+    and     0x0F0F0F0F, d1
+    mov     d1, (4, a1)
     add     4, a3
+    add     8, a1
     add     -1, d2
     bne     so_grp
     mov     (0x14, sp), a1
-    add     FB_STRIDE, a1
+    add     FB8_STRIDE, a1
     mov     a1, (0x14, sp)
     add     -1, d3
     bne     so_row
     clr     d0
     mov     d0, (PF_DAMAGE)
     mov     SHADOW, d0              # no page is on the LCD (the next page's blit compares), and the
-    mov     d0, (PF_LAST_SRC)       #   sentinels check what this showed
+    mov     d0, (PF_LAST_SRC)       #   check sees what this showed
     ret     [d2,d3,a2,a3], 0x30
-
-# so_four(d0 = four pixels, a byte each; a0 = PF_PAIR, a1 = their LCD pixels): two 32-bit stores. Leaf; uses d1.
-so_four:
-    mov     d0, d1
-    lsr     4, d1
-    or      d1, d0
-    mov     d0, d1
-    and     0xFF, d1
-    asl     2, d1
-    mov     (d1, a0), d1
-    mov     d1, (a1)
-    lsr     14, d0
-    and     0x3FC, d0
-    mov     (d0, a0), d0
-    mov     d0, (4, a1)
-    rets
 
 # ShadowClear: SHADOW black, for the help or stop screen at the pages' size now. Leaf.
 ShadowClear:
@@ -465,8 +422,15 @@ tps_ret:
 
 # =================================================================================
 # The display mode's pages. DisplayInit (the game task's start, after PerfInit): high resolution (PF_MODE 0),
-# unless the build has no room for it (HIRES_OK 0) or a probe asked for the original resolution (DISP_ORIG).
+# unless the build has no room for it (HIRES_OK 0) or a probe asked for the original resolution (DISP_ORIG); then
+# the LCD for the game (lcd8.s LcdOwn).
 DisplayInit:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    call    di_mode, 0, 0
+    call    LcdOwn, 0, 0
+    ret     [d2,d3,a2,a3], 0x20
+di_mode:
     mov     HIRES_OK, d1
     cmp     0, d1
     beq     di_orig
@@ -636,11 +600,12 @@ pd_grp:
     bne     pd_row
     ret     [d2,d3,a2,a3], 0x10
 
-# PalCheck -> d0 = 1 when palette is not the one the LCD was drawn with (PF_PAL): PF_PAL becomes it and
-# the pair table PF_PAIR is rebuilt (entry i0 | i1 << 4 = palette[i0] | palette[i1] << 16, pixel 0 in the
-# low half, at the lower address); else 0. Leaf (saves d2, d3, a2).
+# PalCheck -> d0 = 0: when palette is not the one last loaded (PF_PAL), PF_PAL becomes it and its 16 colours go
+# into look-up table entries 0-15 (lcd8.s LutSet: RGB565 to 4 bits a channel, the game's own depth). The window's
+# pixels are entries, so nothing is redrawn for it.
 PalCheck:
-    movm    [d2,d3,a2], (sp)
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
     mov     palette, a0
     mov     PF_PAL, a1
     mov     8, d1
@@ -654,7 +619,7 @@ pk_cmp:
     add     -1, d1
     bne     pk_cmp
     clr     d0
-    ret     [d2,d3,a2], 0xC
+    ret     [d2,d3,a2,a3], 0x20
 pk_new:
     mov     palette, a0
     mov     PF_PAL, a1
@@ -666,30 +631,34 @@ pk_copy:
     add     4, a1
     add     -1, d1
     bne     pk_copy
-    mov     PF_PAL, a1
-    mov     PF_PAIR, a2
+    mov     palette, a2
     clr     d2
-pk_pair:
-    mov     d2, d0
+pk_lut:
+    movhu   (a2), d3                # RGB565 -> 0x0RGB
+    mov     d3, d1
+    lsr     12, d1
+    and     15, d1
+    asl     8, d1
+    mov     d3, d0
+    lsr     7, d0
     and     15, d0
-    asl     1, d0
-    movhu   (d0, a1), d3            # pixel 0's colour
+    asl     4, d0
+    or      d0, d1
+    mov     d3, d0
+    lsr     1, d0
+    and     15, d0
+    or      d0, d1
     mov     d2, d0
-    lsr     4, d0
-    asl     1, d0
-    movhu   (d0, a1), d0            # pixel 1's
-    asl     16, d0
-    or      d3, d0
-    mov     d0, (a2)
-    add     4, a2
+    call    LutSet, 0, 0
+    add     2, a2
     inc     d2
-    cmp     256, d2
-    bne     pk_pair
+    cmp     16, d2
+    bne     pk_lut
     mov     (PF_PAIR_N), d0
     inc     d0
     mov     d0, (PF_PAIR_N)
-    mov     1, d0
-    ret     [d2,d3,a2], 0xC
+    clr     d0
+    ret     [d2,d3,a2,a3], 0x20
 
 # PageIdx(a0) -> d0 = 0..3 when a0 is one of the four pages, else -1. Leaf; uses d0, d1; keeps a0.
 PageIdx:
@@ -761,73 +730,6 @@ PageClean:
     clr     d1
     movbu   d1, (d0, a1)
 pcl_ret:
-    ret     [d2,d3,a2,a3], 0x20
-
-# FillBorder: paint everything around the game's window black, so that the firmware's screen behind the
-# game never shows: in the high-resolution mode, the 128-pixel strips beside the 384x240 window; at the original
-# resolution, the 20-row bands above and below the 320x200 window and the 160-pixel strips beside it. Done
-# when BlitPage repaints everything (PF_DAMAGE). 32-bit stores, 8 per loop. Phase BORD.
-FillBorder:
-    movm    [d2,d3,a2,a3], (sp)
-    add     -0x20, sp
-    mov     PH_BORD, d0
-    call    PerfPhase, 0, 0
-    mov     d0, (0x10, sp)
-    mov     (PG_W), d1
-    clr     d0
-    cmp     BIG_W, d1
-    bne     fb_orig
-    mov     FB, a1                  # enlarged: the side strips, every row
-    mov     FB_H, d2
-fb_big_row:
-    mov     a1, a0                  # left strip: x 0..BIG_X0-1
-    mov     BIG_X0 * 2 / 32, d1
-    call    fb_run, 0, 0
-    mov     a1, a0                  # right strip: x BIG_X0+BIG_W..FB_W-1
-    add     (BIG_X0 + BIG_W) * 2, a0
-    mov     (FB_W - BIG_X0 - BIG_W) * 2 / 32, d1
-    call    fb_run, 0, 0
-    add     FB_STRIDE, a1
-    add     -1, d2
-    bne     fb_big_row
-    bra     fb_done
-fb_orig:
-    mov     FB, a0                  # top band: rows 0..AW_Y0-1, full width
-    mov     AW_Y0 * FB_STRIDE / 32, d1
-    call    fb_run, 0, 0
-    mov     FB + (AW_Y0 + AW_H) * FB_STRIDE, a0   # bottom band
-    mov     (FB_H - AW_Y0 - AW_H) * FB_STRIDE / 32, d1
-    call    fb_run, 0, 0
-    mov     FB + AW_Y0 * FB_STRIDE, a1            # side strips, one row at a time
-    mov     AW_H, d2
-fb_row:
-    mov     a1, a0                  # left strip: x 0..AW_X0-1
-    mov     AW_X0 * 2 / 32, d1
-    call    fb_run, 0, 0
-    mov     a1, a0                  # right strip: x AW_X0+AW_W..FB_W-1
-    add     (AW_X0 + AW_W) * 2, a0
-    mov     (FB_W - AW_X0 - AW_W) * 2 / 32, d1
-    call    fb_run, 0, 0
-    add     FB_STRIDE, a1
-    add     -1, d2
-    bne     fb_row
-fb_done:
-    mov     (0x10, sp), d0
-    call    PerfPhase, 0, 0
-    ret     [d2,d3,a2,a3], 0x30
-
-# LcdBlack: the whole LCD frame black, border and window (a part's load: EnsurePart); the next blit repaints
-# everything (PF_DAMAGE).
-LcdBlack:
-    movm    [d2,d3,a2,a3], (sp)
-    add     -0x10, sp
-    clr     d0
-    mov     FB, a0
-    mov     FB_H * FB_STRIDE / 32, d1
-    call    fb_run, 0, 0
-    mov     (PF_DAMAGE), d0
-    or      PFD_BLACK, d0
-    mov     d0, (PF_DAMAGE)
     ret     [d2,d3,a2,a3], 0x20
 
 # fb_run(a0 = start, d1 = 32-byte blocks, d0 = 0): store d1 * 8 zero words from a0. Leaf.

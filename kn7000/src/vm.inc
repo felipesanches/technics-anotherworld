@@ -339,6 +339,27 @@
 .equ PF_PAL,          VM_PERF_BASE + 0x520  # 16 x u16: the palette the LCD shows
 .equ PF_DIGITS,       VM_PERF_BASE + 0x560  # 32 bytes: FmtNum's scratch
 .equ PF_PAIR,         VM_PERF_BASE + 0x600  # 256 x u32: two pixels' RGB565 for a pair of colour indices
+# (PF_PAIR's 1 KB: the RGB565 pair table until 2026-11-02; now lcd8.s's state, below.)
+# The LCD in 8 bits a pixel (lcd8.s): the game's own frame in display memory past the firmware's (FB8: lines of 640
+# bytes, each byte a look-up table entry), shown by the controller's start address; the firmware's 16-bit frame (FB)
+# is left as it was and shown again when the game gives the LCD back. Entries 0-15: the game's palette; 16-255: the
+# ambilight around the window (AMB_*). Unit-verified recipe: Pinball kn7000 screen.cpp (PFT14, PFT15).
+.equ LCDC,            0x9CC00000     # the S1D13806's registers
+.equ FB8_OFS,         0x50000
+.equ FB8,             FB + FB8_OFS
+.equ FB8_STRIDE,      640
+.equ FB8_START,       240639         # 0x3ABFF = (FB8_OFS + 239 * 640) / 2 + 320 - 1: the bottom-right pixel's word (SwivelView)
+.equ BENCH_LCD,       FB + 0x80000   # display memory nobody shows: the benchmark's LCD accesses (perf.s)
+.equ AMB_BASE,        16             # the first ambilight entry
+.equ AMB_SECS,        8              # bands of rows, each side
+.equ AMB_LVLS,        15             # brightness levels, from the window outwards: 2 x 8 x 15 = 240 entries
+.equ AMB_CUR,         PF_PAIR + 0x000   # 16 x 3 x u16: each band's colour now, 4-bit channels x 256 (smoothed)
+.equ AMB_LUT,         PF_PAIR + 0x060   # 240 x u16: each ambilight entry as last written (0x0RGB; 0xFFFF: unknown)
+.equ AMB_HIST,        PF_PAIR + 0x240   # 16 x u32: a band's colour count
+.equ AMB_RNG,         PF_PAIR + 0x280   # u32: the dither's random state
+.equ AMB_GEOM,        PF_PAIR + 0x284   # u32: the PG_W the border pattern was drawn for (0: none)
+.equ LCD_OWNED,       PF_PAIR + 0x288   # u32: 1 while the LCD shows FB8
+.equ LCD_SAVE,        PF_PAIR + 0x28C   # 6 bytes: REG[040h], [042h]-[044h], [046h]-[047h] as the firmware had them
 .equ PF_TEXT,         VM_PERF_BASE + 0xA00  # 64 bytes: a line of the overlay
 .equ PF_ITEMS,        VM_PERF_BASE + 0xA40  # the speed help page's items (help.s format), 24 x 12 bytes + end
 .equ PF_LINES,        VM_PERF_BASE + 0xB80  # ... and their text, 24 x 48 bytes, to the block's end

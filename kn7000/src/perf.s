@@ -15,13 +15,10 @@
 #   * PAGE UP and PAGE DOWN choose the display mode (PerfInput, PF_MODE): 0, the window enlarged to 384x240
 #     (the default); 1, the original resolution, 320x200 (display.s BlitPage). Each mode has its own
 #     totals, so one run gives both.
-#   * PerfSentinels: 47 or 45 pixels of the LCD that tell when something else drew on it (the blit,
-#     display.s, then repaints everything).
+#   * PerfSentinels: is the LCD still set as the game set it (lcd8.s LcdCheck)? If not, set again and repainted.
 # Convention as the rest of the port: d0, d1, a0, a1 scratch; d2, d3, a2, a3 kept; a routine that calls
 # makes a frame first.
 
-.equ SENT_COUNT,      47            # sent_tab's sentinel pixels (the original resolution)
-.equ SENT_BIG,        45            # sent_big's (enlarged)
 
 # =================================================================================
 # Stamp -> d0 = now, in counts of 1/2001 ms: ms * 2001 + (2000 - TM4BC), the counter read on both sides
@@ -210,27 +207,8 @@ pfe_tmax:
     mov     (PF_WIN_ASKED), d1
     add     d0, d1
     mov     d1, (PF_WIN_ASKED)
-    mov     (PF_SINCE_REP), d0      # a full repaint now and then, whatever the sentinels say
-    inc     d0
-    mov     d0, (PF_SINCE_REP)
-    cmp     REPAINT_FRAMES, d0
-    bcs     pfe_rep
-    mov     (PF_DAMAGE), d0
-    or      PFD_PERIODIC, d0
-    mov     d0, (PF_DAMAGE)
-pfe_rep:
-    mov     (PF_POSTLOAD), d0       # after a part's load: a full repaint 5 and 30 frames on
-    cmp     0, d0
-    beq     pfe_win
-    add     -1, d0
-    mov     d0, (PF_POSTLOAD)
-    beq     pfe_pl
-    cmp     POSTLOAD_FRAMES - 5, d0
-    bne     pfe_win
-pfe_pl:
-    mov     (PF_DAMAGE), d0
-    or      PFD_LOAD, d0
-    mov     d0, (PF_DAMAGE)
+    # (until 2026-11-02 a full repaint every REPAINT_FRAMES frames and 5 and 30 frames after a part's load, against
+    # the firmware's painting: the game's frame is now FB8, which nothing else draws on: lcd8.s)
 pfe_win:
     mov     (PF_T_LAST), d0         # the stamp PerfPhase just took
     mov     (PF_WIN_T0), d1
@@ -360,66 +338,10 @@ pwe_show:
 pwe_ret:
     ret     [d2,d3,a2,a3], 0x30
 
-# PerfSentinels: do the sentinel pixels of the LCD frame (sent_big or sent_tab, as the mode is: the border, and
-# a grid in the window) still hold what the game drew there? If one does not, something else drew on the LCD (the
-# firmware), and the next blit repaints everything (PF_DAMAGE). Leaf; uses d0, d1, a0, a1 and saves d2, d3, a2.
+# PerfSentinels: is the LCD still showing the game's frame as the game set it? (lcd8.s LcdCheck: the controller's
+# mode and start address; until 2026-11-02, 47 sentinel pixels of the 16-bit frame the firmware could draw on.)
 PerfSentinels:
-    movm    [d2,d3,a2], (sp)
-    mov     (PF_LAST_SRC), d0       # nothing shown yet
-    cmp     0, d0
-    beq     psn_ret
-    mov     (PF_DAMAGE), d0         # already asked for
-    cmp     0, d0
-    bne     psn_ret
-    mov     sent_big, a2
-    mov     SENT_BIG, d3
-    mov     (PG_W), d0
-    cmp     BIG_W, d0
-    beq     psn_one
-    mov     sent_tab, a2
-    mov     SENT_COUNT, d3
-psn_one:
-    mov     (a2), a0                # the LCD pixel
-    movhu   (a0), d2
-    mov     (4, a2), d0             # the window's pixel offset, or -1 for the border (black)
-    cmp     -1, d0
-    beq     psn_black
-    mov     d0, d1                  # SHADOW: pixel i in byte (i / 8) * 4 + i % 4, high nibble when i % 8 >= 4
-    lsr     3, d1                   #   (display.s BlitPacked)
-    asl     2, d1
-    mov     SHADOW, a1
-    add     d1, a1
-    mov     d0, d1
-    and     3, d1
-    movbu   (d1, a1), d1
-    btst    4, d0
-    beq     psn_lo
-    lsr     4, d1
-psn_lo:
-    mov     d1, d0
-    and     15, d0
-    asl     1, d0
-    mov     PF_PAL, a1
-    movhu   (d0, a1), d1
-    bra     psn_cmp
-psn_black:
-    clr     d1
-psn_cmp:
-    cmp     d1, d2
-    bne     psn_bad
-    add     8, a2
-    add     -1, d3
-    bne     psn_one
-psn_ret:
-    ret     [d2,d3,a2], 0xC
-psn_bad:
-    mov     (PF_DAMAGE), d0
-    or      PFD_SENTINEL, d0
-    mov     d0, (PF_DAMAGE)
-    mov     (PF_SENT_BAD), d0
-    inc     d0
-    mov     d0, (PF_SENT_BAD)
-    bra     psn_ret
+    bra     LcdCheck
 
 # ModeTotals -> a2 = the totals record of the display mode in use (PF_TOTS). Leaf; uses d0.
 ModeTotals:
@@ -1182,115 +1104,12 @@ PutCrLf:
 
 # =================================================================================
     .align  4
-# The sentinels: the LCD pixel, and its offset in the window (SHADOW), or -1 for the black border. At the
-# original resolution (sent_tab): the top and bottom bands at x 2, 160, 320, 480, 637 (y 10 and 236); the
-# side strips at x 2, 158 and 482, 637, every 30 rows from y 24; and a 3 x 3 grid in the window. (A box the firmware drew across the screen at y 114-176,
-# x 40-606, when the intro loaded the lake in MAME, missed the first, coarser grid: probes/cnv/README.md.)
-sent_tab:
-    .long   FB + 10*FB_STRIDE + 2*2, -1
-    .long   FB + 10*FB_STRIDE + 160*2, -1
-    .long   FB + 10*FB_STRIDE + 320*2, -1
-    .long   FB + 10*FB_STRIDE + 480*2, -1
-    .long   FB + 10*FB_STRIDE + 637*2, -1
-    .long   FB + 236*FB_STRIDE + 2*2, -1
-    .long   FB + 236*FB_STRIDE + 160*2, -1
-    .long   FB + 236*FB_STRIDE + 320*2, -1
-    .long   FB + 236*FB_STRIDE + 480*2, -1
-    .long   FB + 236*FB_STRIDE + 637*2, -1
-    .long   FB + 24*FB_STRIDE + 2*2, -1
-    .long   FB + 24*FB_STRIDE + 158*2, -1
-    .long   FB + 24*FB_STRIDE + 482*2, -1
-    .long   FB + 24*FB_STRIDE + 637*2, -1
-    .long   FB + 54*FB_STRIDE + 2*2, -1
-    .long   FB + 54*FB_STRIDE + 158*2, -1
-    .long   FB + 54*FB_STRIDE + 482*2, -1
-    .long   FB + 54*FB_STRIDE + 637*2, -1
-    .long   FB + 84*FB_STRIDE + 2*2, -1
-    .long   FB + 84*FB_STRIDE + 158*2, -1
-    .long   FB + 84*FB_STRIDE + 482*2, -1
-    .long   FB + 84*FB_STRIDE + 637*2, -1
-    .long   FB + 114*FB_STRIDE + 2*2, -1
-    .long   FB + 114*FB_STRIDE + 158*2, -1
-    .long   FB + 114*FB_STRIDE + 482*2, -1
-    .long   FB + 114*FB_STRIDE + 637*2, -1
-    .long   FB + 144*FB_STRIDE + 2*2, -1
-    .long   FB + 144*FB_STRIDE + 158*2, -1
-    .long   FB + 144*FB_STRIDE + 482*2, -1
-    .long   FB + 144*FB_STRIDE + 637*2, -1
-    .long   FB + 174*FB_STRIDE + 2*2, -1
-    .long   FB + 174*FB_STRIDE + 158*2, -1
-    .long   FB + 174*FB_STRIDE + 482*2, -1
-    .long   FB + 174*FB_STRIDE + 637*2, -1
-    .long   FB + 204*FB_STRIDE + 2*2, -1
-    .long   FB + 204*FB_STRIDE + 158*2, -1
-    .long   FB + 204*FB_STRIDE + 482*2, -1
-    .long   FB + 204*FB_STRIDE + 637*2, -1
-    .long   FB + 60*FB_STRIDE + 200*2, (60-AW_Y0)*AW_W + 200-AW_X0
-    .long   FB + 60*FB_STRIDE + 320*2, (60-AW_Y0)*AW_W + 320-AW_X0
-    .long   FB + 60*FB_STRIDE + 440*2, (60-AW_Y0)*AW_W + 440-AW_X0
-    .long   FB + 120*FB_STRIDE + 200*2, (120-AW_Y0)*AW_W + 200-AW_X0
-    .long   FB + 120*FB_STRIDE + 320*2, (120-AW_Y0)*AW_W + 320-AW_X0
-    .long   FB + 120*FB_STRIDE + 440*2, (120-AW_Y0)*AW_W + 440-AW_X0
-    .long   FB + 180*FB_STRIDE + 200*2, (180-AW_Y0)*AW_W + 200-AW_X0
-    .long   FB + 180*FB_STRIDE + 320*2, (180-AW_Y0)*AW_W + 320-AW_X0
-    .long   FB + 180*FB_STRIDE + 440*2, (180-AW_Y0)*AW_W + 440-AW_X0
-
-# The high-resolution window's sentinels: the side strips at x 2, 125 (left) and 514, 637 (right), at y 10, every
-# 30 rows to 220, and 236; and a 3 x 3 grid in the window, x 48, 192, 336 across and y 48, 120, 192 down of the
-# 384x240 page (where sent_tab's grid of the 320x200 page lies, scaled).
-sent_big:
-    .long   FB + 10*FB_STRIDE + 2*2, -1
-    .long   FB + 10*FB_STRIDE + 125*2, -1
-    .long   FB + 10*FB_STRIDE + 514*2, -1
-    .long   FB + 10*FB_STRIDE + 637*2, -1
-    .long   FB + 40*FB_STRIDE + 2*2, -1
-    .long   FB + 40*FB_STRIDE + 125*2, -1
-    .long   FB + 40*FB_STRIDE + 514*2, -1
-    .long   FB + 40*FB_STRIDE + 637*2, -1
-    .long   FB + 70*FB_STRIDE + 2*2, -1
-    .long   FB + 70*FB_STRIDE + 125*2, -1
-    .long   FB + 70*FB_STRIDE + 514*2, -1
-    .long   FB + 70*FB_STRIDE + 637*2, -1
-    .long   FB + 100*FB_STRIDE + 2*2, -1
-    .long   FB + 100*FB_STRIDE + 125*2, -1
-    .long   FB + 100*FB_STRIDE + 514*2, -1
-    .long   FB + 100*FB_STRIDE + 637*2, -1
-    .long   FB + 130*FB_STRIDE + 2*2, -1
-    .long   FB + 130*FB_STRIDE + 125*2, -1
-    .long   FB + 130*FB_STRIDE + 514*2, -1
-    .long   FB + 130*FB_STRIDE + 637*2, -1
-    .long   FB + 160*FB_STRIDE + 2*2, -1
-    .long   FB + 160*FB_STRIDE + 125*2, -1
-    .long   FB + 160*FB_STRIDE + 514*2, -1
-    .long   FB + 160*FB_STRIDE + 637*2, -1
-    .long   FB + 190*FB_STRIDE + 2*2, -1
-    .long   FB + 190*FB_STRIDE + 125*2, -1
-    .long   FB + 190*FB_STRIDE + 514*2, -1
-    .long   FB + 190*FB_STRIDE + 637*2, -1
-    .long   FB + 220*FB_STRIDE + 2*2, -1
-    .long   FB + 220*FB_STRIDE + 125*2, -1
-    .long   FB + 220*FB_STRIDE + 514*2, -1
-    .long   FB + 220*FB_STRIDE + 637*2, -1
-    .long   FB + 236*FB_STRIDE + 2*2, -1
-    .long   FB + 236*FB_STRIDE + 125*2, -1
-    .long   FB + 236*FB_STRIDE + 514*2, -1
-    .long   FB + 236*FB_STRIDE + 637*2, -1
-    .long   FB + 48*FB_STRIDE + (BIG_X0+48)*2, 48*BIG_W + 48
-    .long   FB + 48*FB_STRIDE + (BIG_X0+192)*2, 48*BIG_W + 192
-    .long   FB + 48*FB_STRIDE + (BIG_X0+336)*2, 48*BIG_W + 336
-    .long   FB + 120*FB_STRIDE + (BIG_X0+48)*2, 120*BIG_W + 48
-    .long   FB + 120*FB_STRIDE + (BIG_X0+192)*2, 120*BIG_W + 192
-    .long   FB + 120*FB_STRIDE + (BIG_X0+336)*2, 120*BIG_W + 336
-    .long   FB + 192*FB_STRIDE + (BIG_X0+48)*2, 192*BIG_W + 48
-    .long   FB + 192*FB_STRIDE + (BIG_X0+192)*2, 192*BIG_W + 192
-    .long   FB + 192*FB_STRIDE + (BIG_X0+336)*2, 192*BIG_W + 336
-
 # The benchmark: kernel, target, turns of 8 accesses, accesses (in BN_ order).
 bench_tab:
     .long   bk_alu, 0, 1024, 8192                       # BN_ALU
-    .long   bk_w16, FB, 512, 4096                       # BN_LCD_W16: 8 KB of the top border rows
-    .long   bk_w32, FB, 512, 4096                       # BN_LCD_W32: 16 KB
-    .long   bk_r16, FB, 512, 4096                       # BN_LCD_R16
+    .long   bk_w16, BENCH_LCD, 512, 4096                # BN_LCD_W16: 8 KB of display memory nothing shows (lcd8.s)
+    .long   bk_w32, BENCH_LCD, 512, 4096                       # BN_LCD_W32: 16 KB
+    .long   bk_r16, BENCH_LCD, 512, 4096                       # BN_LCD_R16
     .long   bk_w8, BENCH_BUF, 8000, 64000               # BN_RAM_W8: SHADOW and REPORT_BUF, free until the game starts
     .long   bk_w32, BENCH_BUF, 2000, 16000              # BN_RAM_W32
     .long   bk_r8, BENCH_BUF, 8000, 64000               # BN_RAM_R8

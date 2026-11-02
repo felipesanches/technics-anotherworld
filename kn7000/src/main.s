@@ -378,6 +378,7 @@ ti_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 .include "display.s"
+.include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 path_font:
     .asciz "C:\TECHNICS\DATA\AWFONT.AW"
     .align 2

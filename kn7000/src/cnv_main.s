@@ -335,6 +335,7 @@ ce_answer:
     bra     ce_park                 # one call more: the next one ends
 ce_end:
     call    FwdrawUnhook, 0, 0      # the firmware draws again (fwdraw.s)
+    call    LcdRelease, 0, 0        # and its own frame shows again (lcd8.s)
     mov     MAILBOX, a0
     mov     0xFE, d0                # done: hand the instrument back
     movbu   d0, (a0)
@@ -1236,5 +1237,6 @@ msg_fw_n:
 .include "audio.s"                  # sound effects and music: the effects DSP, or MIDI into the receive ring
 .include "dsp.s"                    # the effects DSP: its sample mixer, the bank, the voices
 .include "fwdraw.s"                 # the firmware's screen kept from drawing while the game runs
+.include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

@@ -111,7 +111,7 @@ fq_same:
     bcs     fq_draw
     mov     1, d0
     mov     d0, (FD_WATCHED)
-    bra     FwdrawUnhook            # (a leaf as well: its rets returns from here)
+    bra     FwdrawGone              # (its ret returns from here)
 fq_draw:
     mov     (FD_DRAW_KEEP), d0
     cmp     0, d0
@@ -130,6 +130,15 @@ fq_first:
     mov     d0, (FD_QUIET)
 fq_ret:
     rets
+
+# FwdrawGone: the firmware has stopped calling the converter (FwdrawQuiet's watch): its own frame on the LCD again
+# (lcd8.s LcdRelease) and its drawing on.
+FwdrawGone:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    call    LcdRelease, 0, 0
+    call    FwdrawUnhook, 0, 0
+    ret     [d2,d3,a2,a3], 0x20
 
 # FwdrawUnhook: the drawing on again and the class table back on the flash records. Either task. Leaf.
 FwdrawUnhook:
