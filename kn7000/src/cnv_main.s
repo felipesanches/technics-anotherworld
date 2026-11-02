@@ -76,7 +76,7 @@ AppName:                            # AH_NAME: 32 bytes, NUL-padded
 .equ LD_DONE,      CNV_VARS + 0x50  # records loaded of this list
 .equ LD_TOTAL,     CNV_VARS + 0x54  # records in this list
 .equ LD_FAILED,    CNV_VARS + 0x58  # a file of the list could not be loaded: the game stops
-.equ LD_IN_READ,   CNV_VARS + 0x5C  # 1 while fmmread fills a destination for us (the probes' taps)
+.equ LD_IN_READ,   CNV_VARS + 0x5C  # 1 while fmmread fills a destination for us, 2 the sample bank's in PART_AREA (dsp.s BankRead; the probes' taps)
 .equ LD_T0,        CNV_VARS + 0x60  # the ms counter when this list started
 .equ LD_MS,        CNV_VARS + 0x64  # how long the last list took
 .equ LD_LISTS,     CNV_VARS + 0x68  # lists loaded so far (the global one, then each part)

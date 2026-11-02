@@ -529,6 +529,11 @@ it), and 141,061 after EXIT (the firmware's own screen and "Continue Next?"). Sn
 the old build shows the STYLE CONVERT screen with "LOADING ANOTHER WORLD: SOUNDS", then its title bar and the load
 bar over the game; the new one black.
 
+The final build (`cddfe76b`: the same, and BankRead's `LD_IN_READ` flag for the acceptance test's area check) gave
+the same: both loads black at all 35 and 33 frames, 0.58 and 0.55 s, no firmware store during loads or play, 69.8
+converter calls a second, the table and DrawEnable back after the quit; 142,716 firmware stores before the first load
+and 152,960 after EXIT (the split between the two moves with the timing of the firmware's repaints).
+
     T=~/compartilhado/tmp/aw-loadblack
     AWLB_OUT=$T/new probes/cnv/run_perf.sh $T/new probes/cnv/awcnv_loadblack.lua
     AWLB_OUT=$T/old CARDFILES=$T/oldcard probes/cnv/run_perf.sh $T/old probes/cnv/awcnv_loadblack.lua   # build/sdcard, the old KN7APP.BIN

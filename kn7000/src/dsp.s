@@ -1175,6 +1175,8 @@ BankRead:
     exth    d0
     cmp     0, d0
     blt     br_back
+    mov     2, d3                   # (the probes' taps: an SD read into PART_AREA for the bank, cnv_main.s LD_IN_READ)
+    mov     d3, (LD_IN_READ)
     clr     d3                      # d3: bytes read
 br_piece:
     mov     BANK_FILE_MAX, d0       # one byte more than may come: a longer file fails
@@ -1200,6 +1202,8 @@ br_ask:
     cmp     d1, d0
     beq     br_piece                # a whole piece: there may be more
 br_close:
+    mov     0, a3                   # (d0 and d1 as the read left them, for the close)
+    mov     a3, (LD_IN_READ)
     mov     (FW_CLOSE), a3
     calls   (a3)
     mov     (FW_RESETEXT), a3       # the file layer back, as the firmware expects between calls

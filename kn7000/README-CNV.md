@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                             |
 |--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 33,868  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
+| `KN7APP.BIN`                         | 33,884  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
@@ -49,7 +49,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
 
-1,042,984 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,043,000 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -61,8 +61,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`7b07e0f1ea0032e0595f0d3b52bdbda22257006a` (SHR shifts logically, found by replaying Felipe's first input log;
-`build/sdcard.txt` lists it with the rest). Before it: `6f58c18f...` (the input log, played on Felipe's KN7000 on
+`cddfe76b8275dcd7ca66bd0a2cddb47205637294` (the screen black while a part loads, the firmware's drawing off: "The
+firmware's screen"; `build/sdcard.txt` lists it with the rest). Before it: `7b07e0f1...` (SHR shifts logically, found
+by replaying Felipe's first input log), `6f58c18f...` (the input log, played on Felipe's KN7000 on
 2026-11-01), `94910f68...` (round 3, `7f8ed09a...`: the coded bank, the keybed-only controls, the keybed-sound key;
 then UP moved to A♭5 or B♭5). The builds before those that ran on Felipe's KN7000: `a2fbbaa6...`
 (the DSP sound) and `97fbd9e6...` (the first sound build, tone generator only).
@@ -708,7 +709,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                      |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                           |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                   |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (33,868 bytes, to 0x502C244C)                     |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (33,884 bytes, to 0x502C245C)                     |
 | `0x502C8000`-`0x502D79FF` | HELP_BUF: help pages, stop screen, bitmap unpacking                                   |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                 |
 | `0x502D8300`-`0x502D8AFF` | AW_STRIDX: string index, from AWSTRIDX.AW                                             |
@@ -809,6 +810,12 @@ checks).
 | (e) pools    | `0x50180000`-`0x50297FFF` identical at POWER OFF, and no write there?         | identical, none           | identical, none           | identical, none           |
 | (f) area     | any foreign write into the game's RAM while it runs?                          | none                      | none                      | none                      |
 | (g) loader   | any write into the loader's area but the loader's own?                        | none                      | none                      | none                      |
+
+**Again on 2026-11-02**, with the firmware's drawing off (`KN7APP.BIN` `cddfe76b...`, emulator md5 `8b9865bd...`;
+893 and 941 with a blank IC23, the owner's IC23 not run): every check above passed in both, the 18 session checks
+included. (f) had found 431,724 foreign writes in both: the firmware's SD read filling PART_AREA with the DSP's
+sample bank (dsp.s BankRead, since the DSP build), which only the part loader's reads were recognised as. BankRead
+now sets `LD_IN_READ` to 2 while it reads, and the test counts those writes with the game's SD reads (914,072).
 
 The session's 18 checks: the loader ran the game, having found all seven of its services (`0x7F`),
 and the game's firmware search found everything (on 893: from the loader's table SD open

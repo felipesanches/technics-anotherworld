@@ -57,6 +57,7 @@
 --                loader is not running an application, LV_STATE != 1: the firmware zeroing the converter
 --                area and reading KN7LOAD.CNV in, the loader zeroing it and reading KN7APP.BIN), "fileread"
 --                (an SD read the game asked for, LD_IN_READ = 1, into the current record's destination),
+--                "bankread" (counted with them: the sample bank's AWSBn.AW, LD_IN_READ = 2, into PART_AREA),
 --                and "foreign": anything else during the game. "AWAREA verdict: CLEAN" when there is no
 --                foreign write
 --   loader.txt   every write into the loader's resident area (0x502B8000-0x502B9FFF and its 0x90 view),
@@ -92,6 +93,7 @@ local LOADER_LO, LOADER_HI, LOADER_CODE_HI = 0x502B8000, 0x502BA000, 0x502B9C00 
 local LV_STATE, SVC = 0x502B9D00, 0x502B9E00         -- loader.s: 1 = running an application; "KN7S"
 local SV_FOUND, SV_OPEN = SVC + 0x64, SVC + 0x10
 local LD_REC = CV + 0x4C                             -- the record being loaded: +4 destination, +8 bytes
+local PART_AREA, BANK_FILE_MAX = 0x502EE400, 0x10000   -- platformcnv.inc, dsp.inc: where BankRead reads AWSBn.AW
 local AW_LO, AW_HI, MB_LO, MB_HI = 0x502BA000, 0x5037A000, 0x5031B000, 0x5031C000
 
 local RES_DIR = os.getenv("AWT_RES")
@@ -173,6 +175,8 @@ local function area_tap(base)
     elseif sp:read_u32(LD_IN_READ) == 1 and rec ~= 0 and a >= sp:read_u32(rec + 4)
            and a < sp:read_u32(rec + 4) + sp:read_u32(rec + 8) then
       kind = "fileread"; T.area_fileread = T.area_fileread + 1
+    elseif sp:read_u32(LD_IN_READ) == 2 and a >= PART_AREA and a < PART_AREA + BANK_FILE_MAX then
+      kind = "bankread"; T.area_fileread = T.area_fileread + 1  -- dsp.s BankRead: an AWSBn.AW into PART_AREA
     else kind = "foreign"; T.area_foreign = T.area_foreign + 1 end
     bump(T.area, string.format("%-8s pc=%08X page=%08X", kind, p, a & 0xFFFFF000))
   end)
