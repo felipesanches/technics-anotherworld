@@ -12,3 +12,15 @@ AudioStopAll:
 AudioPause:
 AudioResume:
     rets
+
+# The help screen's first page's sound status (help.s): no sound, nothing to show.
+HelpSoundState:
+    clr     d0
+    rets
+DspModeText:
+    rets
+DV_MODETXT:                         # the page's sound, keybed-sound and sample-bank lines: empty
+DV_KEYSTXT:
+DV_BANKTXT:
+    .byte   0
+    .align  4
