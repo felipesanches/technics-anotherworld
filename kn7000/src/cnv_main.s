@@ -76,7 +76,7 @@ AppName:                            # AH_NAME: 32 bytes, NUL-padded
 .equ LD_DONE,      CNV_VARS + 0x50  # records loaded of this list
 .equ LD_TOTAL,     CNV_VARS + 0x54  # records in this list
 .equ LD_FAILED,    CNV_VARS + 0x58  # a file of the list could not be loaded: the game stops
-.equ LD_IN_READ,   CNV_VARS + 0x5C  # 1 while fmmread fills a destination for us, 2 the sample bank's in PART_AREA (dsp.s BankRead; the probes' taps)
+.equ LD_IN_READ,   CNV_VARS + 0x5C  # 1 while fmmread fills a destination for us, 2 the sample bank's in PART_AREA (dsp.s BankRead), 3 AWPREFS.CFG into PR_BUF (PrefsRead); the probes' taps
 .equ LD_T0,        CNV_VARS + 0x60  # the ms counter when this list started
 .equ LD_MS,        CNV_VARS + 0x64  # how long the last list took
 .equ LD_LISTS,     CNV_VARS + 0x68  # lists loaded so far (the global one, then each part)
@@ -994,12 +994,16 @@ PrefsRead:
     exth    d0
     cmp     0, d0
     blt     prr_none
+    mov     3, d0                   # (the probes' taps: an SD read into PR_BUF, LD_IN_READ)
+    mov     d0, (LD_IN_READ)
     mov     PR_FILE_LEN + 1, d0     # one byte more than the file: a longer one is not ours
     mov     d0, (0x14, sp)
     mov     PR_BUF, a0
     mov     (FW_READ), a3
     calls   (a3)                    # d0 = bytes read
     mov     d0, d2
+    clr     d3
+    mov     d3, (LD_IN_READ)
     mov     (FW_CLOSE), a3
     calls   (a3)
     mov     (FW_RESETEXT), a3

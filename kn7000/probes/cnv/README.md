@@ -638,6 +638,32 @@ to the control run's).
     AWLB_OUT=$T/lb probes/cnv/run_perf.sh $T/lb probes/cnv/awcnv_loadblack.lua
     python3 probes/screen2png.py $T/lcd8/screen_*.bin --sheet sheet.png      # the dumps, to look at
 
+## Settings and loading screen (2026-11-02)
+
+The settings page (help page 4) and `AWPREFS.CFG`, and the loading screen (README-CNV.md, "Settings"; `src/prefs.s`,
+`src/lcd8.s`), checked with `run_prefs.sh` (`awcnv_prefs.lua`, two runs of program 893: a card without the file, then
+one with the file the first run wrote). `KN7APP.BIN` SHA-1 `9bfd11f2`, 38,204 bytes:
+
+| check     | what is read                                                          | result                                                                            |
+|-----------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| `loading` | `LCD_OWNED`, `LOAD_PCT` and the controller's bpp, every frame from OK | LCD taken 9.3 s after OK, 8 bpp throughout, 57 percentages 0-100, none going back |
+| `page`    | `HELP_PAGE`, `PR_SEL` after PAGE DOWN x3 and the keybed moves         | page 3 (the fourth), row 4                                                        |
+| `apply`   | `PREFS_AT` +4..+8, `PG_W`, `AMB_LUT`, `AU_KEYWANT` after each change  | ambilight off and black, 320x200, scatter 2, keybed off, LEDs off                 |
+| `saved`   | `PR_WROTE`, `PR_FAILS`, `PR_DIRTY` 5 s after EXIT                     | written 5, failed 0, dirty 0, the game running                                    |
+| `read`    | `PR_STATUS` and `PREFS_AT` in the second run                          | status 1 (read), the same five values                                             |
+| `effect`  | `PG_W`, `AMB_LUT`, `AU_KEYWANT` in the second run                     | 320 wide, ambilight black, keybed muted                                           |
+
+The file the first run wrote: `41 57 50 31 01 00 02 00 00 00 00 00 00 00 00 00` ("AWP1", then resolution, ambilight,
+scatter, keybed, LEDs).
+
+The acceptance tests (`run_cnv_tests.sh`, above) on the same build: `ic23 v13 ... blank` and `ic23 v16 ... blank`
+pass all eight checks (session 18 of 18; the saved IC23s `eb26c67b...` and `bc2305dd...` as before). At first the
+`area` check found 16 foreign writes: the firmware's SD read (893 pc `0x4C003031`, 941 `0x4C003046`) putting
+`AWPREFS.CFG` into `PR_BUF` (`0x502DF940`). That is the game's own read, so `PrefsRead` now sets `LD_IN_READ` = 3
+during it, as `BankRead` sets 2, and `awcnv_test.lua` counts those writes as "prefread" with the SD reads.
+
+    T=~/compartilhado/tmp/aw-prefs; probes/cnv/run_prefs.sh $T     # prints the "awpr:" lines; OUT/p1, OUT/p2
+
 ## The panel's LEDs (2026-11-02)
 
 Felipe asked for the panel LEDs to follow the game: every red LED at a laser shot, the other LEDs pulsing while
@@ -665,6 +691,9 @@ VM's (`compare_frames.py`). `KN7APP.BIN` SHA-1 `edc5cb45`:
 The one intro frame (2709) caught the firmware's flush halfway through a restore (registers 17-19 not yet sent; the
 next frame is right). With the LED effects off (a card with `AWPREFS.CFG` byte +8 = 0) the gun session's shadow
 held one value at all 1400 frames, 15 outputs lit (the firmware's own), and the pictures again matched 1400/1400.
+On the final build (`9bfd11f2`, which only adds `PrefsRead`'s `LD_IN_READ` marker, see "Settings and loading
+screen") the gun session gave the same counts but the pulse, 42/80, and the panel, 1399/1400: frame 1151 is again a
+restore caught halfway (registers 17-19 still lit, right the next frame); the pictures 1400/1400.
 
 Three faults the replays found, fixed before these results:
 

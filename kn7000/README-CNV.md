@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                                  |
 |--------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 38,180  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
+| `KN7APP.BIN`                         | 38,204  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                      |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                 |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)          |
@@ -848,7 +848,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (38,180 bytes, to 0x502C3524)                                |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (38,204 bytes, to 0x502C353C)                                |
 | `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
 | `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |
