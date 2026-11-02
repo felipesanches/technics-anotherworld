@@ -7,7 +7,7 @@
 # PrefsSave). The block at PREFS_AT is also the file's 16 bytes:
 #   +0 "AWP1"   +4 resolution (0 384x240, 1 320x200)   +5 ambilight (1 on)   +6 light scatter (0 short .. 3 very long)
 #   +7 keybed sound (1 on)   +8 LED effects (1 on)   +9..+15 zero
-# then the page's state. Defaults: 384x240, ambilight on, scatter medium, keybed sound on, LED effects on.
+# then the page's state. Defaults: 384x240, ambilight on, scatter long, keybed sound on, LED effects on.
 
 # (The block's equates, PR_*: vm.inc.)
 
@@ -18,7 +18,7 @@ PrefsInit:
     beq     pin_ret
     mov     PR_MAGIC_V, d0
     mov     d0, (PREFS_AT)
-    mov     0x00010100, d0          # resolution 0, ambilight 1, scatter 1, keybed sound 0 (then set)
+    mov     0x00020100, d0          # resolution 0, ambilight 1, scatter 2 (long), keybed sound 0 (then set)
     mov     d0, (PREFS_AT + 4)
     mov     1, d0
     movbu   d0, (PR_KEYS)

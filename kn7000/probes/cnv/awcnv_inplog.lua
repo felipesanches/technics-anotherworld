@@ -12,7 +12,8 @@
 -- (run with a card image kept: tools/aw_inplog.py on the files fatget.py takes out of it).
 --
 -- Replay (AW_REPLAY=SESSION.awr, tools/aw_inplog.py's): no key is touched; what the log says the VM was given, it is
--- given, where it was given it:
+-- given, where it was given it (and a "V frame 0xVAR value" record sets a VM variable at that frame, as the code
+-- screen sets var 0x00 before it asks for a part: for sessions that start a part at a checkpoint):
 --   * the input: at ReadInput's last write (var 0xFE, recognised by the return address in MDR: WriteVar calls
 --     nothing), the mask of the log's last I record up to this frame is written, and the variables its mode writes
 --     (intro: var 0xFA; play: 0xFC, 0xE5, 0xFB, 0xFD, 0xFA); an R record at this frame sets REQ_NEXT_PART there;
@@ -60,7 +61,7 @@ local function frame()
 end
 
 -- ---- the log to replay --------------------------------------------------------------------------------
-local INP, REQ, MARKS, END = {}, {}, {}, nil
+local INP, REQ, MARKS, END, VSET = {}, {}, {}, nil, {}
 if REPLAY then
   for line in io.lines(REPLAY) do
     local k, rest = line:match("^(%a) (.*)$")
@@ -73,6 +74,10 @@ if REPLAY then
       local f, t, v = rest:match("^(%d+) (%d+) (%-?%d+)$"); MARKS[#MARKS + 1] = { tonumber(f), tonumber(t), tonumber(v) }
     elseif k == "E" then
       END = tonumber(rest:match("^(%d+)"))
+    elseif k == "V" then                                    -- "V frame 0xVAR value": a variable set there (with
+      local f, v, x = rest:match("^(%d+) 0x(%x+) (%-?%w+)$")  -- an R record: the code screen's start of a part)
+      f = tonumber(f); VSET[f] = VSET[f] or {}
+      VSET[f][#VSET[f] + 1] = { tonumber(v, 16), x:match("^0x") and tonumber(x:sub(3), 16) or tonumber(x) }
     end
   end
   log(string.format("replaying %s: %d input changes, %d marks, end at frame %s", REPLAY, #INP, #MARKS, tostring(END)))
@@ -96,6 +101,7 @@ if REPLAY then
       local ud = (m & 4) ~= 0 and 1 or ((m & 8) ~= 0 and -1 or 0)
       sp:write_u16(V_LR, s16(lr)); sp:write_u16(V_UD, s16(ud)); sp:write_u16(V_JMP, s16(ud)); sp:write_u16(V_PMASK, m)
     end
+    if VSET[f] then for _, w in ipairs(VSET[f]) do sp:write_u16(VAR(w[1]), s16(w[2])) end; VSET[f] = nil end
     if REQ[f] then sp:write_u16(REQ_NEXT_PART, REQ[f]); stats.reqs = stats.reqs + 1; REQ[f] = nil end
     stats.inputs = stats.inputs + 1
     return (data & ~0xffff) | m                              -- the write in flight is var 0xFE's
@@ -161,7 +167,8 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   if varf then varf:write(sp:read_range(INTERP, INTERP + 511, 8)) end
   if ledf then
     -- AW_LEDLOG: the LED effects at every frame (src/leds.s): active, charge, red / all until (ms left), blinks to go,
-    -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start, the panel's registers, the TX FIFO's free count
+    -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start, the panel's registers, the TX FIFO's free count,
+    -- then the mega-blast flag, the random LEDs' chance (the waterfall), the left / right red and the green (ms left), and VM var 0x04 (Lester's facing)
     local LV, sh = 0x502DAD00, sp:read_u32(0x502DAD00)
     local ms = sp:read_u32(sp:read_u32(MISC + 0x200))
     local lit = 0
@@ -180,9 +187,11 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
       for b = 0, 7 do if (M.output:get_value(side .. (w * 8 + b)) or 0) ~= 0 then v = v | (1 << b) end end
       pv[#pv + 1] = string.format("%02X", v)
     end
-    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d %s %d\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
-      math.max(0, sp:read_u32(LV + 0x10) - ms), math.max(0, sp:read_u32(LV + 0x14) - ms), sp:read_u32(LV + 0x18),
-      sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20), table.concat(pv), sp:read_u16(0x5006BD98)))
+    local function left(o) return math.max(0, sp:read_u32(LV + o) - ms) end
+    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d %s %d %d %d %d %d %d %04X\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
+      left(0x10), left(0x14), sp:read_u32(LV + 0x18),
+      sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20), table.concat(pv), sp:read_u16(0x5006BD98),
+      sp:read_u32(LV + 0x30), sp:read_u32(LV + 0x34), left(0x24), left(0x28), left(0x2C), sp:read_u16(VAR(0x04))))
   end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1

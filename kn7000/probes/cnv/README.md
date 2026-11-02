@@ -717,6 +717,66 @@ Three faults the replays found, fixed before these results:
     (the same with 2026-11-02-intro-rec2; the .fp files: research-scratch kn7000-aw-reference/fingerprints
     run_all.sh's `one`, replayawr AW_EVENTS then awfp.py EV 3E80)
 
+## The panel's LEDs, second round; the splash's flash; the end; the quit to the menu (2026-11-02)
+
+Felipe's second list: the LEDs dark but for the effects, the charge pulsing the PANEL MEMORY ring only, every LED with
+the blast, Lester's shots lighting the red LEDs on his side, the recharge station the green ones, the waterfall
+blinking them at random (fainter beside it), a flash of the previous picture at the splash's cuts, the game's end
+starting the intro again, and the quit going back to the menu with no firmware message. The game's signals were found
+in the reference VM (research-scratch `kn7000-aw-reference/fingerprints`: `run_gun.sh`, `gunsig.py`,
+`waterfall_probe.sh`, `end_probe.sh`, and the README's findings). The LED groups: `../ledmasks.py` (the MAME layout
+and the service manual's colours: 71 red, 32 on the left half, 39 on the right, 22 green, 8 PANEL MEMORY).
+
+Six sessions replayed in MAME (`run_inplog.sh`, program 893, `AW_LEDLOG`; `../ledcheck.py`). The three that start in
+a part at a checkpoint were made from the reference VM's with `../jump_session.py` (the splash and the intro as
+always, then at frame 300 the code screen's var 0x00 and part request, as `V` and `R` records, which
+`awcnv_inplog.lua` now replays). `KN7APP.BIN` SHA-1 `d5c54c1e` (the LED, end and palette changes) for the first,
+third and fourth, `2623ff2c` (with the quit's chain) for the other two:
+
+| session                            | what                                                                                                                                                                                                                                 |
+|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e86-via-code-gun` (1400 frames)  | dark 1283/1283; guards' lasers 5/5, Lester's 5/5 (all to the left); charge 3/3, blob 1/1, shield 2/2, blast 1/1; the ring lit in 41 of 77 charge frames, another LED in 0; panel 1400/1400; pictures 1400/1400 as the reference VM's |
+| `3e86-via-code-turn-fire` (1330)   | dark 1305/1305; guards' 4/4; Lester's to the left 3/3, to the right 1/1 (each half alone); panel 1330/1330                                                                                                                           |
+| `3e84-cp31-recharge` (jump, 501)   | the recharge at frame 349 (48 frames into the part, as the reference VM's tick 48): every green LED in 17 of its 18 frames (the first is logged before the next yield writes it); dark 481/481                                       |
+| `3e84-waterfall-48-4a` (jump, 901) | beside the waterfall (volume 16, chance 32/256): 222 frames, 13% of the LEDs lit on average; on it (64, 128/256): 31 frames, 48%; dark 646/646                                                                                       |
+| `3e87-end` (jump, 2301)            | the last words at frame 1763, the picture still from 1863 (100 frames on), the intro asked for at 1930 (3.1 s later, by the kernel ms in the LED log); its first picture as frame 0's; LEDs dark 2300/2300                           |
+
+The splash's flash: `awcnv_flash.lua` saves every MAME frame that differs from the one before, `../flashfind.py` lists
+the short ones between longer ones. Before (`KN7APP.BIN` `9bfd11f2`): VM frame 50, the Interplay logo (faded to
+black) showing in Delphine's colours for a frame, then half overwritten; VM frame 161, part of the Out of This World
+logo in the next screen's colours. Cause: BlitPage loaded a new palette into the look-up table before writing the
+page's pixels. After (`2623ff2c`, the palette after the pixels, the game's 16 entries black first on a cut): neither
+is there; what is left between two pictures is the blit writing one top-down (a mix of the two) and, at VM frame 288,
+a frame the game itself makes (the intro's palette over a page still all colour 0, dark grey, before its bitmap).
+
+The quit to the menu (`src/chain.s`; technics-roms-disasm `kn7000/tools/kn7menu/test/run_menu_tests.sh leave`, the
+staged card with this build in `AW\`): RUN on "Another World", then EXIT held in the game: the menu back 5.5 s after
+the press (`KN7APP.BIN` `2623ff2c`), the firmware's titles 0x46 and 0x4A only (the STYLE CONVERT titles a request-5
+converter has; never "Continue Next?", 0x4C, nor the message, 0x03). Its snapshots showed the firmware's STYLE CONVERT
+screen behind the menu while the menu drew its first screen, so the firmware's frame is now made black before the LCD
+is handed back (`FwFrameBlack`). With it (`fafbe3d9`): the menu back 5.7 s after the press, the same two titles; the
+first snapshot after the menu is up (0.2 s) still shows the firmware's own STYLE CONVERT text screen with the menu's
+"KN7000 PROGRAM MENU": the firmware paints it at the menu's first request-5 answer, as whenever the loader starts the
+menu, before the menu draws over it (the menu's own start, not the game's quit).
+
+Leaving the menu itself stays the firmware's: its message, then "Continue Next?". Tried and dropped: the menu calling
+the firmware's ChangeMode(1, 0) (what "Continue Next?" NO calls, 893 `loc_484796EC`) on its last call: the main screen
+came (title 0x01, 2.7 s after EXIT), but the firmware's dispatcher then opened "Continue Next?" over it (0x4C at 2.82 s,
+the message 0x03 at 2.87 s): every request a converter can end a call with makes the dispatcher post a title after the
+call returns (0xFE: 0x4C; 0: 0x49; 5: 0x4A; others: 0x46; 893 `func_48479934`), so it always comes after the mode
+change. ChangeModeEZ (synchronous, `MT_SetHold` first) left the firmware on title 0x4A and no longer calling. (ChangeMode
+is findable by its first 14 bytes in all four builds: `cfe0f8feecf1e682fccf00000e00`, 893/935 `0x4842B301`, 941
+`0x4842B343`, 942 `0x4842B345`: research-scratch `kn7000-aw-exit/changemode_sig.py`.)
+
+    T=~/compartilhado/tmp/aw-leds2; S=probes/sessions
+    AW_LEDLOG=$T/gun.led probes/cnv/run_inplog.sh $T/gun replay $S/2026-11-02-3e86-via-code-gun.awr
+    python3 -I probes/ledcheck.py $T/gun.led $S/2026-11-02-3e86-via-code-gun.fp      # (turn-fire the same, with its .fp)
+    AW_LEDLOG=$T/rch.led probes/cnv/run_inplog.sh $T/rch replay $S/2026-11-02-3e84-cp31-recharge.awr
+    python3 -I probes/ledcheck.py $T/rch.led                                         # (waterfall, end the same)
+    AWF_OUT=$T/flash probes/cnv/run_perf.sh $T/flash probes/cnv/awcnv_flash.lua; python3 -I probes/flashfind.py $T/flash
+    TREE=<card tree, root KN7APP.BIN = the menu> MT_PROGRAM="Another World" MT_GAME_UP="0x502DF000=3" \
+      ~/compartilhado/technics-roms-disasm/kn7000/tools/kn7menu/test/run_menu_tests.sh $T/menu leave
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

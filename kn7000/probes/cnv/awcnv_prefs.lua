@@ -8,7 +8,7 @@
 -- picture: the percentage the loading screen shows (vm.inc LOAD_PCT), whether the game owns the LCD (LCD_OWNED) and
 -- the controller is at 8 bits a pixel; the screen MAME draws at about 0, 30, 60, 85 and 95 % to AWPR_OUT/load_PP.bin.
 -- Then, the game running: HELP, PAGE DOWN three times (page 4, the settings); A5 (down), C6 (right): the ambilight
--- off; Ab5 (up), C6: the resolution 320x200; A5 twice, C6: the light scatter one more; A5, C6: the keybed sound off;
+-- off; Ab5 (up), C6: the resolution 320x200; A5 twice, C6: the light scatter one more (long to very long); A5, C6: the keybed sound off;
 -- A5, C6: the LED effects off; each checked in RAM (PREFS_AT) and in effect (PG_W, AMB_LUT all black, AU_KEYWANT);
 -- the page dumped (settings.bin). EXIT: back to the game; 3 s; AWPREFS.CFG written (PR_WROTE, PR_DIRTY); then EXIT
 -- held: the quit. run_perf.sh brings AWPREFS.CFG back.
@@ -93,6 +93,7 @@ local co = coroutine.create(function()
       string.format("LCD taken %.1f s after OK, 8 bits a pixel throughout %s; %d percentages shown, %d going back: %s",
         (L.owned_at or 0) - t_ok, tostring(L.lcd8), #L.pcts, L.back, table.concat(L.pcts, " ")))
     log("at the start: " .. prefs() .. string.format("; read %d", sp:read_u32(PR_STATUS)))
+    result("defaults", sp:read_u32(PR_STATUS) == 2 and prefs() == "res 0 ambi 1 scatter 2 keys 1 leds 1", prefs())
     press("CPC_SEG5", 0x02); wait(2)  -- HELP
     for i = 1, 3 do press("CPC_SEG11", 0x20); wait(1.2) end  -- PAGE DOWN x3: the settings
     local pg = sp:read_u32(HELP_PAGE)
@@ -101,7 +102,7 @@ local co = coroutine.create(function()
     key("G5#"); key("C6")             -- row 0: the resolution 320x200
     local res = sp:read_u8(PREFS + 4) == 1 and sp:read_u32(PG_W) == 320
     key("A5"); key("A5"); key("C6")   -- row 2: the scatter one more
-    local scat = sp:read_u8(PREFS + 6) == 2
+    local scat = sp:read_u8(PREFS + 6) == 3
     key("A5"); key("C6")              -- row 3: the keybed sound off
     local keys = sp:read_u8(PREFS + 7) == 0 and sp:read_u32(AU_KEYWANT) == 1
     key("A5"); key("C6")              -- row 4: the LED effects off
@@ -118,7 +119,7 @@ local co = coroutine.create(function()
         sp:read_u32(PR_WROTE), sp:read_u32(PR_FAILS), sp:read_u32(PR_DIRTY), tostring((sp:read_u32(FRAME_NO) & 0xffff) ~= f0), prefs()))
   else
     local ok = sp:read_u32(PR_STATUS) == 1 and sp:read_u8(PREFS + 4) == 1 and sp:read_u8(PREFS + 5) == 0
-      and sp:read_u8(PREFS + 6) == 2 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0
+      and sp:read_u8(PREFS + 6) == 3 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0
     result("read", ok, string.format("status %d; %s", sp:read_u32(PR_STATUS), prefs()))
     result("effect", sp:read_u32(PG_W) == 320 and amb_black() and sp:read_u32(AU_KEYWANT) == 1,
       string.format("PG_W %d, ambilight black %s, keybed muted %d", sp:read_u32(PG_W), tostring(amb_black()), sp:read_u32(AU_KEYWANT)))

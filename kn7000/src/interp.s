@@ -211,8 +211,7 @@ InitForPart:
     cmp     PART_LAST, d0
     bgt     ifp_ret
     mov     d0, d2
-    mov     LEV_STOP, d0            # no charge goes on across a part switch (leds.s)
-    call    LedEvent, 0, 0
+    call    LedPart, 0, 0           # no charge, blast or waterfall goes on across a part switch (leds.s)
     call    AudioStopAll, 0, 0      # nothing sounds across a part switch (rawgl restartAt), and the
     mov     d2, d0                  # module player must not read MUSIC_BUF while the next part loads
     call    EnsurePart, 0, 0        # d0 = partId; returns once its resources are resident
@@ -612,6 +611,58 @@ cp_ret:
     ret     [d2,d3,a2,a3], 0x30
 
 # ================================================================================
+# EndCheck: after the game's last words (vm.inc END_*): a keybed or MIDI key pressed (not held from before), or
+# END_WAIT_MS after the picture has stopped, asks for the intro (part 0x3E81, applied at the frame's end as any part
+# switch). Leaving part END_PART any other way forgets it.
+EndCheck:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    movhu   (CURRENT_PART_ID), d0
+    cmp     END_PART, d0
+    bne     ec_disarm
+    call    NotePoll, 0, 0
+    clr     d0                      # any note 0..127 held?
+    mov     127, d1
+    call    NotesAnyHeld, 0, 0
+    mov     (END_HELD), d1
+    mov     d0, (END_HELD)
+    cmp     0, d0
+    beq     ec_time
+    cmp     0, d1
+    beq     ec_restart              # pressed since the last look
+ec_time:
+    mov     (END_STOP_MS), d0
+    cmp     0, d0
+    bne     ec_wait
+    mov     (FRAME_NO), d0          # the picture stops END_SCROLL ticks after the words
+    mov     (END_TICK), d1
+    sub     d1, d0
+    cmp     END_SCROLL, d0
+    bcs     ec_ret
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d0
+    or      1, d0
+    mov     d0, (END_STOP_MS)
+    bra     ec_ret
+ec_wait:
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d1
+    sub     d0, d1
+    cmp     END_WAIT_MS, d1
+    bcs     ec_ret
+ec_restart:
+    mov     0x3E81, d0
+    movhu   d0, (REQ_NEXT_PART)
+    call    InpLogRequest, 0, 0     # d0 = the part: into the input log (inplog.s)
+ec_disarm:
+    clr     d0
+    mov     d0, (END_TICK)
+    mov     d0, (END_STOP_MS)
+    mov     d0, (END_HELD)
+ec_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# ================================================================================
 # ReadInput: feed KN7000 controls to the Another World hero variables.
 #
 #   * Intro (0x3E81): any held keybed/MIDI key -> fire, so the player can skip the intro.
@@ -646,6 +697,11 @@ ri_nohelp:
     movhu   d0, (REQ_NEXT_PART)
     call    InpLogRequest, 0, 0     # d0 = the part: into the input log (inplog.s)
 ri_nocodes:
+    mov     (END_TICK), d0          # the game over: a key or the wait starts the intro again
+    cmp     0, d0
+    beq     ri_noend
+    call    EndCheck, 0, 0
+ri_noend:
     movhu   (CURRENT_PART_ID), d0
     cmp     0x3E81, d0
     bne     ri_gameplay
@@ -1696,6 +1752,20 @@ OpDrawString:
     movbu   (1, a2), d1             # stringId lo
     asl     8, d0
     or      d1, d0                  # d0 = stringId
+    cmp     END_STRING, d0          # the game's last words (vm.inc END_*): EndCheck from now on
+    bne     ods_go
+    movhu   (CURRENT_PART_ID), d1
+    cmp     END_PART, d1
+    bne     ods_go
+    mov     (END_TICK), d1
+    cmp     0, d1
+    bne     ods_go
+    mov     (FRAME_NO), d1
+    or      1, d1
+    mov     d1, (END_TICK)
+    mov     1, d1                   # a key held now does not count: a press does
+    mov     d1, (END_HELD)
+ods_go:
     movbu   (2, a2), d1             # x (char column)
     movbu   (3, a2), d2             # y (pixels)
     movbu   (4, a2), d3             # colour

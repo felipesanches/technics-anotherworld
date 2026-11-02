@@ -89,6 +89,8 @@ test: card
 # files part by part from the card's root (AWRxx.AW: each resource the game draws or runs, as MEMLIST.BIN finds it
 # in BANKxx; the font and the strings).
 LOADER_DIR  ?= $(DISASM_REPO)/tools/cnv_romdump
+# The program menu's trampoline and cache sync, which the quit uses to go back to the menu (src/chain.s)
+KN7MENU_DIR ?= $(DISASM_REPO)/tools/kn7menu
 # The loader on the owner's write-protected floppy, unchanged since its release: these exact files.
 LOADER_CNV    ?= $(LOADER_DIR)/releases/2026-10-19/floppy/KN7LOAD.CNV
 LOADER_FLOPPY ?= $(LOADER_DIR)/releases/2026-10-19/floppy/kn7load_floppy.img
@@ -97,7 +99,7 @@ FLOPPY_SHA1   := b7a67de602694fd2257d59ce4509ca154b0b3064
 # The published overlay build (program 941 is its default KN7000 BIOS; -bios v13 is program 893, the owner's).
 MAME941     ?= ../../kn7000-emulator/run.sh
 SD941       ?= ../../kn7000-emulator/sdcard_from_real_kn7000.img
-APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s src/prefs.s src/leds.s
+APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s src/prefs.s src/leds.s src/chain.s
 # MAME's disassembler, which checks every word of the effects DSP's mixer (tools/dsp_mixer.py --check): the
 # build stops when it is not there (make UNIDASM=/path/to/unidasm).
 UNIDASM     ?= $(HOME)/compartilhado/mame-sony-video/unidasm
@@ -146,11 +148,16 @@ build/loader.ok: $(LOADER_CNV) $(LOADER_FLOPPY)
 #                        image), without overlaps; the image starts at APP_BASE with its header and fits
 #                        below the font.
 # Then the loader's mkapp.py fills in the header's size and CRC-32, which the loader checks.
-build/KN7APP.BIN: $(APP_SRC) src/platformcnv.inc src/inplog.inc src/vm.inc $(RES_OUT)/awpart.inc $(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc $(LOADER_DIR)/kn7cnv.inc $(LOADER_DIR)/mkapp.py $(DISASM_REPO)/tools/xapasm.py tools/leafcheck.py tools/ic23_guard.py tools/cnv_layout.py build/loader.ok
+# The menu's trampoline, assembled for its T_CODE by the menu's own Makefile (tramp_bin.inc, tramp_syms.inc)
+$(KN7MENU_DIR)/build/tramp_bin.inc: $(KN7MENU_DIR)/tramp.s $(KN7MENU_DIR)/menu.inc $(KN7MENU_DIR)/cachesync.inc
+	$(MAKE) -C $(KN7MENU_DIR) build/tramp_bin.inc
+
+build/KN7APP.BIN: $(APP_SRC) src/platformcnv.inc src/inplog.inc src/vm.inc $(RES_OUT)/awpart.inc $(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc $(LOADER_DIR)/kn7cnv.inc $(LOADER_DIR)/mkapp.py $(DISASM_REPO)/tools/xapasm.py tools/leafcheck.py tools/ic23_guard.py tools/cnv_layout.py tools/chain_check.py $(KN7MENU_DIR)/build/tramp_bin.inc build/loader.ok
 	@mkdir -p build
 	$(PYTHON) -I tools/leafcheck.py $(APP_SRC)
-	$(PYTHON) -I tools/ic23_guard.py $(DISASM_REPO)/tools src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) --loader $(LOADER_DIR)/kn7cnv.inc
-	$(XAPASM) src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) -o build/kn7app.bin -m build/kn7app.map
+	$(PYTHON) -I tools/chain_check.py src/chain.s $(KN7MENU_DIR)/menu.inc $(KN7MENU_DIR)/build/tramp_syms.inc
+	$(PYTHON) -I tools/ic23_guard.py $(DISASM_REPO)/tools src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) -I $(KN7MENU_DIR) -I $(KN7MENU_DIR)/build --loader $(LOADER_DIR)/kn7cnv.inc
+	$(XAPASM) src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) -I $(KN7MENU_DIR) -I $(KN7MENU_DIR)/build -o build/kn7app.bin -m build/kn7app.map
 	$(PYTHON) -I tools/cnv_layout.py $(LOADER_DIR)/kn7cnv.inc src/platformcnv.inc src/vm.inc build/kn7app.map build/kn7app.bin $(LOADER_CNV)
 	$(PYTHON) -I $(LOADER_DIR)/mkapp.py build/kn7app.bin $@.tmp
 	mv -f $@.tmp $@

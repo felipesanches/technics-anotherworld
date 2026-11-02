@@ -144,8 +144,20 @@ BlitPage:
     mov     PH_BLIT, d0
     call    PerfPhase, 0, 0
     mov     d0, (0x10, sp)          # the phase to go back to
-    call    PalCheck, 0, 0          # a new palette: its 16 look-up table entries (d0 = 0)
-    mov     d0, d3                  # d3 = 1: write the whole window
+    clr     d0
+    mov     d0, (0x14, sp)          # 1: a new palette, to load after the pixels
+    call    PalNew, 0, 0            # a new palette: loaded after the pixels (bp_done), so that the picture
+    cmp     0, d0                   # shown is never the old one in the new colours; on a cut, the game's
+    beq     bp_palok                # entries black while the pixels change (a fade's end is black already)
+    mov     1, d0
+    mov     d0, (0x14, sp)
+    mov     a2, a0
+    call    PageCut, 0, 0
+    cmp     0, d0
+    beq     bp_palok
+    call    LutGameBlack, 0, 0
+bp_palok:
+    clr     d3                      # d3 = 1: write the whole window
     mov     (PF_DAMAGE), d0
     cmp     0, d0
     beq     bp_shown
@@ -196,6 +208,11 @@ bp_write:
     mov     palette, a1
     call    AmbiUpdate, 0, 0
 bp_done:
+    mov     (0x14, sp), d0          # the new palette now that the pixels are written
+    cmp     0, d0
+    beq     bp_phase
+    call    PalCheck, 0, 0
+bp_phase:
     mov     (0x10, sp), d0
     call    PerfPhase, 0, 0
     ret     [d2,d3,a2,a3], 0x30
@@ -649,6 +666,104 @@ pd_grp:
     cmp     AW_H, d3
     bne     pd_row
     ret     [d2,d3,a2,a3], 0x10
+
+# PalNew -> d0 = 1 when palette is not the one last loaded (PF_PAL), else 0.
+PalNew:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     palette, a0
+    mov     PF_PAL, a1
+    mov     8, d1
+pn_cmp:
+    mov     (a0), d0
+    mov     (a1), d2
+    cmp     d2, d0
+    bne     pn_new
+    add     4, a0
+    add     4, a1
+    add     -1, d1
+    bne     pn_cmp
+    clr     d0
+    ret     [d2,d3,a2,a3], 0x20
+pn_new:
+    mov     1, d0
+    ret     [d2,d3,a2,a3], 0x20
+
+# PageCut(a0 = page) -> d0 = 1 when the page differs from what the window shows (SHADOW) in more than a quarter of
+# its groups of eight pixels, counted on every fourth row; or when the window must be written whole (PF_DAMAGE).
+# A new palette loaded before such a page's pixels shows the old picture in the new colours while they are written
+# (two LCD frames or so for a whole window: the splash's cut from Interplay to Delphine, Felipe 2026-11-02).
+PageCut:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     (PF_DAMAGE), d0
+    cmp     0, d0
+    bne     pc_yes
+    mov     a0, a2                  # a2 = the row in the page (a byte a pixel)
+    mov     SHADOW, a3              # a3 = the row in SHADOW (4 bytes for eight pixels)
+    clr     d2                      # d2 = groups that differ
+    clr     d3                      # d3 = groups compared
+    mov     (PG_H), d0
+    lsr     2, d0
+    mov     d0, (0x14, sp)          # rows to compare
+pc_row:
+    mov     (PG_W), d0
+    lsr     3, d0
+    mov     d0, (0x18, sp)          # groups in the row
+    mov     a2, a0
+    mov     a3, a1
+pc_grp:
+    mov     (a0), d0
+    and     0x0F0F0F0F, d0
+    mov     (4, a0), d1
+    and     0x0F0F0F0F, d1
+    asl     4, d1
+    or      d0, d1                  # Q, as BlitPacked makes it
+    mov     (a1), d0
+    cmp     d0, d1
+    beq     pc_same
+    inc     d2
+pc_same:
+    inc     d3
+    add     8, a0
+    add     4, a1
+    mov     (0x18, sp), d0
+    add     -1, d0
+    mov     d0, (0x18, sp)
+    bne     pc_grp
+    mov     (PG_W), d0              # four rows on
+    asl     2, d0
+    add     d0, a2
+    asl     1, d0                   # (SHADOW: half a byte a pixel)
+    lsr     2, d0
+    add     d0, a3
+    mov     (0x14, sp), d0
+    add     -1, d0
+    mov     d0, (0x14, sp)
+    bne     pc_row
+    asl     2, d2                   # differ * 4 > compared
+    cmp     d3, d2
+    bhi     pc_yes
+    clr     d0
+    ret     [d2,d3,a2,a3], 0x30
+pc_yes:
+    mov     1, d0
+    ret     [d2,d3,a2,a3], 0x30
+
+# LutGameBlack: the game's 16 look-up table entries black (not the ambilight's). PF_PAL keeps the palette last
+# loaded, so the PalCheck that follows loads the new one.
+LutGameBlack:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    clr     d2
+lgb_loop:
+    mov     d2, d0
+    clr     d1
+    call    LutSet, 0, 0
+    inc     d2
+    cmp     16, d2
+    bne     lgb_loop
+    ret     [d2,d3,a2,a3], 0x20
 
 # PalCheck -> d0 = 0: when palette is not the one last loaded (PF_PAL), PF_PAL becomes it and its 16 colours go
 # into look-up table entries 0-15 (lcd8.s LutSet: RGB565 to 4 bits a channel, the game's own depth). The window's

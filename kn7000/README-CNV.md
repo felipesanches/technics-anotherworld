@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                                  |
 |--------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 38,204  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
+| `KN7APP.BIN`                         | 40,620  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                      |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                 |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)          |
@@ -220,11 +220,20 @@ If anything looks wrong, write the card image from step 1 back and restore the p
    longer end it (`probes/cnv/README.md`, "Speed").
 5. **To quit, hold EXIT for 1.5 seconds.** The game writes its speed figures to a new file in the
    card's root (`AWPERF0.TXT`, then `AWPERF1.TXT`, ...: "Speed"), and the rest of its input log
-   (`AWIN00.BIN` ...: "Replaying a session"). The firmware shows a message box; press EXIT, and it asks
-   **Continue Next?** **NO** (right button 4) returns to the main screen. **YES** (right button 3)
-   makes the loader read `KN7APP.BIN` again and starts a new game from the beginning, firmware search
-   included. A short EXIT press still closes the help screen.
-6. If the firmware is one the game does not recognise, or a game file is missing or damaged, the
+   (`AWIN00.BIN` ...: "Replaying a session"). Started from the program menu (the game in its `AW\` folder),
+   it goes straight back to the menu: it reads `C:\KN7APP.BIN`, checks it as the loader does, and starts it
+   through the menu's own trampoline (`src/chain.s`), so no firmware message and no "Continue Next?" come
+   between them (in MAME the menu was back 5.5 s after EXIT went down, the 1.5 s hold included). Started by
+   the loader from the card's root, or if the menu cannot be read or is damaged, it ends as before: the
+   firmware shows a message box; press EXIT, and it asks **Continue Next?** **NO** (right button 4)
+   returns to the main screen. **YES** (right button 3) makes the loader read `KN7APP.BIN` again and
+   starts a new game from the beginning, firmware search included. A short EXIT press still closes the
+   help screen.
+6. **The game's end.** After the credits the game's last words scroll up ("Now Go Out Of This World") and
+   the picture stops for good, as in the original. Then any key of the keybed (or MIDI IN 1) starts the
+   intro again, and so do 3 seconds of the still picture (`src/interp.s` EndCheck: part 0x3E87's string
+   0x265, then 100 frames of scrolling).
+7. If the firmware is one the game does not recognise, or a game file is missing or damaged, the
    screen says so ("AW: UNKNOWN FIRMWARE, STEP n", "AW: A GAME FILE IS MISSING OR BAD") and EXIT ends
    it; nothing has been written outside the game's RAM. Step 2 of the search is the loader's service
    table: "STEP 2" means the floppy's loader is not the one the game was built for. If `KN7APP.BIN`
@@ -240,7 +249,7 @@ choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at on
 |---------------|--------------------------------|---------|------------------------------------------------------------------------|
 | resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch) |
 | ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides    |
-| light scatter | short, medium, long, very long | medium  | how far that glow reaches into the strips                              |
+| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                              |
 | keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
 | LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
 
@@ -253,32 +262,43 @@ settings changed on the page, then read back from the card on the next start).
 
 ## The panel's LEDs
 
-With the LED effects on (the default), the panel's LEDs follow a few of the game's moments (`src/leds.s`):
+With the LED effects on (the default), every LED of the panel goes dark once the firmware search is done (while
+"Loading..." still counts), and from then on only the game lights them (`src/leds.s`):
 
-| moment                                  | LEDs                                                 |
-|-----------------------------------------|------------------------------------------------------|
-| a laser shot (Lester's or a guard's)    | every red LED on for 150 ms                          |
-| Lester's gun charging a shot            | the LEDs that are not red pulse (200 ms on, 200 off) |
-| the charge grown to the big energy blob | the same, twice as fast                              |
-| the big blast fired                     | every LED blinks three times                         |
-| the intro's lightning                   | every LED on for 150 ms at each flash                |
-| the intro's thunder                     | every LED on for 100 ms at each loud clap            |
-| the lightning striking the lab          | every LED blinks three times                         |
+| moment                                          | LEDs                                                                       |
+|-------------------------------------------------|----------------------------------------------------------------------------|
+| a guard's laser shot                            | every red LED on for 150 ms                                                |
+| Lester's laser shot                             | the red LEDs on the half of the instrument he shoots towards, 150 ms       |
+| Lester's gun charging (a shield or a big blast) | the eight PANEL MEMORY LEDs pulse (200 ms on, 200 off)                     |
+| the charge grown to the big energy blob         | the same, twice as fast                                                    |
+| the big blast                                   | every LED on while the blast shows (the beam and its impact, about 0.9 s)  |
+| the gun recharging at a station                 | every green LED on for the 1.4 s the station's sparkles last               |
+| by the waterfall (the caves)                    | LEDs at random every 50 ms: half on its two screens, an eighth beside them |
+| the intro's lightning                           | every LED on for 150 ms at each flash                                      |
+| the intro's thunder                             | every LED on for 100 ms at each loud clap                                  |
+| the lightning striking the lab                  | every LED blinks three times                                               |
 
-The moments are recognised in the game's own bytecode as it runs (a sound, a palette, a variable, and which
-thread does it), the way the reference VM's event log showed them (research-scratch `kn7000-aw-reference/
-fingerprints`). The game writes the firmware's own LED shadow and asks it to send it to the panel, so the
-firmware's 24 ms flush carries the pattern; when the effects end, the LEDs go back to what the firmware has
-them showing (any LED the firmware changed meanwhile keeps the change), and the game asks the firmware to redraw
-the LEDs of its own state, all its refresh groups but the one that re-applies the LED freeze: that routine zeroes
-the firmware's record of what the panel shows, and run before the flush had sent the restore it left the LEDs set
-back to off still lit (seen in MAME: `probes/cnv/README.md`, "The panel's LEDs"). The shadow's address is known for
-programs 893, 935, 941 and 942; on any other build, or with the LED effects off, the game leaves the LEDs alone.
+At the quit the LEDs go back to what the firmware has them showing; with the LED effects turned off in the
+settings, at once (and the game leaves them to the firmware from then on).
 
-Checked in MAME by replaying two sessions with an LED log (`probes/cnv/awcnv_inplog.lua`, `AW_LEDLOG`) and
-comparing it with the reference VM's events of the same sessions (`probes/ledcheck.py`): every laser, charge,
-blast, flash, clap and strike lit its pattern, and MAME's panel followed (`probes/cnv/README.md`, "The panel's
-LEDs"). The LEDs on the instrument itself have not been seen yet.
+The moments are recognised in the game's own bytecode as it runs, the way the reference VM's event log showed them
+(research-scratch `kn7000-aw-reference/fingerprints`): a sound and which thread plays it (lasers, the charge, the
+waterfall's loop, sound 0x6A, whose volume on its channel gives the share of LEDs lit), a variable (the blast,
+var 0x88; the recharge, var 0x06 set to 1000; Lester's facing, var 0x04), a palette (the intro). The red LEDs'
+halves are split at the middle of the instrument by where each LED is on the panel (the MAME layout), their colour
+by the service manual's parts list (`probes/ledmasks.py`). The game writes the firmware's own LED shadow, so the
+firmware's 24 ms flush carries the pattern; any LED the firmware changed meanwhile keeps the change when its LEDs
+come back, and the game asks the firmware to redraw the LEDs of its
+own state, all its refresh groups but the one that re-applies the LED freeze: that routine zeroes the firmware's
+record of what the panel shows, and run before the flush had sent the restore it left the LEDs set back to off
+still lit (seen in MAME: `probes/cnv/README.md`, "The panel's LEDs"). The shadow's address is known for programs
+893, 935, 941 and 942; on any other build, or with the LED effects off, the game leaves the LEDs alone.
+
+Checked in MAME by replaying sessions with an LED log (`probes/cnv/awcnv_inplog.lua`, `AW_LEDLOG`) and comparing
+it with the reference VM's events of the same sessions (`probes/ledcheck.py`): every laser (each of Lester's on his
+side), charge, blast, flash, clap and strike lit its pattern, the LEDs were dark in every frame without an effect,
+the recharge and the waterfall lit theirs, and MAME's panel followed (`probes/cnv/README.md`, "The panel's LEDs,
+second round"). The LEDs on the instrument itself have been seen with the first round's effects only.
 
 ## Replaying a session
 
@@ -781,6 +801,12 @@ the firmware stops calling the game, the registers go back and the firmware's ow
 
 - **The window**: each byte is the page's colour index, so the palette is entries 0-15 of the look-up table: a palette
   change is 16 entries written, not a window repainted, and a store into FB8 carries 4 pixels (2 at 16 bits).
+  A new palette goes into the table only once the page's pixels are written (`src/display.s` BlitPage): written
+  first, it showed the old picture in the new colours while the pixels changed, about two LCD frames for a whole
+  window (Felipe saw that flash at the splash's cuts, 2026-11-02; MAME showed the Interplay logo in Delphine's
+  colours, `probes/cnv/awcnv_flash.lua`). When the page differs from what the window shows in more than a quarter of
+  it (counted on every fourth row: PageCut), the game's 16 entries go black while the pixels are written; the
+  splash fades to black before each cut, so nothing of it shows.
 - **The border** (the 128-pixel strips beside the 384x240 window; the 160-pixel strips and the 20-row bands around
   the 320x200 one) holds entries 16-255, drawn once for each window size and never again: 2 sides x 8 bands of rows x
   15 levels. A pixel's level is its distance from the window in fifteenths of the border's width, plus a random -1
@@ -848,7 +874,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (38,204 bytes, to 0x502C353C)                                |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (40,620 bytes, to 0x502C3EAC)                                |
 | `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
 | `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |
@@ -858,7 +884,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502DA200`-`0x502DA5FF` | SND_TAB: each sound's program, note, length, from AWSND.AW                                       |
 | `0x502DA600`-`0x502DA9FF` | DSP_HOST: dsp.s: the effects DSP's routines, state, commands, readback                           |
 | `0x502DAA00`-`0x502DACFF` | LCD8_VARS: lcd8.s: the LCD's, the ambilight's and the loading screen's state                     |
-| `0x502DAD00`-`0x502DAD7F` | LED_VARS: leds.s: the LED effects' state                                                         |
+| `0x502DAD00`-`0x502DADFF` | LED_VARS: leds.s: the LED effects' state                                                         |
 | `0x502DB000`-`0x502DEFFF` | MUSIC_BUF: the current part's music module                                                       |
 | `0x502DF000`-`0x502DF3FF` | CNV_VARS: the entry's and the part loader's variables                                            |
 | `0x502DF400`-`0x502DF4FF` | FW_VARS: what fwfind.s found, and its scratch                                                    |
@@ -880,6 +906,11 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x50336800`-`0x5034CFFF` | PAGE_BITMAP_1: VM page 1: 384x240, or 320x200 at its start                                       |
 | `0x5034D000`-`0x503637FF` | PAGE_BITMAP_2: VM page 2: 384x240, or 320x200 at its start                                       |
 | `0x50363800`-`0x50379FFF` | PAGE_BITMAP_3: VM page 3: 384x240, or 320x200 at its start                                       |
+
+At the quit back to the program menu (`src/chain.s`), once the game task has ended, the menu's file is read into
+`0x502E8000` (the menu's STAGE: the shared polygons and the start of PART_AREA, no longer needed) and the menu's
+trampoline and its data go to `0x50368000` and `0x50369800` (its T_CODE and T_DATA, inside page 3);
+`tools/chain_check.py` checks at every build that these are still the menu's addresses.
 
 What the game must never touch, and how that is checked:
 

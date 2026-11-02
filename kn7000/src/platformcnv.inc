@@ -82,7 +82,7 @@
 .equ AUDIO_VARS,      0x502DA000    # audio.s: the MIDI producer, the music player, the note slots, 0x200 bytes
 .equ SND_TAB,         0x502DA200    # AWSND.AW: each sound's program, note and length (tools/aw_sound_map.py)
 .equ SND_TAB_MAX,     0x400
-.equ LED_VARS,        0x502DAD00    # leds.s: the LED effects' state, 0x80 bytes
+.equ LED_VARS,        0x502DAD00    # leds.s: the LED effects' state, 0x100 bytes
 .equ LCD8_VARS,       0x502DAA00    # lcd8.s: the LCD's and the ambilight's state, 0x300 bytes (in the free 0x502DAA00-0x502DAFFF)
 .equ DSP_HOST,        0x502DA600    # dsp.s: the effects DSP's routines, state, command records, readback, 0x400 bytes
 .equ MUSIC_BUF,       0x502DB000    # the current part's music module (0x07 intro, 0x8A final), unpacked in

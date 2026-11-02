@@ -93,6 +93,8 @@ AppName:                            # AH_NAME: 32 bytes, NUL-padded
 .equ BK_ACC,       CNV_VARS + 0x8C
 .equ BK_D1,        CNV_VARS + 0x90
 .equ BK_D2,        CNV_VARS + 0x94
+.equ CV_ENTRY_SP,  CNV_VARS + 0xA0  # the stack pointer the loader called CnvEntry with (chain.s: the trampoline's return)
+.equ CV_CHAIN,     CNV_VARS + 0xA4  # chain.s ChainMenu: 1 the menu started, else CHR_* (why not), 0 not tried
 .equ CV_ERRLOG,    CNV_VARS + 0x100 # u32 per failed file, the first 32: (kind << 24) | (id << 8)
 .equ FAIL_CALLS,   200              # about 10 s of calls: end a failed run when EXIT cannot be read
 
@@ -101,6 +103,9 @@ AppName:                            # AH_NAME: 32 bytes, NUL-padded
 CnvEntry:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
+    mov     sp, a0                  # the loader's stack pointer, for the menu's trampoline (chain.s)
+    add     0x30, a0
+    mov     a0, (CV_ENTRY_SP)
     mov     (CV_CALLS), d0
     inc     d0
     mov     d0, (CV_CALLS)
@@ -142,6 +147,7 @@ ce_search:                          # one step of the firmware search per call
     cmp     FW_STEPS, d0
     blt     ce_park
     call    PrefsRead, 0, 0         # the player's settings, AWPREFS.CFG, if the card has them
+    call    LedInit, 0, 0           # the panel's LEDs (leds.s): dark from here, while the game loads
     mov     2, d0                   # all found: the global files next
     mov     d0, (CV_STATE)
     mov     GlobalList, a0
@@ -325,6 +331,14 @@ ce_failed_quit:
     mov     d0, (CV_QUIT_REQ)
 
 ce_answer:
+    mov     (CV_STATE), d0          # loading, the game task not started: the LEDs from here (leds.s; the
+    cmp     2, d0                   # game task's yields do it once it runs)
+    beq     ce_leds
+    cmp     5, d0
+    bne     ce_answer_go
+ce_leds:
+    call    LedService, 0, 0
+ce_answer_go:
     mov     MAILBOX, a0
     mov     (CV_QUIT_REQ), d0
     cmp     0, d0
@@ -352,6 +366,11 @@ ce_prefs_kept:
 ce_end:
     call    LedEnd, 0, 0            # the panel's LEDs as the firmware has them (leds.s)
     call    FwdrawUnhook, 0, 0      # the firmware draws again (fwdraw.s)
+    movbu   (AW_PREFIX), d0         # started by the program menu: back to it at once (chain.s; returns only
+    cmp     0, d0                   # when it cannot)
+    beq     ce_end_fw
+    call    ChainMenu, 0, 0
+ce_end_fw:
     call    LcdRelease, 0, 0        # and its own frame shows again (lcd8.s)
     mov     MAILBOX, a0
     mov     0xFE, d0                # done: hand the instrument back
@@ -1384,6 +1403,7 @@ msg_fw_n:
 .include "audio.s"                  # sound effects and music: the effects DSP, or MIDI into the receive ring
 .include "dsp.s"                    # the effects DSP: its sample mixer, the bank, the voices
 .include "fwdraw.s"                 # the firmware's screen kept from drawing while the game runs
+.include "chain.s"                  # back to the program menu at the quit
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "prefs.s"                  # the player's settings
 .include "leds.s"                   # the LED effects

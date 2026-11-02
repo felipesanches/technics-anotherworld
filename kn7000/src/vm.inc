@@ -135,8 +135,18 @@
 .equ LED_BLINKS,      LED_VARS + 0x18   # u32: halves of blinking to go (from LED_BLINK_T)
 .equ LED_BLINK_T,     LED_VARS + 0x1C   # u32
 .equ LED_PULSE_T,     LED_VARS + 0x20   # u32: when the charge's pulse began
+.equ LED_REDL_T,      LED_VARS + 0x24   # u32: the left half's red on until this ms (Lester shooting left)
+.equ LED_REDR_T,      LED_VARS + 0x28   # u32: the right half's
+.equ LED_GREEN_T,     LED_VARS + 0x2C   # u32: the green on until this ms (the recharge)
+.equ LED_BLAST,       LED_VARS + 0x30   # u32: 1 from the mega-blast's start until var 0x88 says it is over
+.equ LED_WATER,       LED_VARS + 0x34   # u32: LEDs of 256 lit at random (the waterfall), 0 none
+.equ LED_RND_T,       LED_VARS + 0x38   # u32: when the random LEDs are drawn next
+.equ LED_SEED,        LED_VARS + 0x3C   # u32: their generator's state
 .equ LED_SAVED,       LED_VARS + 0x40   # 20 bytes: the LED bits as they would be without the effects
 .equ LED_LAST,        LED_VARS + 0x60   # 20 bytes: the shadow as last written
+.equ LED_RNDMASK,     LED_VARS + 0x80   # 20 bytes: the random LEDs, a register's bits a byte
+.equ LED_MAGIC,       LED_VARS + 0x98   # u32: LED_MAGIC_V once LedInit has run
+.equ LED_WCH,         LED_VARS + 0x9C   # 4 bytes: the waterfall's volume on each audio channel (sound 0x6A), 0 none
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -144,6 +154,10 @@
 .equ LEV_CHARGE,      5
 .equ LEV_MEGA,        6
 .equ LEV_STOP,        7
+.equ LEV_LASER_L,     8                 # Lester's shot, to the left
+.equ LEV_LASER_R,     9                 # ... to the right
+.equ LEV_BLAST,       10
+.equ LEV_GREEN,       11
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320
@@ -303,6 +317,17 @@
 .equ GUARD_FILE,      5              # a game file could not be opened, read or unpacked (cnv_main.s)
 .equ VM_STACK_SIZE,   0x200          # 256 x u16 at VM_STACK
 .equ FWV_BUILD,       VM_MISC_BASE + 0x0230     # u32: the program build (893, 941, ...; 0 = unknown), for the speed figures
+# The game's end (interp.s EndCheck; Felipe 2026-11-02): part 0x3E87 draws its last words, string 0x265 "Now Go Out
+# Of This World", scrolls them for 100 ticks and then shows the same picture for ever (research-scratch
+# kn7000-aw-reference/fingerprints, end_probe.sh). A key pressed from the words on, or 3 s after the picture has
+# stopped, starts the intro again (part 0x3E81, as a part switch: InitForPart).
+.equ END_TICK,        VM_MISC_BASE + 0x0240     # u32: the VM frame the last words showed, 0 not yet
+.equ END_STOP_MS,     VM_MISC_BASE + 0x0244     # u32: the kernel ms when the picture stopped (| 1), 0 not yet
+.equ END_HELD,        VM_MISC_BASE + 0x0248     # u32: a key was held at the last look
+.equ END_PART,        0x3E87
+.equ END_STRING,      0x265
+.equ END_SCROLL,      100            # ticks from the words to the still picture
+.equ END_WAIT_MS,     3000
 
 # ================================================================================
 # Speed (perf.s; README-CNV.md, "Speed"). The fine clock is the MN10300's timer 4, which the firmware

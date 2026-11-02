@@ -1,0 +1,6 @@
+# made by probes/jump_session.py from end.awr: part 0x3E87 at frame 300, no vars
+P 0 0x3E80
+I 1 intro 0x00
+R 300 0x3E87
+I 302 play 0x00
+E 2301 0

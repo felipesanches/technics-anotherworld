@@ -832,7 +832,7 @@ alv_ret:
     rets
 
 # the levels' brightness, of 256: 230 x ((15 - level) / 15)^p, a table of 16 bytes for each light scatter setting
-# (prefs.s PR_REACH): p = 4 short, 2 medium (the default), 1 long, 0.5 very long
+# (prefs.s PR_REACH): p = 4 short, 2 medium, 1 long (the default), 0.5 very long
 amb_bright:
     .byte   230, 175, 130, 94, 67, 45, 30, 19, 11, 6, 3, 1, 0, 0, 0, 0
     .byte   230, 200, 173, 147, 124, 102, 83, 65, 50, 37, 26, 16, 9, 4, 1, 0

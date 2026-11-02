@@ -1,0 +1,10 @@
+# made by probes/jump_session.py from wf.awr: part 0x3E84 at frame 300, 00=33, pokes 50:67=72:01=315
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 33
+R 300 0x3E84
+V 351 0x67 72
+V 351 0x01 315
+I 302 play 0x00
+I 351 play 0x01
+E 901 0
