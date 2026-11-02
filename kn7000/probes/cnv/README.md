@@ -419,6 +419,7 @@ copied off the card before it is deleted):
 | `run_perf.sh`         | the runner: one MAME run with a given autoboot script and card files; the card copy is deleted after                                                                                  |
 | `awcnv_perf.lua`      | per VM tick: the game's stores into the LCD frame (by size), its loads from it, its accesses to the pages and to the rest of its RAM; the firmware's LCD stores; the emulated time    |
 | `awcnv_fwlcd.lua`     | while the game runs, when and where does the firmware draw on the LCD? 10 s with no input, then each panel button and a key, 4 s each; or (`AWL_INTRO=1`) through the intro           |
+| `awcnv_lcd8.lua`      | since the 8-bit LCD: FB8's window and border, the controller, the look-up table at every tick (`src/lcd8.s`)                                                                          |
 | `awcnv_loadblack.lua` | is the screen black while a part loads, and does the firmware draw nothing while the game runs? the intro into the lake, then the quit (`src/fwdraw.s`)                               |
 | `lcd_cost.py`         | what the counted LCD accesses cost at the unit's measured times (pass 9), or at others given                                                                                          |
 | `awcnv_lcd.lua`       | at every VM tick of the intro and the lake: is the whole LCD frame the picture of the front page for the display mode in use? (`AWL_PRESS`: PAGE UP / DOWN at given ticks); snapshots |
@@ -603,6 +604,39 @@ without comparing. Per tick at 384x240: 2,186 LCD stores (1,624 at 320x200), pag
     AWL_OUT=$T/lcd AWL_PAL=0x... AWL_MAX=3600 AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" \
       probes/cnv/run_perf.sh $T/lcd probes/cnv/awcnv_lcd.lua                   # AWL_DUMPBAD=n: dumps of wrong ticks
     AWP_OUT=$T/perf-hi AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-hi probes/cnv/awcnv_perf.lua  # AWP_ORIGINAL=1
+
+## The ambilight (2026-11-02)
+
+Felipe asked for the black sides to glow with the picture's colours, by palette changes alone, and then (watching a
+run) for no seam in the middle of the bands above and below the 320x200 window and a wider dither. The game now
+drives the LCD at 8 bits a pixel through its look-up table, in its own frame FB8 (README-CNV.md, "The screen";
+`src/lcd8.s`). Program 893, `KN7APP.BIN` `964e245a`:
+
+| check                                                              | result                                                                                            |
+|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| FB8's window = the page, every tick (`awcnv_lcd8.lua`)             | 3601/3601 ticks (2502 at 384x240, 1099 at 320x200, 4 switches)                                    |
+| the border between its drawings (start and each switch)            | never written: 5 drawings, 0 changes; every byte an entry 16-255                                  |
+| the controller (REG[040h] 8 bits a pixel, start 0x03ABFF)          | as set at all 3601 ticks                                                                          |
+| the look-up table (a copy kept from every REG[1E2h], [1E4h] write) | = PF_PAL's palette and AMB_LUT's entries at all 3601 ticks                                        |
+| part loads, MAME's screen (`awcnv_loadblack.lua`)                  | black from the second frame on (the first: the picture before)                                    |
+| after the quit                                                     | REG[040h], [042h]-[044h], [046h]-[047h] the firmware's again                                      |
+| acceptance tests (`run_cnv_tests.sh ic23`, blank IC23)             | all checks pass on 893 and 941                                                                    |
+| a tick of the intro, ticks 10-300 (`awcnv_perf.lua`)               | 607 / 435 display-memory stores (2186 / 1624 before); 63.9 / 50.3 ms of MAME's time (61.3 / 48.8) |
+
+Two of the probe's first ways were wrong and are recorded here so as not to be tried again: comparing MAME's screen as a
+script reads it (`screen:pixels()`) with what the game had set differed now and then (4 of 145 samples; 44 of 96 when
+waiting for a still display), because that is the screen bitmap being drawn into next (`screen_device::pixels`,
+`m_bitmap[m_curbitmap]`), a frame or two behind; the table is therefore checked from its writes, and the screen only
+dumped for the eye (`AWL_DUMPAT`). And the game's own check of the start address first compared 0xAC0F (a slip:
+240639 is 0x3ABFF), which the probe caught as the controller "not as set" at every tick. On 941 the firmware wrote
+IC23 952,175 times during the session (526,391 with the 16-bit builds; none from the game; the saved IC23 identical
+to the control run's).
+
+    T=~/compartilhado/tmp/aw-ambi/fin
+    AWL_OUT=$T/lcd8 AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) AWL_MAX=3600 \
+      AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" AWL_DUMPAT="1200,2100" probes/cnv/run_perf.sh $T/lcd8 probes/cnv/awcnv_lcd8.lua
+    AWLB_OUT=$T/lb probes/cnv/run_perf.sh $T/lb probes/cnv/awcnv_loadblack.lua
+    python3 probes/screen2png.py $T/lcd8/screen_*.bin --sheet sheet.png      # the dumps, to look at
 
 ## What the platform does with a converter
 

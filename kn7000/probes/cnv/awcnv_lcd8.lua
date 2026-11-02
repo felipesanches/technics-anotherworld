@@ -12,13 +12,15 @@
 --            sets AMB_GEOM to the window's width): never written otherwise; and every one of them is an ambilight
 --            entry, 16-255
 --   lcdc     the controller at 8 bits a pixel (REG[040h] bits 2-0 = 3) and on FB8 (REG[042h]-[044h] = 0x03ABFF)
--- and every AWL_SHOTS-th tick (default 25), at the next frame MAME draws, the screen itself (the KN7000 driver's
--- screen_update: controller, look-up table, SwivelView): every window pixel the palette's colour of the page's index
--- (4 bits a channel, as the look-up table holds them), every border pixel the colour the game last wrote to its
--- ambilight entry (AMB_LUT), and how many of the border's pixels are not black (a sample is dropped when the game's
--- next tick came first). AWL_PRESS="T:UP,T:DOWN,..." presses
--- PAGE UP or PAGE DOWN (0.3 s) once the game has reached tick T. AWL_DUMPAT="T,T,...": the screen at those ticks to
--- AWL_OUT/screen_TTTT.bin (640 x 240 x 4 bytes, the screen's 32-bit pixels). Prints "awlcd8: ..." lines.
+--   table    the look-up table as the controller holds it (a copy kept here from every write of REG[1E2h] and REG[1E4h],
+--            as kn7000_mame and the S1D13506's specification take them: the entry, then red, green, blue, then the
+--            next entry): entries 0-15 the palette last loaded (PF_PAL), 16-255 what the game last wrote to each
+--            (AMB_LUT, but where that says unknown)
+-- AWL_PRESS="T:UP,T:DOWN,..." presses PAGE UP or PAGE DOWN (0.3 s) once the game has reached tick T. AWL_DUMPAT="T,..":
+-- the screen MAME draws, at the first moment after tick T when the game has shown nothing new for 3 of MAME's frames,
+-- to AWL_OUT/screen_TTTT.bin (640 x 240 32-bit pixels), for the eye. (It is not compared: the screen a script reads,
+-- screen_device::pixels, is the bitmap being drawn into next, a frame or two behind; comparing it, 4 of 145 samples
+-- differed so on 2026-11-02, and up to 44 of 96 when waiting for a still display.) Prints "awlcd8: ..." lines.
 --   AWL_PAL=0x$(grep ' palette$' build/kn7app.map | cut -c3-10) probes/cnv/run_perf.sh OUT probes/cnv/awcnv_lcd8.lua
 local M = manager.machine
 local sp = M.devices[":maincpu"].spaces["program"]
@@ -61,7 +63,26 @@ local function borderof(lcd, x0, y0, w, h)
   return table.concat(t)
 end
 local function argb4(r, g, b) return 0xFF000000 | ((r * 17) << 16) | ((g * 17) << 8) | (b * 17) end
-local pending = nil
+-- the look-up table as the controller holds it: entry = r << 8 | g << 4 | b, 4 bits each
+local LUT, lut_at, lut_part = {}, 0, 0
+for i = 0, 255 do LUT[i] = 0 end
+AWL_LUT = sp:install_write_tap(LCDC + 0x1E0, LCDC + 0x1E7, "awl8_lut", function(offset, data, mask)
+  for lane = 0, 3 do
+    if ((mask >> (8 * lane)) & 0xff) ~= 0 then
+      local r, v = ((offset & ~3) + lane) & 0xfff, (data >> (8 * lane)) & 0xff
+      if r == 0x1e2 then lut_at, lut_part = v, 0
+      elseif r == 0x1e4 then
+        local shift = 8 - 4 * lut_part
+        LUT[lut_at] = (LUT[lut_at] & ~(15 << shift)) | ((v >> 4) << shift)
+        lut_part = lut_part + 1
+        if lut_part == 3 then lut_part = 0; lut_at = (lut_at + 1) & 255 end
+      end
+    end
+  end
+end)
+local pending, lastsig, still = nil, -1, 0
+-- blits, skipped blits and palettes loaded so far (vm.inc PF_BLITS, PF_SKIPS, PF_PAIR_N): what the game has shown
+local function shown() return sp:read_u32(PERF + 0x38) + sp:read_u32(PERF + 0x3C) + sp:read_u32(PERF + 0x88) end
 local function check(tick)
   S.ticks = S.ticks + 1
   local pgw = sp:read_u32(PG_W)
@@ -103,49 +124,24 @@ local function check(tick)
         sp:read_u8(LCDC + 0x42), sp:read_u8(LCDC + 0x43), sp:read_u8(LCDC + 0x44), sp:read_u32(LCD_OWNED)))
     end
   end
-  if tick % SHOTS == 0 or DUMPAT[tick] then
-    local pal = {}
-    for i = 0, 15 do
-      local v = sp:read_u16(PAL + 2 * i)
-      pal[i] = argb4((v >> 12) & 15, (v >> 7) & 15, (v >> 1) & 15)
-    end
-    local amb = {}
-    for i = 0, 239 do
-      local v = sp:read_u16(AMB_LUT + 2 * i)
-      amb[16 + i] = argb4((v >> 8) & 15, (v >> 4) & 15, v & 15)
-    end
-    pending = { tick = tick, frame = sp:read_u16(FRAME_NO), pix = pix, lcd = lcd, pal = pal, amb = amb, x0 = x0, y0 = y0, w = w, h = h, dump = DUMPAT[tick] }
+  local lbad = 0
+  for i = 0, 15 do
+    local v = sp:read_u16(PERF + 0x520 + 2 * i)
+    if v ~= 0xFFFF and LUT[i] ~= (((v >> 12) & 15) << 8 | ((v >> 7) & 15) << 4 | ((v >> 1) & 15)) then lbad = lbad + 1 end
   end
+  for i = 0, 239 do
+    local v = sp:read_u16(AMB_LUT + 2 * i)
+    if v ~= 0xFFFF and LUT[16 + i] ~= v then lbad = lbad + 1 end
+  end
+  if lbad > 0 then
+    S.lutbad = (S.lutbad or 0) + 1
+    if #S.first < 8 then S.first[#S.first + 1] = string.format("tick %d table: %d entries", tick, lbad) end
+  end
+  if DUMPAT[tick] then pending = { tick = tick } end
 end
-local function shot(p)
-  if sp:read_u16(FRAME_NO) ~= p.frame then S.stale = (S.stale or 0) + 1; return end  -- the game went on before the screen was drawn
-  local px, sw, sh = screen:pixels()
-  if sw ~= 640 or sh ~= 240 then print(string.format("awlcd8: the screen is %dx%d", sw, sh)); return end
-  S.shots = S.shots + 1
-  local wbad, bbad, lit = 0, 0, 0
-  for y = 0, 239 do
-    for x = 0, 639 do
-      local o = (y * 640 + x) * 4
-      local got = string.unpack("<I4", px, o + 1)
-      local want
-      if x >= p.x0 and x < p.x0 + p.w and y >= p.y0 and y < p.y0 + p.h then
-        want = p.pal[p.pix:byte((y - p.y0) * p.w + (x - p.x0) + 1) & 15]
-        if got ~= want then wbad = wbad + 1 end
-      else
-        want = p.amb[p.lcd:byte(y * 640 + x + 1)]
-        if want and got ~= want then bbad = bbad + 1 end
-        if (got & 0xFFFFFF) ~= 0 then lit = lit + 1 end
-      end
-    end
-  end
-  if wbad + bbad > 0 then
-    S.shotbad = S.shotbad + 1
-    if #S.first < 8 then S.first[#S.first + 1] = string.format("tick %d screen: window %d, border %d pixels", p.tick, wbad, bbad) end
-  end
-  S.shotwin, S.shotbord, S.lit = S.shotwin + wbad, S.shotbord + bbad, S.lit + lit
-  if p.dump then
-    local f = io.open(string.format("%s/screen_%04d.bin", OUT, p.tick), "wb"); f:write(px); f:close()
-  end
+local function shot(req)
+  local px = screen:pixels()
+  local f = io.open(string.format("%s/screen_%04d.bin", OUT, req.tick), "wb"); f:write(px); f:close()
 end
 
 local lasttick, finish, nosplash = -1, false, false
@@ -159,15 +155,17 @@ AWL_TAP = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awl8_frame", function(of
   if tick >= MAXTICK then finish = true end
 end)
 AWL_FRAME = emu.add_machine_frame_notifier(function()
-  if pending then local p = pending; pending = nil; shot(p) end
-  if finish and not pending then
+  -- a sample once nothing has been shown (no blit, skipped blit or palette loaded) for 3 of MAME's frames: the screen
+  -- read then is surely one drawn after the last change (the one a frame notifier reads may be a frame old)
+  local sig = shown()
+  if sig == lastsig then still = still + 1 else still = 0; lastsig = sig end
+  if pending and still >= 3 then local p = pending; pending = nil; shot(p) end
+  if finish and (not pending or still > 600) then
     local m = {}
     for k, v in pairs(S.modes) do m[#m + 1] = string.format("%dx: %d", k, v) end
     print(string.format("awlcd8: ticks 0-%d: %d checked (%s); window wrong at %d (%d pixels); border changed between fills %d times, %d fills, %d border bytes not ambilight entries; controller not as set %d times",
       lasttick, S.ticks, table.concat(m, ", "), S.winbad, S.winpx, S.bordchg, S.fills, S.notamb, S.lcdc))
-    print(string.format("awlcd8: (%d samples dropped: the game's next tick came before MAME drew the screen)", S.stale or 0))
-    print(string.format("awlcd8: the screen at %d ticks: %d with wrong pixels (window %d, border %d); border pixels lit %.1f%% on average%s",
-      S.shots, S.shotbad, S.shotwin, S.shotbord, S.shots > 0 and S.lit / S.shots / (640 * 240) * 100 or 0,
+    print(string.format("awlcd8: the look-up table not as the game set it at %d ticks%s", S.lutbad or 0,
       #S.first > 0 and ("; first: " .. table.concat(S.first, ", ")) or ""))
     M:exit()
   end

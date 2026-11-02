@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                             |
 |--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 34,684  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
+| `KN7APP.BIN`                         | 35,056  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
@@ -49,7 +49,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
 
-1,043,800 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,044,172 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -61,8 +61,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`ccf024e4e505fc950265a4656e64d63b15041e8b` (384x240 pages drawn at that resolution by default, PAGE DOWN 320x200,
-PAGE UP 384x240: "The screen"; `build/sdcard.txt` lists it with the rest). Before it: `9a2f2db4...` (the 320x200
+`964e245addd985700168433cc461e6c56aa0c193` (the LCD at 8 bits a pixel through its look-up table, the ambilight
+around the window: "The screen"; `build/sdcard.txt` lists it with the rest). Before it: `ccf024e4...` (384x240 pages
+drawn at that resolution by default, PAGE DOWN 320x200, PAGE UP 384x240), `9a2f2db4...` (the 320x200
 picture enlarged to 384x240 by repeating pixels; the overlay and the old blit gone), `cddfe76b...` (the screen
 black while a part loads, the firmware's drawing off: "The firmware's screen"), `7b07e0f1...` (SHR shifts logically, found
 by replaying Felipe's first input log), `6f58c18f...` (the input log, played on Felipe's KN7000 on
@@ -719,6 +720,41 @@ scene. The game's logic does not see the switch: its variables never depend on t
 page operations and blit phases will grow about as much; the speed page and `AWPERFn.TXT` keep the two modes'
 figures apart.
 
+**The LCD at 8 bits a pixel, and the ambilight** (since 2026-11-02, `src/lcd8.s`; Felipe asked for the black sides to
+glow with the picture's colours, by palette changes alone). The LCD controller (an S1D13806) can show its display
+memory at 8 bits a pixel through a 256-entry look-up table of 4 bits a channel, the original game's own colour depth;
+Pinball Fantasies runs that way on the owner's KN7000 (its `screen.cpp`, probes PFT14 and PFT15), and kn7000_mame
+models it. From the game task's start the game's frame is its own, `FB8`, at display memory `0x50000` (640 x 240
+bytes, past the firmware's 16-bit frame, which is left as it was): the firmware's REG[040h], [042h]-[044h] and
+[046h]-[047h] are saved, the controller set to 8 bits a pixel and lines of 640 bytes, and its start address to FB8's
+last word (written outside the vertical non-display period, interrupts off, as Pinball does). At the quit, or when
+the firmware stops calling the game, the registers go back and the firmware's own screen shows again.
+
+- **The window**: each byte is the page's colour index, so the palette is entries 0-15 of the look-up table: a palette
+  change is 16 entries written, not a window repainted, and a store into FB8 carries 4 pixels (2 at 16 bits).
+- **The border** (the 128-pixel strips beside the 384x240 window; the 160-pixel strips and the 20-row bands around
+  the 320x200 one) holds entries 16-255, drawn once for each window size and never again: 2 sides x 8 bands of rows x
+  15 levels. A pixel's level is its distance from the window in fifteenths of the border's width, plus a random -1
+  to +2 levels; its band its row, plus a random offset of up to a whole band either way; above and below the window
+  it takes the right side's colours with a chance that grows from 0 to 1 across the window's width (no seam in the
+  middle: Felipe, 2026-11-02). The randomness is a dither: the levels, the bands and the sides mix, along and across.
+- **Each page shown**: for each side and band, the window's quarter on that side in those rows (every 4th pixel of
+  every 2nd row) is counted by colour; the average colour, taken half way from the last one (smoothing), gives the
+  band's 15 entries, 0.9 of it beside the window falling off as the square of the distance to black at the far edge;
+  only entries that change are written.
+- **A part's load** makes every entry black: the screen goes black at once and nothing is redrawn.
+- Nothing the firmware draws reaches FB8; the controller's mode and start address are checked after each yield (in
+  place of the 47 sentinel pixels of the 16-bit frame) and set again if anything changed them.
+
+In MAME (`probes/cnv/README.md`, "The ambilight"): at every one of 3,601 ticks of the intro and the lake, through
+PAGE DOWN and PAGE UP twice each, FB8's window held the page, its border what the last of its 5 drawings left
+(ambilight entries only), the controller its settings, and the look-up table what the game had written (the palette
+loaded, the ambilight's entries); part loads were black; after the quit the controller held the firmware's settings
+again; the acceptance tests pass on programs 893 and 941. Per tick
+of the intro the game now makes 607 stores into display memory at 384x240 (2,186 before) and 435 at 320x200
+(1,624), at 888 ns each on the unit; in MAME's own time a tick took 63.9 and 50.3 ms (61.3 and 48.8 before: the
+ambilight's counting and entries).
+
 ## The firmware's screen
 
 **While a part loads the screen is black** (since 2026-11-02). Before, the firmware's STYLE CONVERT screen showed
@@ -763,7 +799,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (34,684 bytes, to 0x502C277C)                                |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (35,056 bytes, to 0x502C28F0)                                |
 | `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
 | `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |

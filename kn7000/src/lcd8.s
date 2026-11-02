@@ -22,9 +22,10 @@
 # The ambilight: the LCD around the window (the 128-pixel strips beside the 384x240 window, or the 160-pixel strips
 # and the 20-row bands around the 320x200 one) holds entries 16-255, drawn once for each window size (AmbiFill) and
 # never again: 2 sides x 8 bands of rows x 15 levels of brightness, the first level beside the window. A pixel's
-# level follows its distance from the window, plus a random fraction of a level, and its band its row, plus a random
-# offset of up to half a band either way, so neither the levels nor the bands show as edges: the dither mixes them
-# along and across. For every page shown, AmbiUpdate takes, for each side and band, the colours of the window's
+# level follows its distance from the window, plus a random -1 to +2 levels, and its band its row, plus a random
+# offset of up to a band either way; above and below the window a pixel takes the right side's colours with a
+# chance that grows across the window's width: so neither the levels, nor the bands, nor the two sides show as
+# edges, the dither mixing them along and across (AmbPixel). For every page shown, AmbiUpdate takes, for each side and band, the colours of the window's
 # quarter on that side in those rows (every 4th pixel of every 2nd row), their average colour, half way from the one
 # before (a little smoothing), and writes its 15 levels into the entries that changed: the brightest at 0.9 of it, the
 # others falling off as the square of the distance, to black at the far edge.
@@ -228,6 +229,7 @@ arn_go:
 .equ AMB_DMAX,        PF_PAIR + 0x2B0   # the farthest distance from it
 .equ AMB_H,           PF_PAIR + 0x2B4   # its rows
 .equ AMB_SECH,        PF_PAIR + 0x2B8   # a band's rows
+.equ AMB_WIDTH,       PF_PAIR + 0x2BC   # the window's width
 
 # AmbiFill: the border's pattern for the window size now (PG_W), every byte of FB8 outside the window (AmbPixel's).
 # Four pixels a 32-bit store: the windows' edges are on multiples of 4.
@@ -266,6 +268,10 @@ afl_go:
     mov     (AMB_H), d0
     lsr     3, d0
     mov     d0, (AMB_SECH)
+    mov     (AMB_X1), d0
+    mov     (AMB_X0), d1
+    sub     d1, d0
+    mov     d0, (AMB_WIDTH)
     clr     d3                      # d3 = y
 afl_row:
     mov     d3, d0
@@ -322,11 +328,14 @@ afl_next:
 
 # AmbPixel(d0 = x, d1 = y, outside the window) -> d0 = its entry: AMB_BASE + (side * 8 + band) * 15 + level. The
 # distance d = the larger of its distances across and down from the window, plus half the smaller (1 beside it);
-# level = (d - 1) * 15 / DMAX plus a random fraction of 1, rounded down, at most 14; band = its row plus a random
-# offset of -SECH/2 .. SECH/2 - 1, within the window's rows, in eighths of them; side: left of the LCD's middle or not.
+# level = (d - 1) * 15 / DMAX plus a random offset, the sum of three random fractions less 1 (-1 .. +2, most often
+# near +0.5), rounded down, within 0..14; band = its row plus a random offset, the sum of two random fractions of a
+# band less one band (-1 .. +1 band, most often near 0), within the window's rows, in eighths of them; side: left of
+# the window the left, right of it the right, and above or below it the right with a chance that grows from 0 to 1
+# across the window's width, so that the two sides' colours mix over the whole band with no seam (Felipe, 2026-11-02).
 AmbPixel:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x10, sp
+    add     -0x18, sp
     mov     d0, d2                  # x
     mov     d1, d3                  # y
     clr     d0                      # across
@@ -371,8 +380,8 @@ apx_big:
     add     d1, d0                  # d
     mov     d0, a2                  # a2 = d
     call    AmbRand, 0, 0
-    mov     d0, a3                  # a3 = the random bits
-    mov     a2, d0                  # level = ((d - 1) * 15 * 256 / DMAX + random 0..255) / 256
+    mov     d0, a3                  # a3 = random bits: bytes 0-2 the level's, byte 3 the side's
+    mov     a2, d0                  # level, x 256 = (d - 1) * 15 * 256 / DMAX
     add     -1, d0
     mov     AMB_LVLS * 256, d1
     mulu    d1, d0
@@ -380,25 +389,47 @@ apx_big:
     mov     d1, mdr
     mov     (AMB_DMAX), d1
     divu    d1, d0
-    mov     a3, d1
+    mov     a3, d1                  # + three random bytes - 255
     and     0xFF, d1
     add     d1, d0
+    mov     a3, d1
+    lsr     8, d1
+    and     0xFF, d1
+    add     d1, d0
+    mov     a3, d1
+    lsr     16, d1
+    and     0xFF, d1
+    add     d1, d0
+    add     -255, d0
+    cmp     0, d0
+    bge     apx_lpos
+    clr     d0
+apx_lpos:
     lsr     8, d0
     cmp     AMB_LVLS - 1, d0
     bls     apx_lvl
     mov     AMB_LVLS - 1, d0
 apx_lvl:
-    mov     d0, a2                  # a2 = level
-    mov     a3, d0                  # the band's row: y + (random % SECH) - SECH / 2
-    lsr     8, d0
+    mov     d0, (0x10, sp)          # level
+    call    AmbRand, 0, 0           # the band's row: y + (r % SECH) + (r' % SECH) - SECH
+    mov     d0, (0x14, sp)
     and     0xFFFF, d0
     clr     d1
     mov     d1, mdr
     mov     (AMB_SECH), d1
     divu    d1, d0
     mov     mdr, d0
+    mov     d0, a2
+    mov     (0x14, sp), d0
+    lsr     16, d0
+    clr     d1
+    mov     d1, mdr
     mov     (AMB_SECH), d1
-    lsr     1, d1
+    divu    d1, d0
+    mov     mdr, d0
+    mov     a2, d1
+    add     d1, d0
+    mov     (AMB_SECH), d1
     sub     d1, d0
     add     d3, d0
     mov     (AMB_Y0), d1
@@ -419,16 +450,37 @@ apx_yhi:
     mov     d1, mdr
     mov     (AMB_H), d1
     divu    d1, d0                  # band 0..7
-    cmp     FB_W / 2, d2
+    mov     d0, a2                  # a2 = band
+    mov     (AMB_X0), d1            # the side
+    cmp     d1, d2
     blt     apx_left
-    add     AMB_SECS, d0
+    mov     (AMB_X1), d0
+    cmp     d0, d2
+    bge     apx_right
+    mov     d2, d0                  # above or below the window: right when a random byte < (x - X0) * 256 / width
+    sub     d1, d0
+    asl     8, d0
+    clr     d1
+    mov     d1, mdr
+    mov     (AMB_WIDTH), d1
+    divu    d1, d0                  # t, of 256
+    mov     a3, d1
+    lsr     24, d1
+    cmp     d0, d1
+    bcs     apx_right
 apx_left:
+    mov     a2, d0
+    bra     apx_entry
+apx_right:
+    mov     a2, d0
+    add     AMB_SECS, d0
+apx_entry:
     mov     AMB_LVLS, d1
     mulu    d1, d0
-    mov     a2, d1
+    mov     (0x10, sp), d1
     add     d1, d0
     add     AMB_BASE, d0
-    ret     [d2,d3,a2,a3], 0x20
+    ret     [d2,d3,a2,a3], 0x28
 
 # AmbiUpdate(a0 = the page just shown): each side's and band's colour, and its 15 entries where they changed.
 AmbiUpdate:

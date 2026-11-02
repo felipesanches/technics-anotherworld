@@ -73,6 +73,7 @@ local function watch_load()
   if loading then
     local nb = nonblack()
     load.frames = load.frames + 1
+    if nb > 0 then load.lit = (load.lit or "") .. string.format(" %d:%d", load.frames, nb) end
     load.sum = load.sum + nb
     if nb > load.maxnb then load.maxnb = nb end
     if not load.shot and now() - load.t0 > 0.3 then M.video:snapshot(); load.shot = true end
@@ -80,6 +81,7 @@ local function watch_load()
     loads[#loads + 1] = load
     log(string.format("load of part 0x%04X: %.2f s, %d frames; pixels not black: max %d, mean %.0f (of 153600); firmware stores %d",
       load.part, now() - load.t0, load.frames, load.maxnb, load.sum / math.max(1, load.frames), fw.load - load.fw0))
+    log("  frames not black (n:pixels; MAME's screen is drawn once a frame, so the first can still be the picture before): " .. (load.lit or "none"))
     load = nil
   end
 end
