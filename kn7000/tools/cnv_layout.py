@@ -86,6 +86,7 @@ regions = [  # name, start, end, what
     ("FW_VARS", L["FW_VARS"], L["FW_VARS"] + 0x100, "what fwfind.s found, and its scratch"),
     ("AW_PATHS", L["AW_PATHS"], L["AW_PATHS"] + L["AW_PATHS_LEN"], "the game's folder, from the menu's launch block"),
     ("VM_POLY_BASE", L["VM_POLY_BASE"], L["VM_POLY_BASE"] + BLOCKS["VM_POLY_BASE"], "rasterizer scratch"),
+    ("FWDRAW_AT", L["FWDRAW_AT"], L["FWDRAW_AT"] + L["FWDRAW_LEN"], "fwdraw.s: the firmware's view records, ours"),
     ("VM_INTERP_BASE", L["VM_INTERP_BASE"], L["VM_INTERP_BASE"] + BLOCKS["VM_INTERP_BASE"],
      "VM variables, threads, call stack"),
     ("VM_MISC_BASE", L["VM_MISC_BASE"], L["VM_MISC_BASE"] + BLOCKS["VM_MISC_BASE"],

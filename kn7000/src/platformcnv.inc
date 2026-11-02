@@ -82,6 +82,16 @@
 .equ AW_PATHNAME,     AW_PATHS+0x30 #   the name AppPath was given
 .equ AW_PATHS_LEN,    0x40
 .equ VM_POLY_BASE,    0x502E0000    # vm.inc: rasterizer scratch, 0x200 bytes
+.equ FWDRAW_AT,       0x502E0400    # fwdraw.s: its variables, then the copy of program 893's view records
+.equ FD_HOOKED,       FWDRAW_AT + 0x00  # u32: the class table points at FD_COPY
+.equ FD_QUIET,        FWDRAW_AT + 0x04  # u32: the firmware's drawing is off (DrawEnable 0)
+.equ FD_SKIPPED,      FWDRAW_AT + 0x08  # u32: ScreenProc paints answered without DrawWall
+.equ FD_REASSERTS,    FWDRAW_AT + 0x0C  # u32: yields that found the drawing on again after it was off
+.equ FD_LASTCALLS,    FWDRAW_AT + 0x10  # u32: CV_CALLS at the last yield that saw it change
+.equ FD_LASTMS,       FWDRAW_AT + 0x14  # u32: the kernel's ms then
+.equ FD_WATCHED,      FWDRAW_AT + 0x18  # u32: 1: unhooked because the converter calls stopped
+.equ FD_COPY,         FWDRAW_AT + 0x40  # 0x6B x 0x18 bytes, to 0x502E0E48
+.equ FWDRAW_LEN,      0x40 + 0x6B * 0x18
 .equ VM_INTERP_BASE,  0x502E1000    # vm.inc: the interpreter, 0x1100 bytes
 .equ VM_MISC_BASE,    0x502E3000    # vm.inc: the rest, 0x1400 bytes
 .equ RES_TAB,         0x502E5000    # u32 per resource id: where it is resident now (0 = not)

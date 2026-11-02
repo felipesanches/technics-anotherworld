@@ -345,6 +345,7 @@
 .equ PFD_MODE,        0x40           #   the blit mode switched
 .equ PFD_LOAD,        0x80           #   5 and 30 frames after a part's load (the firmware repaints its own
                                      #   screen around the loads: probes/cnv/README.md, "Speed")
+.equ PFD_BLACK,       0x100          #   the screen was painted black for a part's load (LcdBlack)
 .equ POSTLOAD_FRAMES, 30
 .equ REPAINT_FRAMES,  500            # a full repaint at least this often (frames)
 # the benchmark (perf.s PerfBench): ns per access x 10, in PF_BENCH

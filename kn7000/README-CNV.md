@@ -25,7 +25,7 @@ every program build we know: **893** (v1.3, the owner's), 935, **941** (v1.6) an
 
 Contents: [What goes where](#what-goes-where) · [Building](#building) · [Before the first run on the
 instrument](#before-the-first-run-on-the-instrument) · [Playing it](#playing-it) · [Replaying a session](#replaying-a-session) · [How it works](#how-it-works) ·
-[Sound](#sound) · [Speed](#speed) · [Memory](#memory) · [How it was checked](#how-it-was-checked) · [What MAME cannot
+[Sound](#sound) · [Speed](#speed) · [The firmware's screen](#the-firmwares-screen) · [Memory](#memory) · [How it was checked](#how-it-was-checked) · [What MAME cannot
 settle](#what-mame-cannot-settle) · [Limits](#limits) · [History](#history-the-awcnv-floppy-retired)
 
 ## What goes where
@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                             |
 |--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 33,440  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
+| `KN7APP.BIN`                         | 33,868  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
@@ -49,7 +49,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
 
-1,042,556 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,042,984 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -664,10 +664,38 @@ A frame should take what the bytecode asks (var[0xFF] x 20 ms, set scene by scen
 ran at 25 frames per second, 40 ms a frame). When FRAME is longer, the phases say why; when YIELD is
 much longer than ASKED, the firmware's own tasks took the CPU in the yield.
 
+## The firmware's screen
+
+**While a part loads the screen is black** (since 2026-11-02). Before, the firmware's STYLE CONVERT screen showed
+through during every part's load (Felipe on the instrument): its title bar and text box over the game's last
+picture, or, at the first part, the whole screen with "LOADING ANOTHER WORLD". Every converter call answers request
+5, and program 893 answers each with a new text title and a repaint of its screen; while the game draws every frame
+that never shows, but during a load the game task only waits. In MAME each load got one whole repaint, 305,920
+stores into the LCD.
+
+Now, as Pinball Fantasies does it (`src/fwdraw.s`; Pinball `kn7000/src/app/fwdraw.c` traces the firmware's side):
+
+- once the game task has started, ScreenProc's record in the firmware's view class table is pointed at a copy in
+  the game's RAM (`FWDRAW_AT`) whose procedure answers the paint event without the 150 KB wallpaper copy;
+- at every yield of the game task the firmware's drawing is turned off (DrawEnable `0x5002A018` and `0x5002A01C`
+  at 0) once no wallpaper copy is under way;
+- a part's load paints the whole LCD black first (`display.s` LcdBlack) and draws no load bar; the first frame
+  after it repaints everything;
+- at the quit, before "Continue Next?", the table and DrawEnable are put back; also when the firmware stops calling
+  the converter for 5 s (DISPLAY HOLD).
+
+The hook is made only when the class table holds program 893's records (`0x48724914`, 0x6B of them, ScreenProc
+`0x484177CE` in record 0x41); with any other program nothing changes. In MAME (`probes/cnv/awcnv_loadblack.lua`;
+`probes/cnv/README.md`, "The screen during loads"), the intro's and the lake's loads were black at every frame, with
+no store from the firmware, and took 0.58 and 0.53 s instead of 0.98 and 0.93; the converter is called 70 times a
+second instead of 13.
+
 ## Memory
 
 Everything the game writes is in **`0x502BA000`-`0x50379FFF`**: the work RAM STYLE CONVERT leaves to a
-converter, less the loader's resident area below it and the mailbox page. That range was measured
+converter, less the loader's resident area below it and the mailbox page; and, on program 893 only, three words
+of the firmware's own ("The firmware's screen"): group 4's records pointer in the view class table
+(`0x5011FAD4`) and the two DrawEnable words (`0x5002A018`, `0x5002A01C`), all put back at the quit. That range was measured
 untouched by the firmware on program 893 in MAME through boot, idle, DISK MENU and a converter run
 (research-scratch `aw-memory-plan/taps893_ranges.out`), and the acceptance tests below measure it
 again while the game runs through the loader and reads the SD card. `src/platformcnv.inc` holds the
@@ -680,7 +708,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                      |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                           |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                   |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (32,312 bytes, to 0x502C1E38)                     |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (33,868 bytes, to 0x502C244C)                     |
 | `0x502C8000`-`0x502D79FF` | HELP_BUF: help pages, stop screen, bitmap unpacking                                   |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                 |
 | `0x502D8300`-`0x502D8AFF` | AW_STRIDX: string index, from AWSTRIDX.AW                                             |
@@ -693,6 +721,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502DF400`-`0x502DF4FF` | FW_VARS: what fwfind.s found, and its scratch                                         |
 | `0x502DF800`-`0x502DF83F` | AW_PATHS: the game's folder, from the menu's launch block                             |
 | `0x502E0000`-`0x502E01FF` | VM_POLY_BASE: rasterizer scratch                                                      |
+| `0x502E0400`-`0x502E0E47` | FWDRAW_AT: fwdraw.s: the firmware's view records, ours                                |
 | `0x502E1000`-`0x502E20FF` | VM_INTERP_BASE: VM variables, threads, call stack                                     |
 | `0x502E3000`-`0x502E43FF` | VM_MISC_BASE: input, help, guard, note trackers                                       |
 | `0x502E5000`-`0x502E5247` | RES_TAB: where each resource is now                                                   |
@@ -932,8 +961,9 @@ not to move the player), program 941, a part switch, the watchdog.
   instrument's; it counts the accesses (before and after: "Speed") and checks the picture. On the unit
   the overlay, the speed page and `AWPERFn.TXT` say where the time goes, with both blits.
 - **The firmware's painting on the instrument.** In MAME the firmware repainted its text screen
-  around the intro's last load and once after DISPLAY HOLD; on the unit it may do so at other times
-  too. The sentinels, read after each yield, and the repaints after each load put it right within a
+  around the intro's last load and once after DISPLAY HOLD; on the unit it did at every part's load
+  (Felipe, 2026-11-02), which program 893's drawing switched off now prevents ("The firmware's screen");
+  with another program, or after DISPLAY HOLD, it may still. The sentinels, read after each yield, and the repaints after each load put it right within a
   frame or two where MAME saw it; a painting that misses all 47 sentinels and comes long after a load
   stays until the game draws there again or the 500-frame repaint. PAGE DOWN (the old blit) always
   paints everything.

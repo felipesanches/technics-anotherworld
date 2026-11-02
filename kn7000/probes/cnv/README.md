@@ -414,14 +414,15 @@ run through the loader exactly as the acceptance tests do (`run_perf.sh`: the ow
 of the real card with `CARDFILES` added, fresh NVRAM, program 893; the game's `AWPERFn.TXT` files are
 copied off the card before it is deleted):
 
-| file              | question                                                                                                                                                                           |
-|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `run_perf.sh`     | the runner: one MAME run with a given autoboot script and card files; the card copy is deleted after                                                                               |
-| `awcnv_perf.lua`  | per VM tick: the game's stores into the LCD frame (by size), its loads from it, its accesses to the pages and to the rest of its RAM; the firmware's LCD stores; the emulated time |
-| `awcnv_fwlcd.lua` | while the game runs, when and where does the firmware draw on the LCD? 10 s with no input, then each panel button and a key, 4 s each; or (`AWL_INTRO=1`) through the intro        |
-| `lcd_cost.py`     | what the counted LCD accesses cost at the unit's measured times (pass 9), or at others given                                                                                       |
-| `awcnv_lcd.lua`   | at every VM tick of the intro and the lake: is the whole LCD frame what the old blit made of the same VM state? snapshots for a byte comparison between builds                     |
-| `awcnv_speed.lua` | the owner's run on the instrument, in MAME: the overlay, the old blit and back, the speed page, quitting; what the game measures in MAME's time; `AWPERF0.TXT`                     |
+| file                  | question                                                                                                                                                                           |
+|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `run_perf.sh`         | the runner: one MAME run with a given autoboot script and card files; the card copy is deleted after                                                                               |
+| `awcnv_perf.lua`      | per VM tick: the game's stores into the LCD frame (by size), its loads from it, its accesses to the pages and to the rest of its RAM; the firmware's LCD stores; the emulated time |
+| `awcnv_fwlcd.lua`     | while the game runs, when and where does the firmware draw on the LCD? 10 s with no input, then each panel button and a key, 4 s each; or (`AWL_INTRO=1`) through the intro        |
+| `awcnv_loadblack.lua` | is the screen black while a part loads, and does the firmware draw nothing while the game runs? the intro into the lake, then the quit (`src/fwdraw.s`)                            |
+| `lcd_cost.py`         | what the counted LCD accesses cost at the unit's measured times (pass 9), or at others given                                                                                       |
+| `awcnv_lcd.lua`       | at every VM tick of the intro and the lake: is the whole LCD frame what the old blit made of the same VM state? snapshots for a byte comparison between builds                     |
+| `awcnv_speed.lua`     | the owner's run on the instrument, in MAME: the overlay, the old blit and back, the speed page, quitting; what the game measures in MAME's time; `AWPERF0.TXT`                     |
 
 **Why it was slow.** Before (`KN7APP.BIN` `b952c2aa...`, the intro, ticks 1-300, mean per tick):
 
@@ -503,6 +504,34 @@ figures will say what matters.)
 The acceptance tests (above) gained two checks for this build: `speed` (the speed page, the overlay on
 and off, the old blit and back with the VM running, IC23's header unchanged) and `report` (the first
 quit leaves `AWPERF0.TXT`, the second `AWPERF1.TXT` beside it, the text the game built).
+
+## The screen during loads (2026-11-02)
+
+Felipe saw the firmware's screen during part loads on the instrument. `awcnv_loadblack.lua` (through `run_perf.sh`,
+program 893, the intro from tick 0 into the lake, then EXIT held) counts, at every MAME frame while a part loads,
+the LCD frame's pixels that are not black, and all along the stores into the LCD frame from outside KN7APP.BIN's
+code. The build on the card then (`7b07e0f1`) against the one with `src/fwdraw.s` (`1fc493e5`):
+
+| check                                       | `7b07e0f1`                         | `1fc493e5`                              |
+|---------------------------------------------|------------------------------------|-----------------------------------------|
+| the intro's load (0x3E81): non-black pixels | max 50,195, mean 45,341 of 153,600 | 0 at all 35 frames                      |
+| the lake's load (0x3E82): non-black pixels  | max 67,744, mean 56,232            | 0 at all 32 frames                      |
+| firmware stores into the LCD, each load     | 305,920                            | 0                                       |
+| the loads' time                             | 0.98 s, 0.93 s                     | 0.58 s, 0.53 s                          |
+| converter calls a second, the intro         | 13.4                               | 69.7                                    |
+| firmware stores while the VM runs           | -                                  | 0                                       |
+| ScreenProc paints skipped, to the lake      | -                                  | 12,296; drawing turned on again 0 times |
+| after the quit: table, DrawEnable, its copy | `0x48724914`, 1, 1                 | `0x48724914`, 1, 1                      |
+
+The new build's other firmware stores: 152,960 between the game task's start and its first load (the firmware's
+text screen as the answered text changes to HOLD EXIT TO QUIT, before the hook takes hold; the load's black covers
+it), and 141,061 after EXIT (the firmware's own screen and "Continue Next?"). Snapshots in the middle of each load:
+the old build shows the STYLE CONVERT screen with "LOADING ANOTHER WORLD: SOUNDS", then its title bar and the load
+bar over the game; the new one black.
+
+    T=~/compartilhado/tmp/aw-loadblack
+    AWLB_OUT=$T/new probes/cnv/run_perf.sh $T/new probes/cnv/awcnv_loadblack.lua
+    AWLB_OUT=$T/old CARDFILES=$T/oldcard probes/cnv/run_perf.sh $T/old probes/cnv/awcnv_loadblack.lua   # build/sdcard, the old KN7APP.BIN
 
 ## What the platform does with a converter
 

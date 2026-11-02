@@ -97,7 +97,7 @@ FLOPPY_SHA1   := b7a67de602694fd2257d59ce4509ca154b0b3064
 # The published overlay build (program 941 is its default KN7000 BIOS; -bios v13 is program 893, the owner's).
 MAME941     ?= ../../kn7000-emulator/run.sh
 SD941       ?= ../../kn7000-emulator/sdcard_from_real_kn7000.img
-APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s
+APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s
 # MAME's disassembler, which checks every word of the effects DSP's mixer (tools/dsp_mixer.py --check): the
 # build stops when it is not there (make UNIDASM=/path/to/unidasm).
 UNIDASM     ?= $(HOME)/compartilhado/mame-sony-video/unidasm

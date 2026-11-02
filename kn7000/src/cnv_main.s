@@ -334,6 +334,7 @@ ce_answer:
     call    ReportWrite, 0, 0
     bra     ce_park                 # one call more: the next one ends
 ce_end:
+    call    FwdrawUnhook, 0, 0      # the firmware draws again (fwdraw.s)
     mov     MAILBOX, a0
     mov     0xFE, d0                # done: hand the instrument back
     movbu   d0, (a0)
@@ -422,6 +423,7 @@ st_start:
     clr     d1
     mov     (FW_STA), a1
     calls   (a1)
+    call    FwdrawHook, 0, 0        # the LCD is the game task's from here (fwdraw.s)
 st_done:
     ret     [d2,d3,a2,a3], 0x30
 
@@ -438,6 +440,7 @@ DLY_TSK:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
     mov     d0, d2                  # d2 = ms still to yield
+    call    FwdrawQuiet, 0, 0       # the firmware's drawing off, when it can be (fwdraw.s)
 dq_slice:
     call    AudioPoll, 0, 0
     mov     d2, d0
@@ -476,6 +479,7 @@ EnsurePart:
     mov     (LD_CUR), d1
     cmp     d2, d1
     beq     ep_ret
+    call    LcdBlack, 0, 0          # the screen black while the part loads (the firmware draws nothing: fwdraw.s)
     mov     d2, (LD_REQ)
     mov     PH_LOAD, d0             # not part of any frame (perf.s)
     call    PerfPhase, 0, 0
@@ -910,10 +914,14 @@ le_count:
     rets
 
 # Progress(d0 = done, d1 = total): a white bar along the LCD's bottom rows, 600 * done / total
-# pixels (the black border; the game's next blit repaints it: PF_DAMAGE).
+# pixels (the black border; the game's next blit repaints it: PF_DAMAGE). Only before the game task runs: a
+# part's load keeps the screen black (EnsurePart).
 Progress:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    mov     (CV_STATE), d2
+    cmp     3, d2
+    beq     pg_done
     mov     (PF_DAMAGE), d2
     or      PFD_BAR, d2
     mov     d2, (PF_DAMAGE)
@@ -1227,5 +1235,6 @@ msg_fw_n:
 .include "inplog.s"                 # the input log, for replaying a session (README-CNV.md)
 .include "audio.s"                  # sound effects and music: the effects DSP, or MIDI into the receive ring
 .include "dsp.s"                    # the effects DSP: its sample mixer, the bank, the voices
+.include "fwdraw.s"                 # the firmware's screen kept from drawing while the game runs
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

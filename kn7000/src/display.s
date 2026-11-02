@@ -503,6 +503,20 @@ fb_row:
     call    PerfPhase, 0, 0
     ret     [d2,d3,a2,a3], 0x30
 
+# LcdBlack: the whole LCD frame black, border and window (a part's load: EnsurePart); the next blit repaints
+# everything (PF_DAMAGE).
+LcdBlack:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    clr     d0
+    mov     FB, a0
+    mov     FB_H * FB_STRIDE / 32, d1
+    call    fb_run, 0, 0
+    mov     (PF_DAMAGE), d0
+    or      PFD_BLACK, d0
+    mov     d0, (PF_DAMAGE)
+    ret     [d2,d3,a2,a3], 0x20
+
 # fb_run(a0 = start, d1 = 32-byte blocks, d0 = 0): store d1 * 8 zero words from a0. Leaf.
 fb_run:
     mov     d0, (a0)
