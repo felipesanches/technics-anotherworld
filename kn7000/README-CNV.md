@@ -25,7 +25,7 @@ every program build we know: **893** (v1.3, the owner's), 935, **941** (v1.6) an
 
 Contents: [What goes where](#what-goes-where) · [Building](#building) · [Before the first run on the
 instrument](#before-the-first-run-on-the-instrument) · [Playing it](#playing-it) · [Replaying a session](#replaying-a-session) · [How it works](#how-it-works) ·
-[Sound](#sound) · [Speed](#speed) · [The firmware's screen](#the-firmwares-screen) · [Memory](#memory) · [How it was checked](#how-it-was-checked) · [What MAME cannot
+[Sound](#sound) · [Speed](#speed) · [The screen](#the-screen) · [The firmware's screen](#the-firmwares-screen) · [Memory](#memory) · [How it was checked](#how-it-was-checked) · [What MAME cannot
 settle](#what-mame-cannot-settle) · [Limits](#limits) · [History](#history-the-awcnv-floppy-retired)
 
 ## What goes where
@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                             |
 |--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 33,912  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
+| `KN7APP.BIN`                         | 34,684  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
@@ -49,7 +49,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
 
-1,043,028 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,043,800 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -61,8 +61,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`9a2f2db4949404dae9acbd4d11e49b21dcfe913c` (the picture enlarged by default, PAGE DOWN 320x200, PAGE UP enlarged;
-the overlay and the old blit gone; `build/sdcard.txt` lists it with the rest). Before it: `cddfe76b...` (the screen
+`ccf024e4e505fc950265a4656e64d63b15041e8b` (384x240 pages drawn at that resolution by default, PAGE DOWN 320x200,
+PAGE UP 384x240: "The screen"; `build/sdcard.txt` lists it with the rest). Before it: `9a2f2db4...` (the 320x200
+picture enlarged to 384x240 by repeating pixels; the overlay and the old blit gone), `cddfe76b...` (the screen
 black while a part loads, the firmware's drawing off: "The firmware's screen"), `7b07e0f1...` (SHR shifts logically, found
 by replaying Felipe's first input log), `6f58c18f...` (the input log, played on Felipe's KN7000 on
 2026-11-01), `94910f68...` (round 3, `7f8ed09a...`: the coded bank, the keybed-only controls, the keybed-sound key;
@@ -185,13 +186,16 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 | help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns     |
 | sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too) |
 | keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off  |
-| screen       | PAGE UP: the picture enlarged (the default); PAGE DOWN: 320x200         |
+| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200     |
 | quit         | hold EXIT for 1.5 s                                                     |
 
-   **The screen.** The game starts with its 320x200 picture enlarged to 384x240, the LCD's whole height,
-   centred with black strips at the sides, in the same proportions (6/5 both ways: in every 5 pixels
-   and every 5 rows the middle one is shown twice; `src/display.s` BlitBig). PAGE DOWN shows it at the
-   original resolution, pixel for pixel, 320x200 in the middle of the LCD; PAGE UP enlarges it again.
+   **The screen.** The game starts in its high-resolution mode: it draws at 384x240, the LCD's whole height,
+   centred with black strips at the sides, in the original's proportions (6/5 of 320x200 both ways). The
+   polygons are computed and filled at that resolution, not enlarged afterwards; the text keeps its 8x8 glyphs,
+   pixel for pixel, each where the game puts it; the background bitmaps, which exist at 320x200 only, are
+   enlarged (in every 5 pixels and rows one is doubled). PAGE DOWN switches to the original resolution, 320x200
+   in the middle of the LCD, PAGE UP back; the pages are converted on the spot, so what was drawn before the
+   switch keeps the other resolution's look until the game draws it again ("The screen", below).
    A♭5 and B♭5 are both UP, the black keys either side of A5 (DOWN); B5 is no control (Felipe,
    2026-10-21). With three keys down (an action key, a direction and up: run and jump) the keybed's
    scan matrix can lose either of them (`src/vm.inc`, `KBD_UP_NOTE_*`).
@@ -240,8 +244,8 @@ seed), so the log holds:
 | `P`      | a part switch (to check that a replay keeps step)                                                                                                                                                                |
 | `H`, `E` | each file's header (the session, the file's number); the end (records lost for want of room)                                                                                                                     |
 
-The game writes the log to the SD card's root folder as it fills, 2,032 records at a time, as `AWIN00.BIN`,
-`AWIN01.BIN`, ... (16 KB each), between part loads and while no panel button is down, and the rest when you quit
+The game writes the log to the SD card's root folder as it fills, 1,008 records at a time, as `AWIN00.BIN`,
+`AWIN01.BIN`, ... (8 KB each; 2,032 records and 16 KB until 2026-11-02), between part loads and while no panel button is down, and the rest when you quit
 (EXIT held). A record is 8 bytes; inputs change a few times a second, so a file holds several minutes. A new game
 writes over the last one's files; quit before switching off, or the last few minutes are lost. KN7000
 `update_sdcard.sh` brings the files back with the card's other root files.
@@ -549,7 +553,8 @@ states, so it showed none of it.
 
 **What changed (2026-10-20).** One `KN7APP.BIN` that is faster and measures itself:
 
-- **The blit writes only what changed** (`src/display.s` `BlitPage`). `SHADOW`, a copy in RAM of the
+- **The blit writes only what changed** (`src/display.s` `BlitPage`; since 2026-11-02 `SHADOW` holds 4 bits a
+  pixel and the comparison packs the page's pixels to match, eight at a time). `SHADOW`, a copy in RAM of the
   colour indices the LCD's window shows, is compared with the page eight pixels at a time; a group
   of four pixels that differs is written as two 32-bit stores of two pixels each, from a table of the
   RGB565 of every pair of indices that is rebuilt only when the palette changes. The LCD is never read
@@ -557,7 +562,7 @@ states, so it showed none of it.
   (the end-of-frame blit, mostly), is skipped. A new palette rewrites the whole window.
 - **The border is painted once**, and everything again only when something may have drawn over it:
   the first blit, a part's load and 5 and 30 frames after it, a switch of the display mode, the stop
-  screen, every 500 frames, and whenever one of 47 sentinel pixels of the LCD (45 enlarged: the
+  screen, every 500 frames, and whenever one of 47 sentinel pixels of the LCD (45 at 384x240: the
   border, a grid in the window), read after each yield to the
   firmware, no longer holds what the game drew there: about 33 us of LCD loads per frame. The firmware
   repaints its own text screen over the whole LCD now and then: in MAME, twice while the intro hands
@@ -569,7 +574,7 @@ states, so it showed none of it.
 - **The measurement** (`src/perf.s`), below. Until 2026-11-02 PAGE DOWN also switched to the old blit
   (every pixel 16 bits at a time, the whole border on every blit, twice a frame, and the 8 ms yield) and
   PAGE UP showed the figures in the left border, so that one run on the instrument measured both;
-  both are gone, and PAGE UP / PAGE DOWN now choose the display mode (enlarged / 320x200).
+  both are gone, and PAGE UP / PAGE DOWN now choose the display mode (384x240 / 320x200).
 
 In MAME (`KN7APP.BIN` `26aabecb...`, the intro, ticks 1-300, mean per tick): the stores into the LCD
 frame fell from 217,600 (about 136 ms at the unit's times) to 2,036 32-bit ones and 47 sentinel loads
@@ -597,7 +602,7 @@ figures should decide what comes next.
 **Where the time goes, on the instrument.** The game times itself with the clock pass 8 of the ROM
 dumper proved on the owner's unit: the kernel's millisecond counter and timer 4's down-counter
 (`TM4BC`, 2001 counts per ms). Every frame is split into phases, summed over one-second windows, per
-part and over the whole game, separately for each display mode (enlarged, 320x200; until 2026-11-02 the
+part and over the whole game, separately for each display mode (384x240, 320x200; until 2026-11-02 the
 new and the old blit):
 
 | phase    | what                                                                             |
@@ -620,7 +625,7 @@ and 32-bit loads through its uncached view; and the game reads the bus controlle
 The figures show in two places:
 
 - **The help screen's fourth page** (HELP, then PAGE DOWN three times; "SPEED 4/4"): the last
-  second, the whole game enlarged and the whole game at 320x200 side by side; the benchmark in ns per
+  second, the whole game at 384x240 and the whole game at 320x200 side by side; the benchmark in ns per
   access; the registers in hex. The game is paused while it shows.
 - **`AWPERFn.TXT`** on the SD card: at each quit, the game writes the same page, the figures per
   part and per display mode, the counters, the benchmark and the registers in full to a new file in the
@@ -633,7 +638,7 @@ The figures show in two places:
 
 1. Start the game as usual. Just after "LOADING ANOTHER WORLD" the top rows of the screen go black for
    a moment: the benchmark (well under a second).
-2. Let the splash and the intro play with no input for a minute or so (enlarged), then press
+2. Let the splash and the intro play with no input for a minute or so (384x240), then press
    **PAGE DOWN** and let it go on a minute at 320x200. Skip to the lake with C4 and play a little in
    each mode (PAGE UP, PAGE DOWN).
 3. Press **HELP**, then **PAGE DOWN** three times: "SPEED 4/4". Photograph that page: it holds the
@@ -645,22 +650,74 @@ The figures show in two places:
 How to read the figures (all in ms per VM frame unless said otherwise; "last 1 s" is the last
 one-second window):
 
-| figure                 | meaning                                                                                          |
-|------------------------|--------------------------------------------------------------------------------------------------|
-| FPS, frames/s          | VM frames per second, loads and pauses left out                                                  |
-| FRAME, frame           | the time of a frame: the sum of the six lines below it                                           |
-| LONGEST, longest       | the longest frame                                                                                |
-| VM ... YIELD           | the phases (table above)                                                                         |
-| ASKED, yield asked     | the yield the pacing asked for: var[0xFF] x 20 ms less the frame's work, at least 2 ms           |
-| LOAD/S                 | ms of the last second spent waiting for a part's files                                           |
-| PIXELS, LCD pixels     | the page's pixels the blits wrote to the LCD per frame (enlarged, each shows as 1.44 on the LCD) |
-| REPAINT, repaints      | full repaints of border and window so far                                                        |
-| ns per access          | the benchmark: ALU (one add), LCD w16 / w32 / r16, RAM w8 / w32 / r8 / r32, uncached r32         |
-| bus 20-2E, 40 42 CHCTR | MEMCTR0-7, `0x32000040`, `0x32000042`, the cache control and TM4MD, as the firmware left them    |
+| figure                 | meaning                                                                                       |
+|------------------------|-----------------------------------------------------------------------------------------------|
+| FPS, frames/s          | VM frames per second, loads and pauses left out                                               |
+| FRAME, frame           | the time of a frame: the sum of the six lines below it                                        |
+| LONGEST, longest       | the longest frame                                                                             |
+| VM ... YIELD           | the phases (table above)                                                                      |
+| ASKED, yield asked     | the yield the pacing asked for: var[0xFF] x 20 ms less the frame's work, at least 2 ms        |
+| LOAD/S                 | ms of the last second spent waiting for a part's files                                        |
+| PIXELS, LCD pixels     | the page's pixels the blits wrote to the LCD per frame                                        |
+| REPAINT, repaints      | full repaints of border and window so far                                                     |
+| ns per access          | the benchmark: ALU (one add), LCD w16 / w32 / r16, RAM w8 / w32 / r8 / r32, uncached r32      |
+| bus 20-2E, 40 42 CHCTR | MEMCTR0-7, `0x32000040`, `0x32000042`, the cache control and TM4MD, as the firmware left them |
 
 A frame should take what the bytecode asks (var[0xFF] x 20 ms, set scene by scene; in MAME the intro
 ran at 25 frames per second, 40 ms a frame). When FRAME is longer, the phases say why; when YIELD is
 much longer than ASKED, the firmware's own tasks took the CPU in the yield.
+
+## The screen
+
+**Two resolutions** (since 2026-11-02; Felipe asked for a true higher resolution in place of the enlarged picture
+of the day before). The game's VM draws on four pages, and their size is the display mode's (`vm.inc` PG_W, PG_H):
+
+| mode                      | pages   | window on the LCD       | button    |
+|---------------------------|---------|-------------------------|-----------|
+| high resolution (default) | 384x240 | x 128-511, all 240 rows | PAGE UP   |
+| original                  | 320x200 | x 160-479, y 20-219     | PAGE DOWN |
+
+At 384x240 everything the game computes in its 320x200 coordinates is placed at 6/5 of it and drawn at the page's
+own resolution (`src/vm.s`, `src/interp.s`):
+
+- **Polygons**: the zoom scaling of every bounding box, vertex and hierarchy offset is `byte * zoom * 6 / 320` (in
+  place of `byte * zoom / 64`), and the polygon's centre `floor(6x / 5)`, `floor(6y / 5)` (`Scale`, `ToPgSigned`); the
+  edges are walked and the spans filled on the 384x240 page, clipped to it. Whether a polygon is a single point is
+  decided on its 320x200 values, as the original does.
+- **Text**: each 8x8 glyph is drawn pixel for pixel, its top-left corner at 6/5 of the game's position
+  (`DrawChar`, `ToPg`): the glyphs are not scaled, so they are as crisp as at 320x200; the gaps between letters are
+  1 or 2 pixels (8 pixels of the game are 9.6 of the page).
+- **Page copies with a vertical scroll** move the page by 6/5 of the scroll, in whole rows.
+- **Bitmaps** (the background pictures some scenes load) exist at 320x200 only: they are drawn at that size and
+  enlarged to the page (`display.s` PageUp: every 5 pixels and rows become 6, the first of each doubled).
+- **The help screens and the stop screen** keep their 8x8 font the same way.
+
+**Memory.** Four 384x240 pages take 368,640 bytes, which fill `0x50320000`-`0x50379FFF` exactly: `SHADOW` (what the
+LCD's window shows, which the blit compares with) now keeps 4 bits a pixel, 46,080 bytes at `0x502C8000`, and the help
+and stop screens are drawn in it rather than in a page of their own; a bitmap's 32,000 bytes of planes are unpacked
+there too (the next blit then repaints everything); the input log moved to the 16 KB after the mailbox page
+(`0x5031C000`), in 8 KB files. Nothing outside the game's RAM is used, on any program build.
+
+**Switching** converts the four pages in place (`display.s` DisplayConvert: PageUp, PageDown, a few ms each): what
+was drawn before the switch keeps the other resolution's look until the game draws it again, mostly at the next
+scene. The game's logic does not see the switch: its variables never depend on the pages.
+
+**How it was checked** (MAME, program 893; `probes/cnv/README.md`, "384x240 pages"):
+
+- at 320x200 the pages are those of before: Felipe's session replayed (`run_inplog.sh`) matches rustyworld on all
+  1346 frames and all 256 variables at every frame;
+- the LCD shows the page, pixel for pixel, in both modes: every one of 3,601 ticks of the intro and the lake, with
+  PAGE DOWN and PAGE UP twice each (`awcnv_lcd.lua`);
+- at 384x240, the whole intro replayed with its sync marks (`run_inplog.sh`, `AW_HIRES=1`): all 256 variables equal
+  rustyworld's at every one of its 3,218 frames (the resolution changes nothing the game computes), and each page
+  brought down to 320x200 the way PageDown does it agrees with rustyworld's on 89.9 to 100% of the pixels, 96.0% at
+  the median (`probes/hires_vs_ref.py`): the same scenes, the edges where the higher resolution puts them;
+- the acceptance tests pass on programs 893 and 941, the display modes' check included.
+
+**Speed.** In MAME's time, a tick of the intro (ticks 10-300, `awcnv_perf.lua`) took 61.3 ms at 384x240 and 48.8 at
+320x200 (48.6 before these pages): 1.44 times the pixels to fill, copy and compare. On the instrument the polygons,
+page operations and blit phases will grow about as much; the speed page and `AWPERFn.TXT` keep the two modes'
+figures apart.
 
 ## The firmware's screen
 
@@ -700,41 +757,41 @@ again while the game runs through the loader and reads the SD card. `src/platfor
 map, laid out around the loader's contract `kn7cnv.inc` (which the game includes);
 `tools/cnv_layout.py` prints and checks it at every build:
 
-| range                     | what                                                                                  |
-|---------------------------|---------------------------------------------------------------------------------------|
-| `0x502B8000`-`0x502B97AF` | KN7LOAD.CNV: the loader's image (6,064 bytes, SHA-1 6b81f382...)                      |
-| `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                      |
-| `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                           |
-| `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                   |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (33,912 bytes, to 0x502C2478)                     |
-| `0x502C8000`-`0x502D79FF` | HELP_BUF: help pages, stop screen, bitmap unpacking                                   |
-| `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                 |
-| `0x502D8300`-`0x502D8AFF` | AW_STRIDX: string index, from AWSTRIDX.AW                                             |
-| `0x502D8B00`-`0x502D9AFF` | AW_STRDAT: strings, from AWSTRDAT.AW                                                  |
-| `0x502DA000`-`0x502DA1FF` | AUDIO_VARS: audio.s: MIDI producer, music player, note slots                          |
-| `0x502DA200`-`0x502DA5FF` | SND_TAB: each sound's program, note, length, from AWSND.AW                            |
-| `0x502DA600`-`0x502DA9FF` | DSP_HOST: dsp.s: the effects DSP's routines, state, commands, readback                |
-| `0x502DB000`-`0x502DEFFF` | MUSIC_BUF: the current part's music module                                            |
-| `0x502DF000`-`0x502DF3FF` | CNV_VARS: the entry's and the part loader's variables                                 |
-| `0x502DF400`-`0x502DF4FF` | FW_VARS: what fwfind.s found, and its scratch                                         |
-| `0x502DF800`-`0x502DF83F` | AW_PATHS: the game's folder, from the menu's launch block                             |
-| `0x502E0000`-`0x502E01FF` | VM_POLY_BASE: rasterizer scratch                                                      |
-| `0x502E0400`-`0x502E0E47` | FWDRAW_AT: fwdraw.s: the firmware's view records, ours                                |
-| `0x502E1000`-`0x502E20FF` | VM_INTERP_BASE: VM variables, threads, call stack                                     |
-| `0x502E3000`-`0x502E43FF` | VM_MISC_BASE: input, help, guard, note trackers                                       |
-| `0x502E5000`-`0x502E5247` | RES_TAB: where each resource is now                                                   |
-| `0x502E6000`-`0x502E6FFF` | VM_PERF_BASE: speed figures, the blit's palette and pixel pairs                       |
-| `0x502E7000`-`0x502E7EFF` | DSP_BANKTAB: the DSP's sample bank: where each sound goes, from AWBANK.AW             |
-| `0x502E7F00`-`0x502E7FFF` | LB_ADDR: the program menu's launch block (kn7cnv.inc): read, never ours               |
-| `0x502E8000`-`0x502EE3FF` | VIDEO2_AT: the shared polygons (0x11)                                                 |
-| `0x502EE400`-`0x5031AFFF` | PART_AREA: the current part's files                                                   |
-| `0x5031B000`-`0x5031BFFF` | the firmware's mailbox page (0x5031BC00..): never written by the game but the request |
-| `0x50320000`-`0x5032F9FF` | PAGE_BITMAP_0: VM page 0                                                              |
-| `0x50330000`-`0x5033F9FF` | PAGE_BITMAP_1: VM page 1                                                              |
-| `0x50340000`-`0x5034F9FF` | PAGE_BITMAP_2: VM page 2                                                              |
-| `0x50350000`-`0x5035F9FF` | PAGE_BITMAP_3: VM page 3                                                              |
-| `0x50360000`-`0x5036F9FF` | SHADOW: the page as the LCD shows it (the blit)                                       |
-| `0x50370000`-`0x50371FFF` | REPORT_BUF: the text of AWPERF.TXT                                                    |
+| range                     | what                                                                                             |
+|---------------------------|--------------------------------------------------------------------------------------------------|
+| `0x502B8000`-`0x502B97AF` | KN7LOAD.CNV: the loader's image (6,064 bytes, SHA-1 6b81f382...)                                 |
+| `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
+| `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
+| `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (34,684 bytes, to 0x502C277C)                                |
+| `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
+| `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
+| `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |
+| `0x502D8300`-`0x502D8AFF` | AW_STRIDX: string index, from AWSTRIDX.AW                                                        |
+| `0x502D8B00`-`0x502D9AFF` | AW_STRDAT: strings, from AWSTRDAT.AW                                                             |
+| `0x502DA000`-`0x502DA1FF` | AUDIO_VARS: audio.s: MIDI producer, music player, note slots                                     |
+| `0x502DA200`-`0x502DA5FF` | SND_TAB: each sound's program, note, length, from AWSND.AW                                       |
+| `0x502DA600`-`0x502DA9FF` | DSP_HOST: dsp.s: the effects DSP's routines, state, commands, readback                           |
+| `0x502DB000`-`0x502DEFFF` | MUSIC_BUF: the current part's music module                                                       |
+| `0x502DF000`-`0x502DF3FF` | CNV_VARS: the entry's and the part loader's variables                                            |
+| `0x502DF400`-`0x502DF4FF` | FW_VARS: what fwfind.s found, and its scratch                                                    |
+| `0x502DF800`-`0x502DF83F` | AW_PATHS: the game's folder, from the menu's launch block                                        |
+| `0x502E0000`-`0x502E01FF` | VM_POLY_BASE: rasterizer scratch                                                                 |
+| `0x502E0400`-`0x502E0E47` | FWDRAW_AT: fwdraw.s: the firmware's view records, ours                                           |
+| `0x502E1000`-`0x502E20FF` | VM_INTERP_BASE: VM variables, threads, call stack                                                |
+| `0x502E3000`-`0x502E43FF` | VM_MISC_BASE: input, help, guard, note trackers                                                  |
+| `0x502E5000`-`0x502E5247` | RES_TAB: where each resource is now                                                              |
+| `0x502E6000`-`0x502E6FFF` | VM_PERF_BASE: speed figures, the blit's palette and pixel pairs                                  |
+| `0x502E7000`-`0x502E7EFF` | DSP_BANKTAB: the DSP's sample bank: where each sound goes, from AWBANK.AW                        |
+| `0x502E7F00`-`0x502E7FFF` | LB_ADDR: the program menu's launch block (kn7cnv.inc): read, never ours                          |
+| `0x502E8000`-`0x502EE3FF` | VIDEO2_AT: the shared polygons (0x11)                                                            |
+| `0x502EE400`-`0x5031AFFF` | PART_AREA: the current part's files                                                              |
+| `0x5031B000`-`0x5031BFFF` | the firmware's mailbox page (0x5031BC00..): never written by the game but the request            |
+| `0x5031C000`-`0x5031FFFF` | INPLOG_AT: the input log: its variables and two halves (inplog.s)                                |
+| `0x50320000`-`0x503367FF` | PAGE_BITMAP_0: VM page 0: 384x240, or 320x200 at its start                                       |
+| `0x50336800`-`0x5034CFFF` | PAGE_BITMAP_1: VM page 1: 384x240, or 320x200 at its start                                       |
+| `0x5034D000`-`0x503637FF` | PAGE_BITMAP_2: VM page 2: 384x240, or 320x200 at its start                                       |
+| `0x50363800`-`0x50379FFF` | PAGE_BITMAP_3: VM page 3: 384x240, or 320x200 at its start                                       |
 
 What the game must never touch, and how that is checked:
 
@@ -1015,7 +1072,7 @@ not to move the player), program 941, a part switch, the watchdog.
   copy the whole of `build/sdcard/` each time, never `KN7APP.BIN` alone.
 - **YES restarts from scratch.** The loader reloads `KN7APP.BIN` for "Continue Next?" YES, so a new
   game repeats the firmware search and the global files before the splash, and its speed figures
-  start afresh (enlarged).
+  start afresh (384x240).
 - **Room in `KN7APP.BIN`.** The variables moved up on 2026-10-21 (they were right after the image, at
   `0x502C0000`); the image may now reach `0x502C8000` (`IMAGE_END_MAX`): 25,032 bytes are left.
 - **Ten speed reports at most.** With `AWPERF0.TXT` .. `AWPERF9.TXT` all on the card, a quit writes no

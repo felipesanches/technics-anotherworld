@@ -542,7 +542,8 @@ and 152,960 after EXIT (the split between the two moves with the timing of the f
 
 The overlay (PAGE UP) and the old blit (PAGE DOWN) are gone; PAGE UP shows the picture enlarged to 384x240 (the
 default: `display.s` BlitBig, 6/5 both ways, the middle pixel and row of every 5 doubled), PAGE DOWN at the original
-320x200. `awcnv_lcd.lua` now reads the mode at every tick and checks the whole LCD frame against that mode's
+320x200. (Replaced the same day by true 384x240 pages: "384x240 pages", below. The results in this section are
+`KN7APP.BIN` `9a2f2db4`'s.) `awcnv_lcd.lua` now reads the mode at every tick and checks the whole LCD frame against that mode's
 picture of the front page; `AWL_PRESS` presses the buttons. Program 893, the intro from tick 0 into the lake, ticks
 0-3600, PAGE DOWN at 800, UP at 1600, DOWN at 2700, UP at 3000 (and, as it happened, presses of Felipe's in the
 MAME window during the intro):
@@ -569,6 +570,39 @@ overlay and the old blit, and so serves only builds before this one.
       AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" probes/cnv/run_perf.sh $T/lcd probes/cnv/awcnv_lcd.lua
     AWP_OUT=$T/perf-big AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-big probes/cnv/awcnv_perf.lua
     AWP_OUT=$T/perf-orig AWP_ORIGINAL=1 AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-orig probes/cnv/awcnv_perf.lua
+
+## 384x240 pages (2026-11-02)
+
+Felipe asked for a true higher resolution in place of the enlarged picture (its repeated rows distorted the text):
+the VM's pages are 384x240 in the default mode, the polygons drawn at that resolution, the text in 8x8 glyphs where
+the game puts it (README-CNV.md, "The screen"). PAGE DOWN gives 320x200 pages, PAGE UP 384x240 again. Program 893,
+`KN7APP.BIN` `ccf024e4`:
+
+| check                                                                  | result                                               |
+|------------------------------------------------------------------------|------------------------------------------------------|
+| Felipe's session replayed at 320x200 (`run_inplog.sh`), rustyworld     | 1346/1346 pages; all 256 variables at every frame    |
+| the whole intro (rec2) replayed at 384x240 (`AW_HIRES=1`)              | all 256 variables = rustyworld's at all 3218 frames  |
+| ... its pages brought to 320x200 as PageDown does (`hires_vs_ref.py`)  | 89.9-100% of the pixels = rustyworld's, median 96.0% |
+| the LCD against the page, intro and lake, 4 switches (`awcnv_lcd.lua`) | 3601/3601 ticks: 2502 at 384x240, 1099 at 320x200    |
+| acceptance tests (`run_cnv_tests.sh ic23`, blank IC23)                 | all checks pass on 893 and 941                       |
+| a tick of the intro, ticks 10-300, MAME's time (`awcnv_perf.lua`)      | 61.3 ms at 384x240, 48.8 at 320x200 (48.6 before)    |
+
+The agreement can't be 100%: the polygons' edges fall where the higher resolution puts them. A wrong scene would
+stand out (an unreplayed intro, whose music marks came at other frames, showed scenes cut early at 0-60%: that is
+why the comparison replays the logged marks). The lowest frames, around 2713, are the lab's console scene with
+many small polygons. The LCD check found, on the way, that inverting SHADOW to force a full write left a group
+unwritten whenever its new word was the inverse of the old one (tick 851, four pixels): `BlitAll` writes everything
+without comparing. Per tick at 384x240: 2,186 LCD stores (1,624 at 320x200), page loads 42,327 and stores 22,259
+(29,396, 15,666).
+
+    T=~/compartilhado/tmp/aw-hires/fin
+    probes/cnv/run_inplog.sh $T/urep replay SESSION.awr                       # 320x200, then compare_frames.py, varsdiff.py
+    AW_HIRES=1 probes/cnv/run_inplog.sh $T/rep2hi replay rec2/session.awr      # 384x240
+    REF_BIN=ref.bin REF_IDX=ref.idx replayawr rec2/session.awr ref.log        # rustyworld's pages (REF_VARS: variables)
+    python3 probes/hires_vs_ref.py $T/rep2hi/pages.bin $T/rep2hi/pages.idx ref.bin ref.idx [-o DIR FRAME...]
+    AWL_OUT=$T/lcd AWL_PAL=0x... AWL_MAX=3600 AWL_PRESS="800:DOWN,1600:UP,2700:DOWN,3000:UP" \
+      probes/cnv/run_perf.sh $T/lcd probes/cnv/awcnv_lcd.lua                   # AWL_DUMPBAD=n: dumps of wrong ticks
+    AWP_OUT=$T/perf-hi AWP_FROM=10 AWP_MAX=300 probes/cnv/run_perf.sh $T/perf-hi probes/cnv/awcnv_perf.lua  # AWP_ORIGINAL=1
 
 ## What the platform does with a converter
 
