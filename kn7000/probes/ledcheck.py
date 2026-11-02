@@ -12,6 +12,7 @@
 #   MEGA_RELEASE                 blinking (blinks to go > 0), the charge state 0
 #   STORM_FLASH / STORM_THUNDER  every LED bit set, shadow and mirror; STORM_STRIKE: blinking
 # (the lit bits, not the effect's timer: a 100 ms flash can end inside one game frame, before the frame is logged)
+# the panel: what MAME's panel shows (the log's registers rebuilt from its outputs) follows the shadow;
 # the pulse: the frames with a charge on and the non-red LEDs lit (should be near half); and, over the whole log: the frames with an effect, the most panel outputs MAME had lit, and whether the shadow's
 # LED bits were back to what they were before the first effect once all ended (the last frame).
 import sys
@@ -29,7 +30,8 @@ def load_log(p):
         if len(f) < 9 or f[6] == "-":
             continue
         rows[int(f[0])] = dict(active=int(f[1]), charge=int(f[2]), red=int(f[3]), all=int(f[4]), blinks=int(f[5]),
-                               sh=bytes.fromhex(f[6]), mi=bytes.fromhex(f[7]), lit=int(f[8]))
+                               sh=bytes.fromhex(f[6]), mi=bytes.fromhex(f[7]), lit=int(f[8]),
+                               panel=bytes.fromhex(f[11]) if len(f) > 11 else None)
     return rows
 
 
@@ -66,6 +68,16 @@ def main():
         if not ok:
             bad.append(f"{kind}@{tick}")
     ticks = sorted(log)
+    # the panel (the registers rebuilt from MAME's LED outputs, when logged) against the shadow: a frame is stale
+    # when the panel's LED bits match none of the shadows of that frame and the 3 before (the flush runs every 24 ms)
+    def led(b):
+        return bytes(x & m for x, m in zip(b, ALL))
+    if log[ticks[0]]["panel"] is not None:
+        stale = [t for i, t in enumerate(ticks)
+                 if all(led(log[t]["panel"]) != led(log[u]["sh"]) for u in ticks[max(0, i - 3):i + 1])]
+        endok = led(log[ticks[-1]]["panel"]) == led(log[ticks[-1]]["sh"])
+        print(f"ledcheck: panel    {len(ticks) - len(stale)}/{len(ticks)} frames as the shadow (3 frames' lag allowed);"
+              f" at the end {'the same' if endok else 'DIFFERENT'}" + (f"; first stale {stale[:5]}" if stale else ""))
     # the pulse: of the frames with a charge, those with the non-red LEDs lit (about half, if it pulses)
     nonred = bytes(a & ~r & 0xFF for a, r in zip(ALL, RED))
     ch = [t for t in ticks if log[t]["charge"] and not log[t]["blinks"]]

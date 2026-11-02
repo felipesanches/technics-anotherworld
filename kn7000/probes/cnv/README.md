@@ -638,6 +638,56 @@ to the control run's).
     AWLB_OUT=$T/lb probes/cnv/run_perf.sh $T/lb probes/cnv/awcnv_loadblack.lua
     python3 probes/screen2png.py $T/lcd8/screen_*.bin --sheet sheet.png      # the dumps, to look at
 
+## The panel's LEDs (2026-11-02)
+
+Felipe asked for the panel LEDs to follow the game: every red LED at a laser shot, the other LEDs pulsing while
+Lester's gun charges (faster once the big blob forms), everything blinking at the blast and at the intro storm's key
+moments, and a setting to turn it off (README-CNV.md, "The panel's LEDs"; `src/leds.s`). The moments were found in the
+reference VM's event log (research-scratch `kn7000-aw-reference/fingerprints`, `awfp.py`); the firmware's LED
+shadow, mirror, flush and refresh requests in research-scratch `kn7000-leds`.
+
+Two sessions replayed in MAME (`run_inplog.sh`, program 893, `AW_LEDLOG`), each against the reference VM's events
+of the same session (`../sessions/2026-11-02-*.fp`) with `../ledcheck.py`, and the pictures against the reference
+VM's (`compare_frames.py`). `KN7APP.BIN` SHA-1 `edc5cb45`:
+
+| check                                                      | the gun (`3e86-via-code-gun`, 1400 frames) | the intro (`intro-rec2`, 3218 frames) |
+|------------------------------------------------------------|--------------------------------------------|---------------------------------------|
+| lasers: every red LED bit set, and sent (the mirror)       | 10/10 (5 Lester's, 5 guards')              | -                                     |
+| the charge starts / the big blob / the shield ends it      | 3/3, 1/1, 2/2                              | -                                     |
+| the pulse: frames of a charge with the non-red LEDs lit    | 40/80                                      | -                                     |
+| the blast: blinking                                        | 1/1                                        | -                                     |
+| lightning flashes / thunder claps: every LED bit set, sent | -                                          | 3/3, 38/38                            |
+| the strike: blinking                                       | -                                          | 1/1                                   |
+| the panel (MAME's outputs) as the shadow, 3 frames' lag    | 1400/1400, the same at the end             | 3217/3218, the same at the end        |
+| the LED bits after the last effect as before the first     | yes                                        | yes                                   |
+| the pictures as the reference VM's                         | 1400/1400                                  | 3218/3218                             |
+
+The one intro frame (2709) caught the firmware's flush halfway through a restore (registers 17-19 not yet sent; the
+next frame is right). With the LED effects off (a card with `AWPREFS.CFG` byte +8 = 0) the gun session's shadow
+held one value at all 1400 frames, 15 outputs lit (the firmware's own), and the pictures again matched 1400/1400.
+
+Three faults the replays found, fixed before these results:
+
+- **The pulse lit in 8 of 80 frames.** `mov a1, mdr` assembled silently as `mov d1, mdr` (the encoding has only a
+  data register form), so the divide's high word was the period, not 0. Fixed in `leds.s`, and the encoder now
+  refuses an address register there (technics-roms-disasm `c240d1c0b`); no other source used it.
+- **After an effect, MAME's panel kept registers 2-10 lit** (44 outputs at the session's end instead of 15) while
+  the shadow and the mirror said they were off. `AW_TXTRACE=1169,1173` (`awcnv_inplog.lua`: every write to SIO0's TX
+  data, the TX FIFO's header and the shadow/mirror, with the PC) showed why: the restore wrote the shadow, then,
+  before the 24 ms flush, the refresh routines the game had requested ran, and one of them, the fourth mask's bit
+  0x10 (893 `func_484B086A`), re-applies the LED freeze state and zeroes the mirror (`func_484AE493`). The flush then
+  sends only registers that differ from 0, so the ones set back to 0 were never sent. That is the firmware's logic,
+  so the instrument would do the same; `LedEnd` now leaves that bit out (it is the same routine on 935, 941 and 942).
+- **The checks:** a 100 ms thunder flash can end within one game frame (about 75 ms here), so `ledcheck.py` asks for
+  the lit bits within 4 frames, not for the effect's timer.
+
+    T=~/compartilhado/tmp/aw-leds; S=probes/sessions
+    AW_LEDLOG=$T/gun.led probes/cnv/run_inplog.sh $T/gun replay $S/2026-11-02-3e86-via-code-gun.awr
+    python3 -I probes/ledcheck.py $T/gun.led $S/2026-11-02-3e86-via-code-gun.fp
+    python3 -I probes/compare_frames.py $T/gun/pages.log <rustyworld replayawr's log of the same session>
+    (the same with 2026-11-02-intro-rec2; the .fp files: research-scratch kn7000-aw-reference/fingerprints
+    run_all.sh's `one`, replayawr AW_EVENTS then awfp.py EV 3E80)
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

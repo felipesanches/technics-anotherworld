@@ -19,4 +19,4 @@ cp "$KN/build/sdcard/"* "$O/card2/"
 cp "$O/p1/AWPREFS.CFG" "$O/card2/"
 AWPR_PHASE=2 AWPR_OUT="$O/p2" CARDFILES="$O/card2" "$HERE/run_perf.sh" "$O/p2" "$HERE/awcnv_prefs.lua" > /dev/null
 grep -h "^awpr:" "$O/p2/run.log"
-rm -rf -- "${O:?}/card2"
+cd "$O" && rm -rf -- card2

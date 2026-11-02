@@ -125,6 +125,29 @@ local binf, idxf = io.open(OUTBIN, "wb"), io.open(OUTIDX, "w")
 local ledf = os.getenv("AW_LEDLOG") and os.getenv("AW_LEDLOG") ~= "" and io.open(os.getenv("AW_LEDLOG"), "w")
 local varf = os.getenv("AWCK_VARS") and os.getenv("AWCK_VARS") ~= "" and io.open(os.getenv("AWCK_VARS"), "wb")
 local captured, capturing, chi, clast = 0, true, 0, 0
+-- AW_TXTRACE=FIRST,LAST (optional; program 893): from tick FIRST to LAST, every write to the panel's SIO0 TX data
+-- register (0x34000808: the bytes MAME's panel receives), to the firmware's panel TX FIFO header (0x5006BD88-
+-- 0x5006BD9B: base, end, read, write, free count) and to the LED shadow and mirror (0x50150A18-0x50150A57), a line
+-- each to AW_TXTRACE_OUT: "us tick what offset data mask pc".
+local cur_tick = 0
+local txf, tx_first, tx_last = nil, 0, -1
+if os.getenv("AW_TXTRACE") and os.getenv("AW_TXTRACE") ~= "" then
+  tx_first, tx_last = os.getenv("AW_TXTRACE"):match("(%d+),(%d+)")
+  tx_first, tx_last = tonumber(tx_first), tonumber(tx_last)
+  txf = io.open(os.getenv("AW_TXTRACE_OUT"), "w")
+  local cpu = M.devices[":maincpu"]
+  local function tap(lo, hi, what)
+    return sp:install_write_tap(lo, hi, "awil_tx_" .. what, function(offset, data, mask)
+      if cur_tick >= tx_first and cur_tick <= tx_last then
+        txf:write(string.format("%d %d %s %08X %08X %08X %08X\n", math.floor(M.time:as_double() * 1e6), cur_tick, what,
+          offset, data, mask, cpu.state["PC"].value))
+      end
+    end)
+  end
+  AWIL_TX1 = tap(0x34000808, 0x3400080B, "sio")
+  AWIL_TX2 = tap(0x5006BD88, 0x5006BD9B, "fifo")
+  AWIL_TX3 = tap(0x50150A18, 0x50150A57, "led")
+end
 AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function(offset, data, mask)
   if not capturing or offset ~= FRAME_NO then return end
   local v = data & 0xffff
@@ -132,12 +155,13 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   if v < clast then chi = chi + 0x10000 end
   clast = v
   local tick = chi + v - 1                                   -- the frame just ended (awcnv_cksum.lua's tick)
+  cur_tick = tick + 1
   local front = sp:read_u32(CUR_PAGE_2)
   binf:write(sp:read_range(front, front + sp:read_u32(MISC + 0x6C) - 1, 8))  -- PG_SIZE: 64000 or 92160
   if varf then varf:write(sp:read_range(INTERP, INTERP + 511, 8)) end
   if ledf then
     -- AW_LEDLOG: the LED effects at every frame (src/leds.s): active, charge, red / all until (ms left), blinks to go,
-    -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start
+    -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start, the panel's registers, the TX FIFO's free count
     local LV, sh = 0x502DAD00, sp:read_u32(0x502DAD00)
     local ms = sp:read_u32(sp:read_u32(MISC + 0x200))
     local lit = 0
@@ -145,15 +169,26 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
       for i = 0, 127 do if (M.output:get_value(side .. i) or 0) ~= 0 then lit = lit + 1 end end
     end
     local function hex(a) local t = {}; for i = 0, 19 do t[#t + 1] = string.format("%02X", sp:read_u8(a + i)) end; return table.concat(t) end
-    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
+    -- the panel's view of the 20 registers, rebuilt from the outputs (cpl: register r = wire C0+r, output r*8+bit;
+    -- cpr: registers 8-13 = wires 00-05, 14-19 = wires 08-0D, output wire*8+bit), and the panel TX FIFO's free
+    -- count (893: the FIFO at 0x5006BD88, its free count u16 at +0x10)
+    local pv = {}
+    for r = 0, 19 do
+      local side, w = "cpl_led", r
+      if r >= 14 then side, w = "cpr_led", r - 14 + 8 elseif r >= 8 then side, w = "cpr_led", r - 8 end
+      local v = 0
+      for b = 0, 7 do if (M.output:get_value(side .. (w * 8 + b)) or 0) ~= 0 then v = v | (1 << b) end end
+      pv[#pv + 1] = string.format("%02X", v)
+    end
+    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d %s %d\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
       math.max(0, sp:read_u32(LV + 0x10) - ms), math.max(0, sp:read_u32(LV + 0x14) - ms), sp:read_u32(LV + 0x18),
-      sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20)))
+      sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20), table.concat(pv), sp:read_u16(0x5006BD98)))
   end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
 end)
 local function stop_capture()
-  if capturing then capturing = false; binf:close(); idxf:close(); if varf then varf:close() end; if ledf then ledf:close() end; log(string.format("captured %d frames", captured)) end
+  if capturing then capturing = false; if txf then txf:close() end; binf:close(); idxf:close(); if varf then varf:close() end; if ledf then ledf:close() end; log(string.format("captured %d frames", captured)) end
 end
 
 -- ---- inputs --------------------------------------------------------------------------------------------------

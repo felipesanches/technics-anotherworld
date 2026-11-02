@@ -39,15 +39,15 @@ write-protect tab at PROTECTED. Every MAME test below runs this very image.
 **The SD card: everything in `build/sdcard/`, copied to the card's root folder.** `make sdcard`
 writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `build/sdcard.txt`):
 
-| file(s)                              | bytes   | what                                                                                                             |
-|--------------------------------------|---------|------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 35,056  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound            |
-| `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                 |
-| `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                            |
-| `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)     |
-| `AWBANK.AW`                          | 2,952   | where each sound of the DSP's sample bank is in its SDRAM, the bank's id and checksum ("Sound"; `aw_extract.py`) |
-| `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                      |
-| `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)      |
+| file(s)                              | bytes   | what                                                                                                                  |
+|--------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
+| `KN7APP.BIN`                         | 38,180  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
+| `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                      |
+| `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                 |
+| `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)          |
+| `AWBANK.AW`                          | 2,952   | where each sound of the DSP's sample bank is in its SDRAM, the bank's id and checksum ("Sound"; `aw_extract.py`)      |
+| `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                           |
+| `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)           |
 
 1,044,172 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
@@ -161,13 +161,12 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 1. Switch on and wait for the main screen. Insert the floppy and the SD card.
 2. **DISK MENU**, then **STYLE CONVERT** (left button 3). The list shows `KN7LOAD.CNV`. Press **OK**
    (right button 4).
-3. The loader's screen flashes by. Then "LOADING ANOTHER WORLD" shows while a white bar along the
-   bottom fills: eight steps of the firmware search, then the font, the strings, the sound tables and
-   the shared polygons. Then, the first time after the instrument was switched on, "LOADING ANOTHER
-   WORLD: SOUNDS" and the bar again: the game's samples going into the effects DSP ("Sound"; in MAME
-   11.6 s, 25.9 s before 2026-10-21; HELP's first page shows how long it took on your unit). Then the
-   splash starts. Whenever the game moves to another part, the picture stops for
-   a moment while the bar fills again: the part's files are being read from the card.
+3. The loader's screen flashes by. As soon as the game is first called, the whole LCD goes black and
+   "Loading... NN%" counts up in its middle: the firmware search, the font, the strings, the sound tables and
+   the shared polygons, then, the first time after the instrument was switched on, the game's samples going
+   into the effects DSP ("Sound"; in MAME 11.6 s; HELP's first page shows how long it took on your unit), the
+   sound's settling and the first part. At 100% the splash starts. Whenever the game moves to another part,
+   the screen goes black for a moment while the part's files are read from the card.
 4. The controls (the HELP screen shows them too, with the level codes). **The game is played on the keybed
    only** (or over MIDI IN 1, channels 1-3); since 2026-10-21 no panel button moves the player:
 
@@ -185,6 +184,7 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 |--------------|-------------------------------------------------------------------------|
 | codes        | OTHER PART & FR: the level code screen                                  |
 | help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns     |
+| settings     | HELP, then PAGE DOWN three times ("Settings", below)                    |
 | sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too) |
 | keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off  |
 | screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200     |
@@ -229,6 +229,56 @@ If anything looks wrong, write the card image from step 1 back and restore the p
    it; nothing has been written outside the game's RAM. Step 2 of the search is the loader's service
    table: "STEP 2" means the floppy's loader is not the one the game was built for. If `KN7APP.BIN`
    itself is missing or damaged, the loader says so on its own screen and ends after about 15 s.
+
+## Settings
+
+The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds five settings. They are
+chosen and changed on the keybed, with the game's own direction keys: **UP** (A♭5 or B♭5) and **DOWN** (A5)
+choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page:
+
+| setting       | values                         | default | what it does                                                           |
+|---------------|--------------------------------|---------|------------------------------------------------------------------------|
+| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch) |
+| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides    |
+| light scatter | short, medium, long, very long | medium  | how far that glow reaches into the strips                              |
+| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
+| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
+
+The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
+a setting in the order above, then zeros; `src/prefs.s`). The game reads it at the start, before the first
+part, and writes it, over the old one, at the first converter call after a change with no panel button down
+(while no part is loading), and at the quit if a change is still unsaved. A missing or unreadable file means the
+defaults; a write that fails is counted (not retried) and the next change writes the file again. Checked in MAME by `probes/cnv/run_prefs.sh` (two runs: the
+settings changed on the page, then read back from the card on the next start).
+
+## The panel's LEDs
+
+With the LED effects on (the default), the panel's LEDs follow a few of the game's moments (`src/leds.s`):
+
+| moment                                  | LEDs                                                 |
+|-----------------------------------------|------------------------------------------------------|
+| a laser shot (Lester's or a guard's)    | every red LED on for 150 ms                          |
+| Lester's gun charging a shot            | the LEDs that are not red pulse (200 ms on, 200 off) |
+| the charge grown to the big energy blob | the same, twice as fast                              |
+| the big blast fired                     | every LED blinks three times                         |
+| the intro's lightning                   | every LED on for 150 ms at each flash                |
+| the intro's thunder                     | every LED on for 100 ms at each loud clap            |
+| the lightning striking the lab          | every LED blinks three times                         |
+
+The moments are recognised in the game's own bytecode as it runs (a sound, a palette, a variable, and which
+thread does it), the way the reference VM's event log showed them (research-scratch `kn7000-aw-reference/
+fingerprints`). The game writes the firmware's own LED shadow and asks it to send it to the panel, so the
+firmware's 24 ms flush carries the pattern; when the effects end, the LEDs go back to what the firmware has
+them showing (any LED the firmware changed meanwhile keeps the change), and the game asks the firmware to redraw
+the LEDs of its own state, all its refresh groups but the one that re-applies the LED freeze: that routine zeroes
+the firmware's record of what the panel shows, and run before the flush had sent the restore it left the LEDs set
+back to off still lit (seen in MAME: `probes/cnv/README.md`, "The panel's LEDs"). The shadow's address is known for
+programs 893, 935, 941 and 942; on any other build, or with the LED effects off, the game leaves the LEDs alone.
+
+Checked in MAME by replaying two sessions with an LED log (`probes/cnv/awcnv_inplog.lua`, `AW_LEDLOG`) and
+comparing it with the reference VM's events of the same sessions (`probes/ledcheck.py`): every laser, charge,
+blast, flash, clap and strike lit its pattern, and MAME's panel followed (`probes/cnv/README.md`, "The panel's
+LEDs"). The LEDs on the instrument itself have not been seen yet.
 
 ## Replaying a session
 
@@ -359,6 +409,12 @@ below); under it "KEYBED SOUND: ON" or "OFF" (PART SELECT RIGHT 1, "Playing it")
 sample bank took ("SENT IN 11.4 S", "CHECKED IN 0.3 S" when it was already there, or "NOT LOADED"). The game
 starts in the DSP mode when it could set the DSP up, else in the tone generator's. In every mode the module
 player runs and writes its sync marks into var 0xF4 as before, so the intro keeps its timing.
+
+**The volume.** The DSP mixer's output gain is 2 since 2026-11-02 (MIX = the voices' sum x 2; it was 128), the
+ProTracker port's value: there, on the owner's unit, 128 gave a comfortable level only at the bottom of MAIN
+VOLUME's travel (kn5000_homebrew 26bd920). 2 is 36 dB below 128. `make DSP_GAIN=n` builds another (1 to 128, each
+doubling 6 dB louder; `tools/dsp_mixer.py --gain`). This game's level at 2 has not been measured, in MAME or on the
+unit; the 36 dB is the gain ratio.
 
 ### The DSP mode (iteration 2, 2026-10-21): the game's own samples
 
@@ -623,12 +679,9 @@ rows, which the game paints black anyway), 8- and 32-bit stores and loads to wor
 and 32-bit loads through its uncached view; and the game reads the bus controller's registers
 (MEMCTR0-7, `0x32000040`, `0x32000042`), the cache control (`CHCTR`), timer 4's mode and base.
 
-The figures show in two places:
+The figures go to the SD card (the help screen's speed page gave way to the settings, 2026-11-02):
 
-- **The help screen's fourth page** (HELP, then PAGE DOWN three times; "SPEED 4/4"): the last
-  second, the whole game at 384x240 and the whole game at 320x200 side by side; the benchmark in ns per
-  access; the registers in hex. The game is paused while it shows.
-- **`AWPERFn.TXT`** on the SD card: at each quit, the game writes the same page, the figures per
+- **`AWPERFn.TXT`** on the SD card: at each quit, the game writes the speed page, the figures per
   part and per display mode, the counters, the benchmark and the registers in full to a new file in the
   card's root, `AWPERF0.TXT`, then `AWPERF1.TXT` ... `AWPERF9.TXT` (it never writes over a file; with
   all ten there it writes nothing). It uses the loader's routines as the ROM dumper does for its
@@ -637,16 +690,12 @@ The figures show in two places:
 **On the instrument: what to do, photograph and send.** With the card files of this build
 (`make sdcard`; the floppy as it is):
 
-1. Start the game as usual. Just after "LOADING ANOTHER WORLD" the top rows of the screen go black for
-   a moment: the benchmark (well under a second).
+1. Start the game as usual. The benchmark runs during the loading screen (well under a second).
 2. Let the splash and the intro play with no input for a minute or so (384x240), then press
    **PAGE DOWN** and let it go on a minute at 320x200. Skip to the lake with C4 and play a little in
    each mode (PAGE UP, PAGE DOWN).
-3. Press **HELP**, then **PAGE DOWN** three times: "SPEED 4/4". Photograph that page: it holds the
-   last second, both display modes over the whole game, the benchmark and the bus registers. **EXIT**.
-4. Quit as usual (hold EXIT, EXIT, **NO**). On the way out the game writes `AWPERF0.TXT` (or the next
-   free number) to the card's root. Send the photographs and that file; it can be deleted from the
-   card afterwards.
+3. Quit as usual (hold EXIT, EXIT, **NO**). On the way out the game writes `AWPERF0.TXT` (or the next
+   free number) to the card's root. Send that file; it can be deleted from the card afterwards.
 
 How to read the figures (all in ms per VM frame unless said otherwise; "last 1 s" is the last
 one-second window):
@@ -799,7 +848,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (35,056 bytes, to 0x502C28F0)                                |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (38,180 bytes, to 0x502C3524)                                |
 | `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
 | `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |
@@ -808,10 +857,13 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502DA000`-`0x502DA1FF` | AUDIO_VARS: audio.s: MIDI producer, music player, note slots                                     |
 | `0x502DA200`-`0x502DA5FF` | SND_TAB: each sound's program, note, length, from AWSND.AW                                       |
 | `0x502DA600`-`0x502DA9FF` | DSP_HOST: dsp.s: the effects DSP's routines, state, commands, readback                           |
+| `0x502DAA00`-`0x502DACFF` | LCD8_VARS: lcd8.s: the LCD's, the ambilight's and the loading screen's state                     |
+| `0x502DAD00`-`0x502DAD7F` | LED_VARS: leds.s: the LED effects' state                                                         |
 | `0x502DB000`-`0x502DEFFF` | MUSIC_BUF: the current part's music module                                                       |
 | `0x502DF000`-`0x502DF3FF` | CNV_VARS: the entry's and the part loader's variables                                            |
 | `0x502DF400`-`0x502DF4FF` | FW_VARS: what fwfind.s found, and its scratch                                                    |
 | `0x502DF800`-`0x502DF83F` | AW_PATHS: the game's folder, from the menu's launch block                                        |
+| `0x502DF900`-`0x502DF95F` | PREFS_AT: prefs.s: the settings (AWPREFS.CFG) and the settings page                              |
 | `0x502E0000`-`0x502E01FF` | VM_POLY_BASE: rasterizer scratch                                                                 |
 | `0x502E0400`-`0x502E0E47` | FWDRAW_AT: fwdraw.s: the firmware's view records, ours                                           |
 | `0x502E1000`-`0x502E20FF` | VM_INTERP_BASE: VM variables, threads, call stack                                                |

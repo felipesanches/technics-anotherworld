@@ -12,7 +12,10 @@
 # changes. So, while an effect runs, the game writes its pattern into the shadow at every yield (LedService), over
 # whatever the firmware set meanwhile, which it folds into the copy it saved first (the bits that changed since its
 # last write). When the effect ends (and at the quit: LedEnd) the saved bits go back, and the four refresh requests
-# are raised so that the firmware puts the LEDs of its own state back. 71 of the 101 LEDs are red (by part number:
+# are raised so that the firmware puts the LEDs of its own state back: every bit but the fourth mask's 0x10, the
+# freeze/unfreeze routine (893 func_484B086A, 935 0x484B0A35, 941 0x484B0A77, 942 0x484B0A66), which zeroes the
+# mirror and, run before the flush has sent the restore, left the registers set back to 0 showing the effect (MAME,
+# probes/cnv/awcnv_inplog.lua AW_TXTRACE, 2026-11-02). 71 of the 101 LEDs are red (by part number:
 # the service manual's parts list): LED_RED; LED_ALL are the bits that are LEDs. Effects only on a known build (the
 # loader's FWV_BUILD: led_builds), on the KN7000's own panel (bank flag 0) and with the firmware's LED output not
 # frozen.
@@ -254,6 +257,8 @@ lsv_charge:
     mov     (LED_PULSE_T), d0
     sub     d0, d1                  # d1 = ms since the pulse began
     mov     d1, d0
+    clr     d1                      # (MDR: the dividend's high word)
+    mov     d1, mdr
     mov     (LED_CHARGE), d1        # the pulse's half period: 200 ms, 100 with the big blob
     cmp     2, d1
     beq     lsv_fast
@@ -262,8 +267,6 @@ lsv_charge:
 lsv_fast:
     mov     LED_PULSE_MS / 2, d1
 lsv_div:
-    mov     0, a1
-    mov     a1, mdr
     divu    d1, d0                  # halves so far
     btst    1, d0
     bne     lsv_blink               # (the odd halves: the non-red as they are)
@@ -393,8 +396,8 @@ led_fold:
     rets
 
 # LedEnd: the effects over (or the quit, cnv_main.s): the saved LED bits back into the shadow, with the firmware's own
-# changes since our last write, and its four refresh requests raised (interrupts off: it updates them too) so that it
-# puts back the LEDs of its state.
+# changes since our last write, and its refresh requests raised but the freeze routine's (interrupts off: it updates
+# them too) so that it puts back the LEDs of its state.
 LedEnd:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -427,7 +430,9 @@ len_reg:
     movhu   d1, (a1)
     movhu   d1, (4, a1)
     movhu   d1, (8, a1)
-    movhu   d1, (12, a1)
+    movhu   (12, a1), d1            # the fourth: all but bit 0x10 (kept as the firmware has it), whose routine
+    or      0xFFEF, d1              # re-applies the freeze state and zeroes the mirror: run before the flush has
+    movhu   d1, (12, a1)            # sent this restore, it would leave the registers set back to 0 unsent
     mov     a0, d0
     mov     d0, psw
     nop
