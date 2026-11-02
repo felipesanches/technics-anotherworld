@@ -384,11 +384,15 @@ psn_one:
     mov     (4, a2), d0             # the window's pixel offset, or -1 for the border (black)
     cmp     -1, d0
     beq     psn_black
-    mov     d0, d1                  # SHADOW: 4 bits a pixel, the even one low
-    lsr     1, d1
+    mov     d0, d1                  # SHADOW: pixel i in byte (i / 8) * 4 + i % 4, high nibble when i % 8 >= 4
+    lsr     3, d1                   #   (display.s BlitPacked)
+    asl     2, d1
     mov     SHADOW, a1
+    add     d1, a1
+    mov     d0, d1
+    and     3, d1
     movbu   (d1, a1), d1
-    btst    1, d0
+    btst    4, d0
     beq     psn_lo
     lsr     4, d1
 psn_lo:
@@ -1322,9 +1326,9 @@ page_tab:
     .long   0
 spg_title:   .asciz  "SPEED  4/4  program "
 spg_now:     .asciz  "  now: "
-spg_new:     .asciz  "enlarged"
-spg_old:     .asciz  "original"
-spg_head:    .asciz  "ms per frame  last 1 s enlarged original"
+spg_new:     .asciz  "384x240 "
+spg_old:     .asciz  "320x200 "
+spg_head:    .asciz  "ms per frame  last 1 s 384x240  320x200 "
 spg_frames:  .asciz  "VM frames    "
 spg_fps:     .asciz  "frames/s     "
 spg_frame:   .asciz  "frame        "

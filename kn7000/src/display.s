@@ -180,14 +180,20 @@ wb_orig:
     rets
 
 # BlitPacked(a0 = page, d0 = 1 to write every pixel, 0 only those SHADOW does not hold): the page into the
-# window, through PF_PAIR, and into SHADOW. Eight pixels a turn: the page's two words packed to 4 bits a pixel
-# (pixel 0 in the lowest nibble: each byte is a PF_PAIR index), compared with SHADOW's word; each half that
-# differs is two 32-bit stores. Counts the pixels written (PF_FRAME_PX).
+# window, through PF_PAIR, and into SHADOW. Eight pixels a turn: the page's two words w0 (pixels 0-3) and w1 (4-7),
+# each byte masked to its 4 bits, make SHADOW's word Q = w0 | w1 << 4 (byte k: pixel k low, pixel k+4 high); where Q
+# differs from SHADOW's, the low nibbles say pixels 0-3 changed and the high ones 4-7, and each such four is two
+# 32-bit stores of PF_PAIR entries made from its word. Every pixel (d0 = 1): BlitAll. Counts the pixels written
+# (PF_FRAME_PX).
 BlitPacked:
     movm    [d2,d3,a2,a3], (sp)
-    add     -0x20, sp
+    add     -0x28, sp
     mov     a0, a2                  # a2 = the page
-    mov     d0, (0x10, sp)          # write all
+    cmp     0, d0
+    beq     bk_start
+    call    BlitAll, 0, 0           # (a0 = the page)
+    bra     bpk_ret
+bk_start:
     call    WinBase, 0, 0
     mov     a1, (0x14, sp)          # a1 = this row's first LCD pixel
     mov     SHADOW, a3              # a3 = what the window shows
@@ -195,84 +201,68 @@ BlitPacked:
     mov     (PG_H), d0
     mov     d0, (0x18, sp)          # rows left
     clr     d0
-    mov     d0, (0x1C, sp)          # halves of four pixels written
+    mov     d0, (0x1C, sp)          # fours of pixels written
 bk_row:
-    mov     (PG_W), d2
-    lsr     3, d2                   # d2 = groups of eight left in the row
+    mov     (PG_W), d0
+    lsr     3, d0
+    mov     d0, (0x20, sp)          # groups of eight left in the row
 bk_grp:
-    mov     (4, a2), d0             # pixels 4..7 -> bits 16..31
-    and     0x0F0F0F0F, d0
-    mov     d0, d1
-    lsr     4, d1
-    or      d1, d0
-    and     0x00FF00FF, d0
-    mov     d0, d1
-    lsr     8, d1
-    or      d1, d0
-    asl     16, d0
-    mov     d0, d3
-    mov     (a2), d0                # pixels 0..3 -> bits 0..15
-    and     0x0F0F0F0F, d0
-    mov     d0, d1
-    lsr     4, d1
-    or      d1, d0
-    and     0x00FF00FF, d0
-    mov     d0, d1
-    lsr     8, d1
-    or      d1, d0
-    and     0xFFFF, d0
-    or      d3, d0                  # d0 = the eight pixels
-    mov     (a3), d1
-    mov     (0x10, sp), d3
-    cmp     0, d3
-    bne     bk_all
-    xor     d0, d1                  # d1 = what differs
-    beq     bk_next
-    mov     d0, (a3)
+    mov     (a2), d0
+    and     0x0F0F0F0F, d0          # w0: pixels 0-3
+    mov     (4, a2), d1
+    and     0x0F0F0F0F, d1          # w1: pixels 4-7
     mov     d1, d3
-    and     0xFFFF, d3
+    asl     4, d3
+    or      d0, d3                  # Q
+    mov     (a3), d2
+    cmp     d2, d3
+    beq     bk_next
+    mov     d3, (a3)
+    xor     d3, d2                  # what changed
+    mov     d2, (0x24, sp)
+    and     0x0F0F0F0F, d2
     beq     bk_hi
-    mov     d0, d3                  # pixels 0, 1
+    mov     d0, d2                  # pixels 0-3: bytes 0 and 2 of w0 | w0 >> 4 are PF_PAIR indices
+    lsr     4, d2
+    or      d0, d2
+    mov     d2, d3
     and     0xFF, d3
     asl     2, d3
     mov     (d3, a0), d3
     mov     d3, (a1)
-    mov     d0, d3                  # pixels 2, 3
-    lsr     6, d3
-    and     0x3FC, d3
-    mov     (d3, a0), d3
-    mov     d3, (4, a1)
-    mov     (0x1C, sp), d3
-    inc     d3
-    mov     d3, (0x1C, sp)
+    lsr     14, d2
+    and     0x3FC, d2
+    mov     (d2, a0), d2
+    mov     d2, (4, a1)
+    mov     (0x1C, sp), d2
+    inc     d2
+    mov     d2, (0x1C, sp)
 bk_hi:
-    lsr     16, d1
+    mov     (0x24, sp), d2
+    and     0xF0F0F0F0, d2
     beq     bk_next
-    mov     d0, d3                  # pixels 4, 5
-    lsr     14, d3
-    and     0x3FC, d3
+    mov     d1, d2                  # pixels 4-7, from w1 the same way
+    lsr     4, d2
+    or      d1, d2
+    mov     d2, d3
+    and     0xFF, d3
+    asl     2, d3
     mov     (d3, a0), d3
     mov     d3, (8, a1)
-    mov     d0, d3                  # pixels 6, 7
-    lsr     22, d3
-    and     0x3FC, d3
-    mov     (d3, a0), d3
-    mov     d3, (12, a1)
-    mov     (0x1C, sp), d3
-    inc     d3
-    mov     d3, (0x1C, sp)
-    bra     bk_next
-bk_all:
-    mov     d0, (a3)
-    call    bk_put8, 0, 0
-    mov     (0x1C, sp), d3
-    add     2, d3
-    mov     d3, (0x1C, sp)
+    lsr     14, d2
+    and     0x3FC, d2
+    mov     (d2, a0), d2
+    mov     d2, (12, a1)
+    mov     (0x1C, sp), d2
+    inc     d2
+    mov     d2, (0x1C, sp)
 bk_next:
     add     8, a2
     add     4, a3
     add     16, a1
-    add     -1, d2
+    mov     (0x20, sp), d0
+    add     -1, d0
+    mov     d0, (0x20, sp)
     bne     bk_grp
     mov     (0x14, sp), a1          # the next row
     add     FB_STRIDE, a1
@@ -286,32 +276,57 @@ bk_next:
     mov     (PF_FRAME_PX), d1
     add     d0, d1
     mov     d1, (PF_FRAME_PX)
-    ret     [d2,d3,a2,a3], 0x30
+bpk_ret:
+    ret     [d2,d3,a2,a3], 0x38
 
-# bk_put8(d0 = eight pixels, 4 bits each; a0 = PF_PAIR, a1 = their LCD pixels): four 32-bit stores. Leaf;
-# uses d1.
-bk_put8:
-    mov     d0, d1
-    and     0xFF, d1
-    asl     2, d1
-    mov     (d1, a0), d1
-    mov     d1, (a1)
-    mov     d0, d1
-    lsr     6, d1
-    and     0x3FC, d1
-    mov     (d1, a0), d1
-    mov     d1, (4, a1)
-    mov     d0, d1
-    lsr     14, d1
-    and     0x3FC, d1
-    mov     (d1, a0), d1
-    mov     d1, (8, a1)
-    mov     d0, d1
-    lsr     22, d1
-    and     0x3FC, d1
-    mov     (d1, a0), d1
-    mov     d1, (12, a1)
-    rets
+# BlitAll(a0 = page): every pixel of the page into the window and into SHADOW, comparing nothing (BlitPacked; any
+# 32-bit value is a possible SHADOW word, so no value of SHADOW can make every group differ).
+BlitAll:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     a0, a2
+    call    WinBase, 0, 0
+    mov     a1, (0x14, sp)
+    mov     SHADOW, a3
+    mov     PF_PAIR, a0
+    mov     (PG_H), d0
+    mov     d0, (0x18, sp)          # rows left
+ba_row:
+    mov     (PG_W), d0
+    lsr     3, d0
+    mov     d0, (0x1C, sp)          # groups of eight left in the row
+ba_grp:
+    mov     (a2), d0
+    and     0x0F0F0F0F, d0          # w0
+    mov     (4, a2), d3
+    and     0x0F0F0F0F, d3          # w1
+    mov     d3, d2
+    asl     4, d2
+    or      d0, d2
+    mov     d2, (a3)                # Q
+    call    so_four, 0, 0           # pixels 0-3
+    add     8, a1
+    mov     d3, d0
+    call    so_four, 0, 0           # pixels 4-7
+    add     8, a1
+    add     8, a2
+    add     4, a3
+    mov     (0x1C, sp), d0
+    add     -1, d0
+    mov     d0, (0x1C, sp)
+    bne     ba_grp
+    mov     (0x14, sp), a1
+    add     FB_STRIDE, a1
+    mov     a1, (0x14, sp)
+    mov     (0x18, sp), d0
+    add     -1, d0
+    mov     d0, (0x18, sp)
+    bne     ba_row
+    mov     (PG_SIZE), d0
+    mov     (PF_FRAME_PX), d1
+    add     d0, d1
+    mov     d1, (PF_FRAME_PX)
+    ret     [d2,d3,a2,a3], 0x30
 
 # ShadowOut: SHADOW to the whole window, and the border black, through the palette now (the help and stop
 # screens, drawn in SHADOW: help.s HelpText). The next blit of a page compares it with what this showed.
@@ -329,10 +344,16 @@ so_row:
     mov     (PG_W), d2
     lsr     3, d2
 so_grp:
+    mov     (a3), d0                # Q: pixels 0-3 in the low nibbles, 4-7 in the high ones
+    and     0x0F0F0F0F, d0
+    call    so_four, 0, 0
+    add     8, a1
     mov     (a3), d0
-    call    bk_put8, 0, 0
+    lsr     4, d0
+    and     0x0F0F0F0F, d0
+    call    so_four, 0, 0
+    add     8, a1
     add     4, a3
-    add     16, a1
     add     -1, d2
     bne     so_grp
     mov     (0x14, sp), a1
@@ -345,6 +366,22 @@ so_grp:
     mov     SHADOW, d0              # no page is on the LCD (the next page's blit compares), and the
     mov     d0, (PF_LAST_SRC)       #   sentinels check what this showed
     ret     [d2,d3,a2,a3], 0x30
+
+# so_four(d0 = four pixels, a byte each; a0 = PF_PAIR, a1 = their LCD pixels): two 32-bit stores. Leaf; uses d1.
+so_four:
+    mov     d0, d1
+    lsr     4, d1
+    or      d1, d0
+    mov     d0, d1
+    and     0xFF, d1
+    asl     2, d1
+    mov     (d1, a0), d1
+    mov     d1, (a1)
+    lsr     14, d0
+    and     0x3FC, d0
+    mov     (d0, a0), d0
+    mov     d0, (4, a1)
+    rets
 
 # ShadowClear: SHADOW black, for the help or stop screen at the pages' size now. Leaf.
 ShadowClear:
@@ -359,28 +396,33 @@ sc_loop:
     bne     sc_loop
     rets
 
-# ShadowPlot(d0 = x, d1 = y, d2 = colour): one pixel of SHADOW, in the pages' coordinates now. Leaf; uses d0,
-# d1, a0, a1; keeps d2.
+# ShadowPlot(d0 = x, d1 = y, d2 = colour): one pixel of SHADOW, in the pages' coordinates now. Pixel i of the
+# window is in byte (i / 8) * 4 + i % 4, the low nibble when i % 8 < 4, else the high one (BlitPacked's Q). Leaf;
+# uses d0, d1, a0, a1; keeps d2.
 ShadowPlot:
     mov     d0, a1                  # x
     mov     (PG_W), d0
     mulu    d1, d0
-    add     a1, d0                  # d0 = y * PG_W + x
+    add     a1, d0                  # d0 = i = y * PG_W + x
     mov     d0, d1
-    lsr     1, d1
+    lsr     3, d1
+    asl     2, d1
     mov     SHADOW, a0
     add     d1, a0
+    mov     d0, d1
+    and     3, d1
+    add     d1, a0                  # a0 = its byte
     movbu   (a0), d1
-    btst    1, d0
+    btst    4, d0
     bne     spl_hi
-    and     0xF0, d1                # even pixel: the low nibble
+    and     0xF0, d1                # pixels 0-3 of the eight: the low nibble
     mov     d2, d0
     and     15, d0
     or      d0, d1
     movbu   d1, (a0)
     rets
 spl_hi:
-    and     0x0F, d1                # odd pixel: the high nibble
+    and     0x0F, d1                # pixels 4-7: the high nibble
     mov     d2, d0
     and     15, d0
     asl     4, d0

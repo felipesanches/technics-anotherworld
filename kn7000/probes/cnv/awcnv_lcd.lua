@@ -102,6 +102,11 @@ local function check(tick)
   end
   checked = checked + 1
   if bad > 0 then badticks = badticks + 1; badpx = badpx + bad end
+  -- AWL_DUMPBAD=n: the first n ticks that differ leave lcd, page and SHADOW (4 bits a pixel) in AWL_OUT/bad_TTTT_*.bin
+  if bad > 0 and badticks <= tonumber(os.getenv("AWL_DUMPBAD") or "0") then
+    local function dump(nm, data) local f = io.open(string.format("%s/bad_%04d_%s.bin", OUT, tick, nm), "wb"); f:write(data); f:close() end
+    dump("lcd", lcd); dump("page", pix); dump("shadow", sp:read_range(0x502C8000, 0x502C8000 + #pix // 2 - 1, 8))
+  end
   local pm = permode[mode] or permode[1]
   pm.n = pm.n + 1
   if bad > 0 then pm.bad = pm.bad + 1 end
