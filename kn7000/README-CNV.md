@@ -241,44 +241,25 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
 ## Settings
 
-The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds six settings. They are
+The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds five settings. They are
 chosen and changed on the keybed, with the game's own direction keys: **UP** (A♭5 or B♭5) and **DOWN** (A5)
 choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
 resolution redraws the page first and the ambilight's border after it):
 
-| setting       | values                         | default  | what it does                                                                                                                                                                |
-|---------------|--------------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| resolution    | 384x240, 320x200               | 384x240  | the display mode the game starts in (PAGE UP / PAGE DOWN still switch)                                                                                                      |
-| ambilight     | on, off                        | on       | the glow the picture casts into the black strips at the LCD's sides                                                                                                         |
-| light scatter | short, medium, long, very long | long     | how far that glow reaches into the strips                                                                                                                                   |
-| keybed sound  | on, off                        | on       | the instrument's own notes for the keys that steer the game (RIGHT 1)                                                                                                       |
-| LED effects   | on, off                        | on       | the panel LEDs following the game ("The panel's LEDs")                                                                                                                      |
-| bitmap filter | bilinear, off                  | bilinear | at 384x240, the game's 320x200 bitmaps (the splash, some rooms' backgrounds) enlarged by bilinear interpolation instead of by repeating pixels (from the next bitmap shown) |
+| setting       | values                         | default | what it does                                                           |
+|---------------|--------------------------------|---------|------------------------------------------------------------------------|
+| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch) |
+| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides    |
+| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                              |
+| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
+| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
 
 The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
 a setting in the order above, then zeros; `src/prefs.s`). The game reads it at the start, before the first
 part, and writes it, over the old one, at the first converter call after a change with no panel button down
 (while no part is loading), and at the quit if a change is still unsaved. A missing or unreadable file means the
-defaults (a file written before the bitmap filter existed has it off); a write that fails is counted (not retried) and the next change writes the file again. Checked in MAME by `probes/cnv/run_prefs.sh` (two runs: the
+defaults; a write that fails is counted (not retried) and the next change writes the file again. Checked in MAME by `probes/cnv/run_prefs.sh` (two runs: the
 settings changed on the page, then read back from the card on the next start).
-
-**The bitmap filter** (`src/smooth.s`, Felipe 2026-11-03). The game's pages hold the 16 colours of its palette
-and the LCD's other 240 look-up table entries are the ambilight's, so each blended colour is shown as the nearest of
-the 16 (squared distance on their 4-bit channels) in the palette the bitmap is shown with. The game often sets that
-palette after loading the bitmap (part 0x3E83 loads bitmap 0x49, then palette 0x19; the splash sets palette 0, all
-black, before its bitmaps and fades them in through darker palettes), so a bitmap is first enlarged by repeating
-pixels and smoothed later, in place, at a palette set or a frame shown, once the palette tells apart every colour
-index the picture uses (a fade's darker steps merge colours: smoothed in one, the edges would stay wrong when it
-ends; on the splash this is the fade's last step or the one before). Drawing on it, or a scrolled copy of it, before
-that keeps it as it is, and so does a picture whose own palette gives two of its indices one colour. A mix can come out nearest to a colour none of its four pixels has: in a
-cave room by the waterfall (part 0x3E84) 11% of the blended pixels do, the green moss on the grey wall bordered in
-places by the wall's dark slate. The first splash picture (bitmap 0x12) stays as it
-is: the game draws on it at once, while its palette is still black. The smoothing takes its time once per picture:
-in MAME a frame of the splash took 0.32 s and 0.51 s more (the Delphine logo, the title), a room change in the
-caves with two bitmaps 0.68 s more (1.43 s against 0.76). Checked in MAME by replaying sessions at 384x240 with
-the filter on and off (`probes/cnv/awcnv_inplog.lua` `AW_HIRES=1`, `AW_SMOOTH=0`) and comparing with a Python copy
-of the filter (`probes/smoothcheck.py`): the splash's pictures equal to the pixel (`probes/cnv/README.md`, "The
-bitmap filter").
 
 ## The panel's LEDs
 

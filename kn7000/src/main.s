@@ -380,7 +380,6 @@ ti_ret:
 .include "display.s"
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "prefs.s"                  # the player's settings
-.include "smooth.s"                 # the bitmaps' bilinear filter
 .include "leds.s"                   # the LED effects
 path_font:
     .asciz "C:\TECHNICS\DATA\AWFONT.AW"

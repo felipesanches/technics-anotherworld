@@ -1406,7 +1406,6 @@ msg_fw_n:
 .include "chain.s"                  # back to the program menu at the quit
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "prefs.s"                  # the player's settings
-.include "smooth.s"                 # the bitmaps' bilinear filter
 .include "leds.s"                   # the LED effects
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

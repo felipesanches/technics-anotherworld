@@ -858,31 +858,6 @@ frame (60 a second; `AW_LEDFINE_THREAD=n` adds thread n's pc), fine enough to se
     AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e84-lamp-fall.awr
     python3 -I probes/greenframes.py $T/lamp.led
 
-## The bitmap filter (2026-11-03)
-
-`src/smooth.s` (README-CNV.md, "Settings"). Replays at 384x240 (program 893), each twice: the filter on (the
-default) and off (`AW_SMOOTH=0`, a nearest-pixel baseline). `../smoothcheck.py` reads the 320x200 picture back from
-the baseline's page and enlarges it as smooth.s does, in a palette of the part's palette resource, and counts the
-pixels where the filtered replay differs; the frame time is the LED log's kernel ms (`AW_LEDLOG`), next frame minus
-this one. Build `5023cd80...`:
-
-| session, frame                      | check                                                                                                                 |
-|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `intro-rec2` 60 (the Delphine logo) | 0 pixels differ from the model in palette 0x16 (the glint's fade one step before its end), 933 from the baseline      |
-| `intro-rec2` 100, 150 (the title)   | 0 differ from the model in palette 0x09 (its fade's last step), 7659 from the baseline                                |
-| `intro-rec2` 1-49 (bitmap 0x12)     | 0 differ from the baseline: drawn on at once, its palette still black                                                 |
-| `intro-rec2` frame times            | frame 51 380 ms (61 off), frame 75 576 ms (63 off); the fades' steps as with the filter off (60-70 ms)                |
-| `3e84-waterfall-48-4a` 589-616      | smoothed (the model cannot say: Lester is drawn over the bitmap); the room change 1432 ms (756 off)                   |
-| both, every frame                   | the same pages as the build before the copy's dedupe (`SM_SAME`) and the one before the row ring: 3218 and 901 frames |
-
-    T=~/compartilhado/tmp/aw-bilin; S=probes/sessions
-    AW_HIRES=1 AW_LEDLOG=$T/in.led probes/cnv/run_inplog.sh $T/in replay $S/2026-11-02-intro-rec2.awr
-    AW_HIRES=1 AW_SMOOTH=0 probes/cnv/run_inplog.sh $T/in0 replay $S/2026-11-02-intro-rec2.awr
-    python3 -I probes/smoothcheck.py $T/in0/pages.bin $T/in/pages.bin 100 build/res/resource-0x14.bin 0x09 -o $T/cmp.png
-
-`run_prefs.sh`: 7 and 2 checks pass, the bitmap filter's row among them (default bilinear, turned off, saved, read
-back).
-
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

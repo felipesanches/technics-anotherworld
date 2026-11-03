@@ -112,7 +112,6 @@
 .equ PR_REACH,        PREFS_AT + 6
 .equ PR_KEYS,         PREFS_AT + 7
 .equ PR_LEDS,         PREFS_AT + 8
-.equ PR_SMOOTH,       PREFS_AT + 9      # the bitmaps' bilinear filter (smooth.s)
 .equ PR_FILE_LEN,     16
 .equ PR_DIRTY,        PREFS_AT + 0x10   # u32: changed since last saved
 .equ PR_SEL,          PREFS_AT + 0x14   # u32: the row chosen on the page
@@ -122,7 +121,7 @@
 .equ PR_ARMED,        PREFS_AT + 0x28   # u32: the page's keys taken in since it was shown (prefs.s PrefsInput)
 .equ PR_KEYPREV,      PREFS_AT + 0x24   # u32: the page's keys held at the last look (bits: up, down, left, right)
 .equ PR_BUF,          PREFS_AT + 0x40   # 32 bytes: the file as read (17 asked for: a longer one is not ours)
-.equ PR_ROWS,         6
+.equ PR_ROWS,         5
 .equ PR_ROW_Y0,       58
 .equ PR_ROW_DY,       14
 
@@ -341,12 +340,6 @@
 .equ END_TICK,        VM_MISC_BASE + 0x0240     # u32: the VM frame the last words showed, 0 not yet
 .equ END_STOP_MS,     VM_MISC_BASE + 0x0244     # u32: the kernel ms when the picture stopped (| 1), 0 not yet
 .equ END_HELD,        VM_MISC_BASE + 0x0248     # u32: a key was held at the last look
-.equ SM_PEND,         VM_MISC_BASE + 0x0250     # u32: smooth.s: the pages holding a bitmap still to smooth, a bit each
-.equ SM_USED,         VM_MISC_BASE + 0x0254     # 4 x u32: smooth.s: each page's picture's indices, a bit each
-.equ SM_SAME,         VM_MISC_BASE + 0x0264     # 4 bytes: smooth.s: the page each one is a plain copy of (0xFF: none)
-.equ SM_LUT,          SHADOW                    # smooth.s's work, in SHADOW: each mix's nearest colour (4,096 bytes),
-.equ SM_PAL,          SHADOW + 4096             #   the 16 colours (8 bytes each), the ring of four source rows
-.equ SM_RING,         SHADOW + 4224             #   (324 bytes each)
 .equ HELP_CODES,      VM_MISC_BASE + 0x024C     # u32: OTHER PART & FR pressed on the help screen: the code screen next
 .equ END_PART,        0x3E87
 .equ END_STRING,      0x265

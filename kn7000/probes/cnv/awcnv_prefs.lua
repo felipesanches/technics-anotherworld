@@ -9,7 +9,7 @@
 -- the controller is at 8 bits a pixel; the screen MAME draws at about 0, 30, 60, 85 and 95 % to AWPR_OUT/load_PP.bin.
 -- Then, the game running: HELP, PAGE DOWN three times (page 4, the settings); A5 (down), C6 (right): the ambilight
 -- off; Ab5 (up), C6: the resolution 320x200; A5 twice, C6: the light scatter one more (long to very long); A5, C6: the keybed sound off;
--- A5, C6: the LED effects off; A5, C6: the bitmap filter off; each checked in RAM (PREFS_AT) and in effect (PG_W, AMB_LUT all black, AU_KEYWANT);
+-- A5, C6: the LED effects off; each checked in RAM (PREFS_AT) and in effect (PG_W, AMB_LUT all black, AU_KEYWANT);
 -- at the resolution's change, the order: the window redrawn before the ambilight's border ("order");
 -- the page dumped (settings.bin). EXIT: back to the game; 3 s; AWPREFS.CFG written (PR_WROTE, PR_DIRTY); then EXIT
 -- held... first HELP and OTHER PART & FR: the code screen must come ("codes"); then EXIT held: the quit.
@@ -47,8 +47,8 @@ local function wait_until(c, s) local t = now() + s; while now() < t do if c() t
 local function press(tag, mask, hold) local f = field(tag, mask); f:set_value(1); wait(hold or 0.4); f:set_value(0) end
 local function key(name) local f = KEY[name]; f:set_value(1); wait(0.3); f:set_value(0); wait(0.8) end
 local function prefs()
-  return string.format("res %d ambi %d scatter %d keys %d leds %d filter %d", sp:read_u8(PREFS + 4), sp:read_u8(PREFS + 5),
-    sp:read_u8(PREFS + 6), sp:read_u8(PREFS + 7), sp:read_u8(PREFS + 8), sp:read_u8(PREFS + 9))
+  return string.format("res %d ambi %d scatter %d keys %d leds %d", sp:read_u8(PREFS + 4), sp:read_u8(PREFS + 5),
+    sp:read_u8(PREFS + 6), sp:read_u8(PREFS + 7), sp:read_u8(PREFS + 8))
 end
 local function amb_black()
   for i = 0, 239 do if sp:read_u16(AMB_LUT + 2 * i) ~= 0 then return false end end
@@ -114,7 +114,7 @@ local co = coroutine.create(function()
       string.format("LCD taken %.1f s after OK, 8 bits a pixel throughout %s; %d percentages shown, %d going back: %s",
         (L.owned_at or 0) - t_ok, tostring(L.lcd8), #L.pcts, L.back, table.concat(L.pcts, " ")))
     log("at the start: " .. prefs() .. string.format("; read %d", sp:read_u32(PR_STATUS)))
-    result("defaults", sp:read_u32(PR_STATUS) == 2 and prefs() == "res 0 ambi 1 scatter 2 keys 1 leds 1 filter 1", prefs())
+    result("defaults", sp:read_u32(PR_STATUS) == 2 and prefs() == "res 0 ambi 1 scatter 2 keys 1 leds 1", prefs())
     press("CPC_SEG5", 0x02); wait(2)  -- HELP
     for i = 1, 3 do press("CPC_SEG11", 0x20); wait(1.2) end  -- PAGE DOWN x3: the settings
     local pg = sp:read_u32(HELP_PAGE)
@@ -134,12 +134,10 @@ local co = coroutine.create(function()
     local keys = sp:read_u8(PREFS + 7) == 0 and sp:read_u32(AU_KEYWANT) == 1
     key("A5"); key("C6")              -- row 4: the LED effects off
     local leds = sp:read_u8(PREFS + 8) == 0
-    key("A5"); key("C6")              -- row 5: the bitmap filter off
-    local filter = sp:read_u8(PREFS + 9) == 0
     wait(1); dump("settings.bin")
-    result("page", pg == 3 and sp:read_u32(PR_SEL) == 5, string.format("help page %d, row %d", pg, sp:read_u32(PR_SEL)))
-    result("apply", ambi_off and res and scat and keys and leds and filter, string.format("ambilight off and black %s, 320x200 %s, scatter %s, keybed off %s, LEDs off %s, filter off %s",
-      tostring(ambi_off), tostring(res), tostring(scat), tostring(keys), tostring(leds), tostring(filter)))
+    result("page", pg == 3 and sp:read_u32(PR_SEL) == 4, string.format("help page %d, row %d", pg, sp:read_u32(PR_SEL)))
+    result("apply", ambi_off and res and scat and keys and leds, string.format("ambilight off and black %s, 320x200 %s, scatter %s, keybed off %s, LEDs off %s",
+      tostring(ambi_off), tostring(res), tostring(scat), tostring(keys), tostring(leds)))
     press("CPC_SEG11", 0x80); wait(3) -- EXIT: the game again; the main task saves
     local f0 = sp:read_u32(FRAME_NO) & 0xffff
     wait(2)
@@ -156,7 +154,7 @@ local co = coroutine.create(function()
     wait(2)
   else
     local ok = sp:read_u32(PR_STATUS) == 1 and sp:read_u8(PREFS + 4) == 1 and sp:read_u8(PREFS + 5) == 0
-      and sp:read_u8(PREFS + 6) == 3 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0 and sp:read_u8(PREFS + 9) == 0
+      and sp:read_u8(PREFS + 6) == 3 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0
     result("read", ok, string.format("status %d; %s", sp:read_u32(PR_STATUS), prefs()))
     result("effect", sp:read_u32(PG_W) == 320 and amb_black() and sp:read_u32(AU_KEYWANT) == 1,
       string.format("PG_W %d, ambilight black %s, keybed muted %d", sp:read_u32(PG_W), tostring(amb_black()), sp:read_u32(AU_KEYWANT)))
