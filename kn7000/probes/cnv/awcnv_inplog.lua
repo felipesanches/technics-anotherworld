@@ -278,8 +278,24 @@ local function session()
     sp:read_u32(IL_STATE + 0x24), sp:read_u32(IL_STATE + 0x28), sp:read_u32(IL_STATE + 0x3C), sp:read_u32(IL_STATE + 0x18)))
 end
 
+-- AW_LEDFINE (optional): the LED shadow at every MAME frame (60 a second, finer than the VM's frames), a line each
+-- while the capture runs: "the VM tick, the kernel ms, the shadow's 20 bytes" (probes/liftcheck.py --fine reads it);
+-- with AW_LEDFINE_THREAD=n, thread n's pc after them.
+local finef = os.getenv("AW_LEDFINE") and os.getenv("AW_LEDFINE") ~= "" and io.open(os.getenv("AW_LEDFINE"), "w")
 local co = coroutine.create(session)
 AWIL_TICK = emu.add_machine_frame_notifier(function()
+  if finef and capturing then
+    local sh = sp:read_u32(0x502DAD00)
+    if sh ~= 0 then
+      local t = {}
+      for i = 0, 19 do t[#t + 1] = string.format("%02X", sp:read_u8(sh + i)) end
+      local th = tonumber(os.getenv("AW_LEDFINE_THREAD") or "")  -- (optional: that thread's pc too, a 4th field)
+      finef:write(string.format("%d %d %s%s\n", cur_tick, sp:read_u32(sp:read_u32(MISC + 0x200)), table.concat(t),
+        th and string.format(" %04X", sp:read_u16(INTERP + 0x400 + th * 4)) or ""))
+    end
+  elseif finef then
+    finef:close(); finef = nil
+  end
   if coroutine.status(co) ~= "dead" then
     local ok, err = coroutine.resume(co)
     if not ok then log("ERROR " .. tostring(err)); stop_capture(); M:exit() end

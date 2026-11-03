@@ -17,7 +17,7 @@
 # (the lit bits, not the effect's timer: a 100 ms flash can end inside one game frame, before the frame is logged).
 # Over the whole log, from the first frame the effects own the LEDs: dark (no LED bit set in a frame with no effect
 # on), the pulse (frames of a charge with the PANEL MEMORY ring lit: near half; with any other LED lit: none), the
-# recharge (frames with the green on: the share of the green LEDs lit at random, the sets), the waterfall (frames
+# recharge (frames with the green on: the share of the green LEDs, the PANEL MEMORY ring's too, lit at random, the sets), the waterfall (frames
 # with random LEDs, and the share lit against the chance), what MAME's panel shows (the registers rebuilt from its outputs) against the shadow, and
 # the most panel outputs lit.
 import sys
@@ -28,6 +28,7 @@ REDL = bytes.fromhex("1F2F2F2F0E0C1E0D000000000000000000000000")
 REDR = bytes.fromhex("20000000000000008008FC7CFFFF030003030103")
 GREEN = bytes.fromhex("0010101011130112071203830000000000000200")
 PM = bytes.fromhex("000000000000000078E000000000000100000000")
+GRNALL = bytes(g | p for g, p in zip(GREEN, PM))  # every green LED: the PANEL MEMORY ring is green too (Felipe)
 KINDS = {"LASER_LESTER": "lester", "LASER_OTHER": "laser", "CHARGE_START": "charge", "MEGA_CHARGE": "mega",
          "SHIELD": "shield", "MEGA_RELEASE": "blast", "STORM_FLASH": "flash", "STORM_THUNDER": "thunder",
          "STORM_STRIKE": "strike"}
@@ -154,12 +155,14 @@ def main():
             print(f"ledcheck: shield   frames {g[0]}-{g[-1]}: {share:.0%} of the red LEDs lit, {'nothing else' if only else 'OTHER LEDs too'}")
         print(f"ledcheck: shield   {len(sets)} flashes, {len(set(sets))} different sets")
     gr = [t for t in ticks if log[t]["green"]]
-    if gr:                       # the recharge: the green LEDs at random (half, drawn every 60 ms), nothing else
-        share = sum(bits(log[t]["sh"], GREEN) for t in gr) / (22 * len(gr))
-        sets = len({bytes(x & m for x, m in zip(log[t]["sh"], GREEN)) for t in gr})
-        other = sum(1 for t in gr if bits(log[t]["sh"], bytes(a & ~g & 0xFF for a, g in zip(ALL, GREEN))))
-        print(f"ledcheck: green    the recharge, frames {gr[0]}-{gr[-1]}: {share:.0%} of the green LEDs lit on average,"
-              f" {sets} different sets in {len(gr)} frames; {other} frames with another LED lit")
+    if gr:                       # the recharge: the green LEDs (the ring's too) at random (half, every 60 ms), nothing else
+        share = sum(bits(log[t]["sh"], GRNALL) for t in gr) / (30 * len(gr))
+        ring = sum(bits(log[t]["sh"], PM) for t in gr) / (8 * len(gr))
+        sets = len({bytes(x & m for x, m in zip(log[t]["sh"], GRNALL)) for t in gr})
+        other = sum(1 for t in gr if bits(log[t]["sh"], bytes(a & ~g & 0xFF for a, g in zip(ALL, GRNALL))))
+        print(f"ledcheck: green    the recharge, frames {gr[0]}-{gr[-1]}: {share:.0%} of the 30 green LEDs lit on average"
+              f" ({ring:.0%} of the PANEL MEMORY ring's), {sets} different sets in {len(gr)} frames;"
+              f" {other} frames with another LED lit")
     wf = [t for t in ticks if log[t]["water"]]
     if wf:
         by = {}

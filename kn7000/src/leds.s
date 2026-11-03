@@ -7,13 +7,14 @@
 # MEMORY LEDs pulsing while his gun builds a charge (and, once it is the big ball, the green ones blinking with them),
 # a flash of about 30% of the red LEDs (each with that chance, drawn anew each time) when a small charge is let go as
 # a shield, every LED while the
-# mega-blast shows, the green ones blinking fast at random while the gun recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
+# mega-blast shows, the green ones (the PANEL MEMORY ring's too) blinking fast at random while the gun recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
 # random by the waterfall, more of them the louder it is (led_water), and the battle tank's panel mirrored (its LEDs,
 # button blocks and lamps; its blinking white button on the four AUTO PLAY CHORD / SOUND ARRANGER LEDs), the green
-# LEDs flashing when a skeleton explodes and at the explosion in the lake Lester lands in, the lift's bouncing light
-# chased round the PANEL MEMORY ring (2-1-8-7-6-5-4-3 left to right, the other way back: the lead and the one behind
-# it, two at most), and a blinking light
-# by a guard (part 0x3E83) on the leftmost red LED, SPLIT POINT G2. Shared by both builds; the LED effects setting
+# LEDs (the PANEL MEMORY ring's too) flashing when a skeleton explodes, when the lamps of a lamp holder shot down
+# burst and at the explosion in the lake Lester lands in, the lift's bouncing light chased along the PANEL MEMORY ring (2-1-8-7-6-5-4-3 left to right in eight even steps
+# over the light's sweep, 3 back to 2 on its way back: the lead and the one behind it, two at most; none once the light
+# is gone), and a blinking light
+# above the stranded guard (part 0x3E86, room 170) on the leftmost red LED, SPLIT POINT G2. Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
 # The panel's LEDs (research-scratch kn7000-leds, MAME-checked on 893 and 941): the firmware keeps them in a shadow
@@ -46,11 +47,17 @@
 #                      0x31): the explosion in the lake Lester lands in, the screen white for two ticks
 #   a skeleton explodes PLAY_SOUND 0x5A at the dying character's pc: guards 3E83 0x1044, 3E84 0x4D16, 3E86 0x417A;
 #                      Lester 0x0FD6, 0x4CA4, 0x4101 (0x5A is also the mega-blast's impact: hence the pc)
+#   the lamps' burst   PLAY_SOUND 0x5B at pc 0xD050 and 0xD057 of part 0x3E84 (room 107, thread 53): the lamp holder
+#                      Lester shot down bursting, its two lamps a tick apart (fingerprints "Sixth pass (b)")
 #   the lift's light   part 0x3E84, the drawing thread's pc: room (var 0x67) 79, thread 5, pc 0x081F + 5k, k 0-12
-#                      (0-6 left to right, 6-12 back); room 109, thread 1, 0x0864-0x087D left to right, 0x0882-0x0896
-#                      back, 0x089A at rest on the left
-#   a guard's light    part 0x3E83, thread 2 at pc 0x0C22-0x0C27 (lit; 0x0C19-0x0C1A dark): room 68's blinking
-#                      polygon above its guard, 8 ticks each (a candidate: the scene is not confirmed)
+#                      (0-6 left to right, 7-12 back, then a tick with none drawn: 7 ticks each way); room 109,
+#                      thread 1, 0x0864-0x087D left to right (6 ticks), 0x0882-0x0896 back (5), waiting at 0x089A on
+#                      the left, nothing drawn. (The pcs of the draws; a thread's pc between ticks is the one after
+#                      its yield, 4 on: 0x0824 + 5k, 0x081F for the empty tick; 0x0869 + 5k, 0x089B waiting.) The chase: the lead at 8 x (ms into the sweep) / (the sweep's ms), a
+#                      tick being var 0xFF x 20 ms
+#   a guard's lamp     part 0x3E86, room (var 0x67) 170 (code TXHF, then left): thread 4's pc 0x0FAF-0x0FB9 lit,
+#                      0x0FBA-0x0FBB dark (3 ticks on, 2 off), polygon 0xF54C, red dots above the stranded guard
+#                      (fingerprints "Sixth pass (a)", guardlamp.py)
 #   the tank's panel   part 0x3E85 while thread 59 runs (it shows the panel); a press: var 0xFA != 0 on the cell var
 #                      0x5F names; cell 0x0B lights about 30 of the panel's LEDs until the panel goes (no var: latched
 #                      here); var 0x67 >= 2 and >= 3 its two button blocks; vars 0x72, 0x71 its red lamps, 0x74, 0x75
@@ -94,6 +101,7 @@
 .equ W_LIFT,          0x20000        # the lift's chase (LED_LIFTMASK)
 .equ W_GLIGHT,        0x40000        # the guard's light: SPLIT POINT G2
 .equ W_GRNRND,        0x80000        # the recharge's random green LEDs (LED_GRNMASK)
+.equ W_GRNALL,        0x100000       # every green LED, the PANEL MEMORY ring's too (a skeleton, the lake)
 
 # LedInit: the LEDs' addresses for this program build, or effects off (LED_SH 0). After the firmware search (the
 # converter's main task, cnv_main.s) and at the game task's start (display.s); only the first call does anything.
@@ -283,6 +291,24 @@ ls_wch:
     call    LedEvent, 0, 0
     bra     ls_ret
 ls_noskel:
+    cmp     0x5B, d2                # the fallen lamp holder's lamps bursting (part 0x3E84, room 107): 0x5B at pc 0xD050,
+    bne     ls_nolamp               # then 0xD057 (0x5B is also the gun's charge: hence the pc)
+    movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E84, d0
+    bne     ls_nolamp
+    mov     a0, d0
+    mov     (CUR_BYTECODE), d1
+    sub     d1, d0
+    add     -1, d0
+    cmp     0xD050, d0
+    beq     ls_lamp
+    cmp     0xD057, d0
+    bne     ls_nolamp
+ls_lamp:
+    mov     LEV_SKEL, d0            # every green LED, as at a skeleton's explosion
+    call    LedEvent, 0, 0
+    bra     ls_ret
+ls_nolamp:
     movbu   (2, a0), d3             # d3 = frequency
     movbu   (3, a0), d0
     mov     d0, (0x0C, sp)          # (the volume)
@@ -497,14 +523,14 @@ lsv_green:
     add     LED_GRN_MS, d0
     mov     d0, (LED_GRN_RT)
     mov     LED_GRN_P, d0
-    mov     led_green, a0
+    mov     led_grnall, a0
     mov     LED_GRNMASK, a1
     call    led_draw, 0, 0
 lsv_skel:
     mov     (LED_SKEL_T), d0
     sub     d3, d0
     ble     lsv_blast
-    or      W_GREEN, d2
+    or      W_GRNALL, d2
 lsv_blast:
     mov     (LED_BLAST), d0         # the mega-blast: every LED while var 0x88 says it shows
     cmp     0, d0
@@ -711,12 +737,12 @@ led_lift:
     add     -0x10, sp
     clr     d3                      # d3 = the W_ bits
     movhu   (CURRENT_PART_ID), d0
-    cmp     0x3E83, d0
+    cmp     0x3E86, d0
     bne     ll_lift
-    movhu   (THREADS_DATA + 2 * 4 + PC_OFFSET), d0   # the guard's light: thread 2 at 0x0C22-0x0C27
-    cmp     0x0C22, d0
+    movhu   (THREADS_DATA + 4 * 4 + PC_OFFSET), d0   # the guard's lamp: thread 4 at 0x0FAF-0x0FB9 (room 170)
+    cmp     0x0FAF, d0
     bcs     ll_off
-    cmp     0x0C27, d0
+    cmp     0x0FB9, d0
     bhi     ll_off
     or      W_GLIGHT, d3
     bra     ll_off
@@ -726,43 +752,99 @@ ll_lift:
     movhu   (VM_VARIABLES + 2 * 0x67), d0
     cmp     79, d0
     bne     ll_109
-    movhu   (THREADS_DATA + 5 * 4 + PC_OFFSET), d0   # room 79: thread 5, 0x081F + 5k
-    mov     0x081F, d1
-    mov     lift79, a0
-    mov     13, d2
-    bra     ll_frame
+    movhu   (THREADS_DATA + 5 * 4 + PC_OFFSET), d0   # room 79: thread 5; its pc after the yield that follows a
+    cmp     0x081F, d0              # frame's draw: 0x0824 + 5k drew frame k (0-6 left to right, 7-12 back), then
+    bne     ll_79                   # 0x081F: a tick with none drawn (k 13)
+    mov     0x0824 + 5 * 13, d0
+ll_79:
+    mov     0x0824, d1
+    mov     14, d2
+    mov     14, a2                  # a2: the light's period in ticks
+    mov     1, a3                   # a3: the phase of frame 0 (step 0 at the left end: the empty tick, between two
+    bra     ll_frame                # draws of the leftmost frame; step 7 at k 6, the rightmost)
 ll_109:
     cmp     109, d0
     bne     ll_off
-    movhu   (THREADS_DATA + 1 * 4 + PC_OFFSET), d0   # room 109: thread 1
-    cmp     0x089A, d0
-    bne     ll_109lr
-    clr     d2                      # at rest on the left
-    bra     ll_pos
-ll_109lr:
-    mov     0x0864, d1
-    mov     lift109, a0
-    mov     11, d2                  # 0x0864-0x087D (k 0-5), then 0x0882-0x0896 back (k 6-10: 0x0882 = 0x0864 + 5 x 6)
+    movhu   (THREADS_DATA + 1 * 4 + PC_OFFSET), d0   # room 109: thread 1, 0x0869 + 5k drew frame k: 0-5 left to
+    mov     0x0869, d1              # right, 6-10 back; it waits at 0x089B (k 10, drawn once) while Lester is left of
+    mov     11, d2                  # the lift, drawing nothing
+    mov     11, a2                  # (step 0 at the left end: between k 10 and k 0, both the leftmost frame; step 7
+    mov     0, a3                   # in the middle of k 5, the rightmost)
 ll_frame:
     sub     d1, d0                  # d0 = pc - base
-    bcs     ll_keep
+    bcs     ll_last
     clr     d1
     mov     d1, mdr
     mov     5, d1
     divu    d1, d0
     mov     mdr, d1
     cmp     0, d1
-    bne     ll_keep                 # (not a frame's pc)
+    bne     ll_last                 # (not a frame's pc)
     cmp     d2, d0
-    bcc     ll_keep
-    movbu   (d0, a0), d2            # d2 = the ring position
-ll_pos:
+    bcc     ll_last
+    movbu   (LED_LIFT + 2), d1
+    cmp     d1, d0
+    beq     ll_where
+    movbu   d0, (LED_LIFT + 2)      # a new frame: when it came
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d1
+    mov     d1, (LED_LIFT_KT)
+    bra     ll_where
+ll_last:
+    movbu   (LED_LIFT + 2), d0      # between frames (the empty tick, or another of its pcs): the last frame's sweep
+    cmp     0xFF, d0                # goes on
+    beq     ll_off
+ll_where:                           # d0 = k: the period's tick p = (k + a3) mod a2
+    mov     a3, d1
+    add     d1, d0
+    mov     a2, d1
+    cmp     d1, d0
+    bcs     ll_p
+    sub     d1, d0
+ll_p:
+    mov     d0, (0x04, sp)          # p
+    movhu   (VM_VARIABLES + 2 * VAR_PAUSE_SLICES), d0
+    mov     SLICE_MS, d1
+    mul     d1, d0                  # d0 = a tick's ms (the frame's pause)
+    cmp     0, d0
+    bne     ll_tick
+    mov     80, d0
+ll_tick:
+    mov     d0, d2                  # d2 = the tick
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d0
+    mov     (LED_LIFT_KT), d1
+    sub     d1, d0                  # d0 = ms into this frame, short of a tick (a late frame: held)
+    cmp     d2, d0
+    bcs     ll_into
+    mov     d2, d1                  # the same frame two ticks on: the light waits, not drawn (room 109): the chase out
+    asl     1, d1
+    cmp     d1, d0
+    bcc     ll_gone
+    mov     d2, d0
+    add     -1, d0
+ll_into:
+    mov     (0x04, sp), d1
+    mul     d2, d1
+    add     d1, d0                  # ms into the period
+    mov     14, d1
+    mul     d1, d0
+    mov     a2, d1
+    mul     d2, d1                  # the period's ms
+    clr     d2
+    mov     d2, mdr
+    divu    d1, d0                  # d0 = the step, 0-13, evenly over the period: 0-7 left to right, 8-13 back
+    cmp     7, d0                   # (to 6 ... 1)
+    bls     ll_lead
+    mov     14, d1
+    sub     d0, d1
+    mov     d1, d0
+ll_lead:
+    mov     d0, d2                  # d2 = the lead's ring position
     movbu   (LED_LIFT), d0
     cmp     d2, d0
     beq     ll_mask
-    movbu   (LED_LIFT + 1), d1      # moved: the trail moves up
-    movbu   d1, (LED_LIFT + 2)
-    movbu   d0, (LED_LIFT + 1)
+    movbu   d0, (LED_LIFT + 1)      # moved: the old lead behind it
     movbu   d2, (LED_LIFT)
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
@@ -789,16 +871,13 @@ ll_clr:
 ll_on:
     or      W_LIFT, d3
     bra     ll_ret
-ll_keep:
-    movbu   (LED_LIFT), d0          # between frames (or a pc of another of its stretches): as last shown
-    cmp     0xFF, d0
-    bne     ll_mask
-    bra     ll_ret
 ll_off:
     mov     -1, d0                  # no lift: the chase starts afresh next time
+    movbu   d0, (LED_LIFT + 2)
+ll_gone:
+    mov     -1, d0                  # (the light waiting: its frame kept, to tell when it moves again)
     movbu   d0, (LED_LIFT)
     movbu   d0, (LED_LIFT + 1)
-    movbu   d0, (LED_LIFT + 2)
 ll_ret:
     mov     d3, d0
     ret     [d2,d3,a2,a3], 0x20
@@ -1023,8 +1102,10 @@ led_redr:                           # ... red, on the right half (39)
     .byte   0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x08, 0xFC, 0x7C, 0xFF, 0xFF, 0x03, 0x00, 0x03, 0x03, 0x01, 0x03
 led_green:                          # ... green (22)
     .byte   0x00, 0x10, 0x10, 0x10, 0x11, 0x13, 0x01, 0x12, 0x07, 0x12, 0x03, 0x83, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00
-led_pm:                             # ... the PANEL MEMORY ring, amber (8)
+led_pm:                             # ... the PANEL MEMORY ring (8): green on the instrument (Felipe 2026-11-03), amber in
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+led_grnall:                         # the parts list; with led_green: every green LED (30)
+    .byte   0x00, 0x10, 0x10, 0x10, 0x11, 0x13, 0x01, 0x12, 0x7F, 0xF2, 0x03, 0x83, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x02, 0x00
 led_tank:                           # the tank's "lot of LEDs": 30 drawn once (probes/ledmasks.py)
     .byte   0x28, 0x2A, 0x1C, 0x09, 0x08, 0x00, 0x07, 0x0A, 0xE5, 0x80, 0x04, 0x52, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x01, 0x01
 led_r13:                            # register 13: STRINGS & VOCAL ... ACCORDION REGISTER (8 red)
@@ -1045,10 +1126,6 @@ led_g2:                             # SPLIT POINT G2: the leftmost red LED (x 20
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 led_pm_seq:                         # the PANEL MEMORY ring left to right: 2, 1, 8, 7, 6, 5, 4, 3 (register, bit)
     .byte   8, 0x40, 15, 0x01, 9, 0x80, 9, 0x40, 9, 0x20, 8, 0x08, 8, 0x10, 8, 0x20
-lift79:                             # room 79's frames k = 0-12 -> ring positions (min(k, 12 - k) of 6, at 7/6)
-    .byte   0, 1, 2, 4, 5, 6, 7, 6, 5, 4, 2, 1, 0
-lift109:                            # room 109's: 6 left to right (of 5, at 7/5), then 5 back (of 4, at 7/4)
-    .byte   0, 1, 3, 4, 6, 7, 7, 5, 3, 2, 0
     .align  2
 led_skel_pcs:                       # the part, the PLAY_SOUND 0x5A's pc of a dying character (guards', then Lester's)
     .word   0x3E83, 0x1044, 0x3E84, 0x4D16, 0x3E86, 0x417A
@@ -1075,5 +1152,6 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_LIFT, LED_LIFTMASK
     .long   W_GLIGHT, led_g2
     .long   W_GRNRND, LED_GRNMASK
+    .long   W_GRNALL, led_grnall
     .long   W_ALL, led_all
     .long   0

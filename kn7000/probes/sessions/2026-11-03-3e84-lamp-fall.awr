@@ -1,0 +1,13 @@
+# made by probes/jump_session.py from 3e84-cp33-room107-lamp-fall.awr: part 0x3E84 at frame 300, 00=33, pokes 50:67=106:01=315
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 33
+R 300 0x3E84
+V 351 0x67 106
+V 351 0x01 315
+I 302 play 0x00
+I 351 play 0x01
+I 359 play 0x00
+I 367 play 0x80
+I 370 play 0x00
+E 501 0

@@ -1,0 +1,13 @@
+# made by probes/jump_session.py from 3e86-cp66-room170-guard-lamp.awr: part 0x3E86 at frame 300, 00=66
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 66
+R 300 0x3E86
+I 302 play 0x00
+I 311 play 0x02
+I 488 play 0x00
+I 492 play 0x80
+I 494 play 0x00
+I 601 play 0x01
+I 721 play 0x00
+E 761 0

@@ -830,6 +830,34 @@ tick 25), the lift's ring with no dimming and at most two LEDs lit, and the help
     AW_LEDLOG=$T/intro.led probes/cnv/run_inplog.sh $T/intro replay $S/2026-11-02-intro-rec2.awr
     python3 -I probes/greenframes.py $T/intro.led
 
+## The panel's LEDs, fifth round (2026-11-03)
+
+Felipe's fifth list: the PANEL MEMORY ring is green on the instrument (the parts list says amber), so the recharge,
+the lake's explosion and a skeleton's explosion light it with the other green LEDs; the lift's chase as a line
+2-1-8-7-6-5-4-3, bouncing, and nothing left lit once the light is gone; every green LED when a lamp holder Lester
+shot down bursts; the guard's red lamp at code TXHF (one screen left). The two new signals: research-scratch
+`kn7000-aw-reference/fingerprints`, "Sixth pass" ((a) `guardlamp.py`: part 0x3E86, room 170, thread 4's pc
+0x0FAF-0x0FB9; (b) `lampsig.py`: part 0x3E84, room 107, 0x5B at pc 0xD050 and 0xD057). A thread's pc between ticks
+is the one after its yield: the lift's resting pc is 0x089B (the earlier rule tested 0x089A, the draw's, which
+never matched, so its last LED stayed lit). Replays in MAME (program 893); `AW_LEDFINE` logs the shadow at every MAME
+frame (60 a second; `AW_LEDFINE_THREAD=n` adds thread n's pc), fine enough to see each step of the chase:
+
+| session (frames)               | check                                                                                                                                           |
+|--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e84-cp31-recharge` (501)     | `../ledcheck.py`: the recharge, frames 349-366: 49% of the 30 green LEDs lit on average (49% of the ring's), 18 sets in 18 frames, nothing else |
+| `3e84-cp41-room79-lift` (501)  | `../liftcheck.py --fine`: the lead 0123456754321 over and over, one step a tick (the light's period, 14 ticks), at most 2 lit                   |
+| `3e84-cp41-room109-lift` (631) | the lead 0123456754321 (14 steps in the light's 11 ticks); the ring dark from frame 513, the light waiting (thread 1 at 0x089B)                 |
+| `intro-rec2` (3218)            | `../greenframes.py`: every green LED, the ring's too, at frames 2923-2925, 3069-3071, 3187-3189 (the lake's explosion)                          |
+| `3e84-lamp-fall` (501)         | every green LED at frames 376-378 (the reference VM's bursts at its ticks 74 and 75 = frames 375, 376)                                          |
+| `3e86-txhf-guard-lamp` (761)   | SPLIT POINT G2 lit 3 frames, dark 2, 61 times over (frames 395-739; the lamp from frame 390)                                                    |
+
+    T=~/compartilhado/tmp/aw-leds9; S=probes/sessions
+    AW_LEDFINE=$T/l79.fine AW_LEDFINE_THREAD=5 AW_LEDLOG=$T/l79.led probes/cnv/run_inplog.sh $T/l79 replay \
+        $S/2026-11-03-3e84-cp41-room79-lift.awr
+    python3 -I probes/liftcheck.py --fine $T/l79.fine
+    AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e84-lamp-fall.awr
+    python3 -I probes/greenframes.py $T/lamp.led
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

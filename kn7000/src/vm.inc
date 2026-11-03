@@ -153,12 +153,13 @@
 .equ LED_TANK,        LED_VARS + 0xBC   # u32: 1 once the tank panel's "lot of LEDs" button (cell 0x0B) was pressed
 .equ LED_T6,          LED_VARS + 0xC0   # u32: the VM frame + 1 the tank's white button began to blink (var 0x67 = 6)
 .equ LED_SKEL_T,      LED_VARS + 0xC4   # u32: the green flash of a skeleton exploding on until this ms
-.equ LED_LIFT,        LED_VARS + 0xC8   # 3 bytes: the lift's chase: the lead's ring position (0-7), then the two behind
-                                        # it (0xFF: none)
-.equ LED_LIFTMASK,    LED_VARS + 0xCC   # 20 bytes: the chase's LEDs this time (the trail's by its duty cycle)
+.equ LED_LIFT,        LED_VARS + 0xC8   # 3 bytes: the lift's chase: the lead's ring position (0-7), the one behind it,
+                                        # the light's last frame k (0xFF: none)
+.equ LED_LIFTMASK,    LED_VARS + 0xCC   # 20 bytes: the chase's LEDs this time
 .equ LED_LIFT_T,      LED_VARS + 0xE0   # u32: when the lead last moved (the trail goes out LED_TRAIL_MS later)
 .equ LED_GRNMASK,     LED_VARS + 0xE4   # 20 bytes: the recharge's green LEDs this time (random, drawn every LED_GRN_MS)
 .equ LED_GRN_RT,      LED_VARS + 0xF8   # u32: when they are drawn next
+.equ LED_LIFT_KT,     LED_VARS + 0xFC   # u32: when the lift's light showed its last frame k
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
