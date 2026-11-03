@@ -321,11 +321,11 @@ pr_head:
     .long   hs_title2
     .word   8, 40, 1, 0
     .long   prn_title
-    .word   8, 136, 1, 0
+    .word   8, 146, 1, 0
     .long   prn_hint1
-    .word   8, 148, 1, 0
+    .word   8, 158, 1, 0
     .long   prn_hint2
-    .word   8, 164, 1, 0
+    .word   8, 174, 1, 0
     .long   prn_hint3
     .word   256, 188, 1, 0
     .long   prn_page
