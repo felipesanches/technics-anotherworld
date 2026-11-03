@@ -344,6 +344,11 @@ lgd_done:
 EnsurePart:
     rets
 
+# BitmapPage(d0 = resource id) -> d0 = 0: this build has the 320x200 bitmaps only (BitmapData). Leaf.
+BitmapPage:
+    clr     d0
+    rets
+
 # BitmapData(d0 = resource id) -> a0 = its 32,000 bytes of planes (resident, unpacked). Leaf.
 BitmapData:
     and     0xff, d0

@@ -100,7 +100,8 @@ ResPtr:
 # platform's BitmapData gives the planes (the KN7APP.BIN build keeps bitmaps packed and
 # unpacks one here, into SHADOW: the next blit repaints everything); a bitmap that is not there
 # leaves page 0 alone. In the high-resolution mode the 320x200 picture is then scaled to the
-# 384x240 page (display.s PageUp): the bitmaps exist at 320x200 only.
+# 384x240 page (display.s PageUp), unless the platform has the bitmap at the page's size (BitmapPage: the
+# KN7APP.BIN build's AWHxx.AW, enlarged at build time by tools/aw_hires.py), drawn into page 0 as it is.
 LoadBitmap:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -108,6 +109,14 @@ LoadBitmap:
     mov     PH_PAGE, d0
     call    PerfPhase, 0, 0
     mov     d0, (0x10, sp)
+    mov     d2, d0
+    call    BitmapPage, 0, 0        # the platform's own page-sized bitmap, when it has one
+    cmp     0, d0
+    beq     lb_planes
+    mov     PAGE_BITMAP_0, a0
+    call    PerfMarkDirty, 0, 0
+    bra     lb_shadow
+lb_planes:
     mov     d2, d0
     call    BitmapData, 0, 0        # d0 = id -> a0 = the 32,000 bytes of planes, or 0
     cmp     0, a0

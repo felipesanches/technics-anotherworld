@@ -858,6 +858,31 @@ frame (60 a second; `AW_LEDFINE_THREAD=n` adds thread n's pc), fine enough to se
     AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e84-lamp-fall.awr
     python3 -I probes/greenframes.py $T/lamp.led
 
+## Bitmaps at 384x240 (2026-11-03)
+
+The run-time bitmap filter is gone (it paused the game at each bitmap); `tools/aw_hires.py` enlarges the twelve
+bitmaps at build time, and the card carries each as `AWHxx.AW` (README-CNV.md, "Bitmaps"). `../hirescheck.py` finds,
+in a replay at 384x240, the frame (and, with `--scroll`, the vertical scroll) whose page agrees best with each
+`AWHxx.AW`, and counts, over the pixels where that and the repeated-row enlargement differ, how many show which.
+Build `ecf2f090...` (program 893):
+
+| session, bitmap                     | frame | where the two differ: as AWH / as repeated rows |
+|-------------------------------------|-------|-------------------------------------------------|
+| `intro-rec2`, 0x12 (Interplay)      | 1     | 100.0 % / 0.0 %                                 |
+| `intro-rec2`, 0x47 (Delphine)       | 51    | 100.0 % / 0.0 %                                 |
+| `intro-rec2`, 0x13 (the title)      | 71    | 100.0 % / 0.0 %                                 |
+| `3e84-waterfall-48-4a`, 0x43 (moss) | 615   | 92.5 % / 2.2 % (scrolled 45 rows; Lester over)  |
+
+Frame times (the LED log's kernel ms, next frame minus this one): the splash's frames 59-70 ms but frame 49 (197 ms),
+the caves' room change (frame 587) 661 ms; with the filter they were 380 and 576 ms (frames 51, 75) and 1432 ms
+(b5cff96's notes).
+
+    T=~/compartilhado/tmp/aw-hires; S=probes/sessions
+    AW_HIRES=1 AW_LEDLOG=$T/in.led probes/cnv/run_inplog.sh $T/in replay $S/2026-11-02-intro-rec2.awr
+    AW_HIRES=1 AW_LEDLOG=$T/wf.led probes/cnv/run_inplog.sh $T/wf replay $S/2026-11-02-3e84-waterfall-48-4a.awr
+    python3 -I probes/hirescheck.py $T/in/pages.bin 0x12 0x47 0x13
+    python3 -I probes/hirescheck.py $T/wf/pages.bin --scroll 0x43
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

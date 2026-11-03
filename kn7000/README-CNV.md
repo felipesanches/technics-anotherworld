@@ -193,8 +193,8 @@ If anything looks wrong, write the card image from step 1 back and restore the p
    **The screen.** The game starts in its high-resolution mode: it draws at 384x240, the LCD's whole height,
    centred with black strips at the sides, in the original's proportions (6/5 of 320x200 both ways). The
    polygons are computed and filled at that resolution, not enlarged afterwards; the text keeps its 8x8 glyphs,
-   pixel for pixel, each where the game puts it; the background bitmaps, which exist at 320x200 only, are
-   enlarged (in every 5 pixels and rows one is doubled). PAGE DOWN switches to the original resolution, 320x200
+   pixel for pixel, each where the game puts it; the background bitmaps, which the game has at 320x200, come at
+   384x240 from the card, enlarged at build time ("The screen", below). PAGE DOWN switches to the original resolution, 320x200
    in the middle of the LCD, PAGE UP back; the pages are converted on the spot, so what was drawn before the
    switch keeps the other resolution's look until the game draws it again ("The screen", below).
    A♭5 and B♭5 are both UP, the black keys either side of A5 (DOWN); B5 is no control (Felipe,
@@ -419,7 +419,9 @@ source (`kn7000/tools/cnv_romdump/loader.s`, `kn7cnv.inc`) and measured in MAME 
   backends directly) and in 16 KB pieces, as the loader reads `KN7APP.BIN`, and unpacks it in place,
   as the original engine does (`tools/aw_extract.py` checks at build time that every such resource
   unpacks right in place). The bitmaps a part's bytecode LOADs stay packed until LOAD draws one; they
-  are unpacked into a buffer of their own (`BitmapData`). A part's loads start only once no panel
+  are unpacked into a buffer of their own (`BitmapData`), or, at 384x240, straight into the page (`BitmapPage`).
+  Each bitmap has two files, the 320x200 one and its 384x240 one, and one place in the part area: the list reads
+  the one for the display mode in use at the part's start. A part's loads start only once no panel
   button is down (or after about 5 s), so that a button's release never arrives while the main task
   is busy in a file read; a file that fails to load is tried again on the next call, up to three
   times, before the game stops and says so.
@@ -770,8 +772,17 @@ own resolution (`src/vm.s`, `src/interp.s`):
   (`DrawChar`, `ToPg`): the glyphs are not scaled, so they are as crisp as at 320x200; the gaps between letters are
   1 or 2 pixels (8 pixels of the game are 9.6 of the page).
 - **Page copies with a vertical scroll** move the page by 6/5 of the scroll, in whole rows.
-- **Bitmaps** (the background pictures some scenes load) exist at 320x200 only: they are drawn at that size and
-  enlarged to the page (`display.s` PageUp: every 5 pixels and rows become 6, the first of each doubled).
+- **Bitmaps** (the background pictures some scenes load; twelve, all 320x200) are enlarged at build time
+  (`tools/aw_hires.py`) and the card carries each at 384x240, a byte a pixel, ByteKiller-packed (`AWHxx.AW`, xx its
+  id, 2-15 KB each): LOAD unpacks it straight into page 0, no slower than the 320x200 one. Each page pixel takes
+  the colour of the source picture's surface there, interpolated (Catmull-Rom bicubic, in the palette the game
+  shows the bitmap with), but always one of the colours of the 2x2 source pixels around it, or of a shade from the
+  4x4 around that lies between them: no colour from elsewhere, and edges and outlines follow their shapes instead
+  of a row or column doubled every fifth pixel. A source pixel whose colour none of its page pixels would keep (a
+  lone dot) keeps it in the nearest. In the 320x200 mode the part reads the 320x200 bitmaps instead; after a
+  switch of mode within a part, the other size is made from the one there (`display.s` PageUp, every 5 pixels and
+  rows become 6, the first of each doubled; PageDown) until the next part. Checked in MAME with
+  `probes/hirescheck.py` (`probes/cnv/README.md`, "Bitmaps at 384x240").
 - **The help screens and the stop screen** keep their 8x8 font the same way.
 
 **Memory.** Four 384x240 pages take 368,640 bytes, which fill `0x50320000`-`0x50379FFF` exactly: `SHADOW` (what the

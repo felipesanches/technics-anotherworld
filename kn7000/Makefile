@@ -108,7 +108,7 @@ BIOS        ?= v13
 app: build/KN7APP.BIN
 sdcard: build/sdcard/KN7APP.BIN
 
-$(RES_OUT)/awpart.inc: tools/aw_extract.py tools/aw_partinfo.py tools/aw_sound_map.py tools/dsp_mixer.py src/platformcnv.inc $(AW_DATA)/MEMLIST.BIN
+$(RES_OUT)/awpart.inc: tools/aw_extract.py tools/aw_hires.py tools/aw_partinfo.py tools/aw_sound_map.py tools/dsp_mixer.py src/platformcnv.inc $(AW_DATA)/MEMLIST.BIN
 	@mkdir -p $(RES_OUT)
 	$(PYTHON) -I tools/aw_extract.py $(AW_DATA) $(RES_OUT) --parts $@ src/platformcnv.inc $(FONT_DIR)
 

@@ -548,6 +548,50 @@ ep_fail:
 ep_stop:
     call    StopGame, 0, 0          # does not return
 
+# BitmapPage(d0 = resource id) -> d0 = 1 when page 0 now holds the bitmap, made from its 384x240 file
+# (AWHxx.AW, tools/aw_hires.py: a byte a pixel, packed), which the part's list reads in the 384x240 mode: unpacked
+# straight into the page, and in the 320x200 mode (switched to since the part's start) taken down to that size;
+# 0 when that file is not resident (LoadBitmap draws the 320x200 bitmap, BitmapData).
+BitmapPage:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    and     0xff, d0
+    mov     d0, d2
+    cmp     RES_COUNT, d2
+    bcc     bpg_none
+    asl     2, d0
+    mov     RES_TAB + 4 * RES_HI, a0
+    add     d0, a0
+    mov     (a0), a0
+    cmp     0, a0
+    beq     bpg_none
+    mov     HiPacked, a1
+    add     d0, a1
+    mov     (a1), d0                # packed size
+    mov     PAGE_BITMAP_0, a1
+    mov     BIG_SIZE, d1
+    call    BkUnpack, 0, 0          # d0 = 0 when intact
+    cmp     0, d0
+    bne     bpg_bad
+    mov     (PG_W), d0
+    cmp     BIG_W, d0
+    beq     bpg_done
+    mov     PAGE_BITMAP_0, a0
+    call    PageDown, 0, 0
+bpg_done:
+    mov     1, d0
+bpg_ret:
+    ret     [d2,d3,a2,a3], 0x30
+bpg_none:
+    clr     d0
+    bra     bpg_ret
+bpg_bad:
+    mov     GUARD_FILE, d0
+    mov     d2, d1
+    add     RES_HI, d1
+    call    GuardTrip, 0, 0
+    bra     bpg_done
+
 # BitmapData(d0 = resource id) -> a0 = the bitmap's 32,000 bytes of planes, or 0. A packed bitmap
 # (ResPacked != 0) is unpacked into BITMAP_BUF. A bitmap that is not resident stops the game: the
 # part lists hold every bitmap each part's bytecode LOADs (tools/aw_extract.py --parts).
@@ -638,12 +682,12 @@ ListEnd:
     rets
 
 # PartListStart: LD_PART's list; every resource of the part before it is gone (RES_TAB entries
-# cleared, but the shared polygons'), as its space is reused.
+# cleared, the 384x240 bitmaps' too, but the shared polygons'), as its space is reused.
 PartListStart:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
     mov     RES_TAB, a0
-    mov     RES_COUNT, d1
+    mov     RES_TAB_N, d1
     clr     d0
 pl_clear:
     mov     d0, (a0)
@@ -681,6 +725,17 @@ LoadStep:
     mov     1, d0
     bra     lst_ret
 lst_go:
+    movbu   (LR_FLAGS, a2), d1      # a bitmap's file for the other display mode: not read (its slot holds
+    mov     (PG_W), d0              # this mode's; LoadBitmap makes the other size from it when the mode
+    cmp     BIG_W, d0               # changes before the next part)
+    beq     lst_big
+    btst    LR_HIRES, d1
+    bne     lst_next
+    bra     lst_mode
+lst_big:
+    btst    LR_LOWRES, d1
+    bne     lst_next
+lst_mode:
     movhu   (LR_ID, a2), d0
     mov     d0, (LD_BAD_ID)         # (named if it fails)
     mov     (LR_DEST, a2), a0       # the destination must lie in the game's RAM, clear of the
@@ -767,7 +822,7 @@ lst_place:
 lst_first:
     mov     (LD_REC), a2
     movhu   (LR_ID, a2), d0
-    cmp     RES_COUNT, d0
+    cmp     RES_TAB_N, d0
     bcc     lst_next                # not a resource (the font, the strings)
     asl     2, d0
     mov     RES_TAB, a0

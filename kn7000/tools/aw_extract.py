@@ -104,6 +104,9 @@ def unpack(buf, size):
     return bytes(out)
 
 
+LR_LOWRES, LR_HIRES = 2, 4  # part-list record flags: read only in the 320x200 / the 384x240 display mode
+RES_HI = 0x100             # a 384x240 bitmap's record id: RES_HI + the bitmap's id
+
 RES_BASE = 0x44200000      # first resource; the pages end at 0x44140000, the font sits at 0x44480000
 RES_LIMIT = 0x44480000
 PACK_MAX = 65535           # the firmware's fread count is 16 bits
@@ -339,7 +342,9 @@ def write_parts(path, src, ents, layout_inc, fonts):
     loaded once, at the start.
 
     Record (20 bytes): u32 name, u32 destination, u32 bytes to read, u32 unpacked size, u16 resource
-    id (0xFFFF: not a resource), u8 flags (1 = unpack in place), u8 0. A list ends with name 0."""
+    id (0xFFFF: not a resource), u8 flags (1 = unpack in place, 2 = read only in the 320x200 display mode, 4 = only
+    in the 384x240 one), u8 0. A list ends with name 0. Each bitmap has two records for one slot: its own file
+    (flag 2) and AWHxx.AW (flag 4, id RES_HI + its id), the bitmap at 384x240 (aw_hires.py)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import aw_partinfo                              # the bytecode decoder beside this script
     dst = os.path.dirname(path)
@@ -370,15 +375,35 @@ def write_parts(path, src, ents, layout_inc, fonts):
         name = f"AWR{i:02X}.AW"
         files[name] = r
         return dict(name=name, dest=dest, read=len(r), size=e["size"], id=i, flags=1 if packed and inplace else 0)
+    import aw_hires                                 # the bitmaps at 384x240 (aw_hires.py)
+    hi_packed = {}
+
+    def hi_rec(i, dest):
+        """Bitmap I at 384x240, a byte a pixel, ByteKiller-packed: AWHxx.AW, read only in the 384x240 mode."""
+        if i not in hi_packed:
+            pres = aw_hires.PALETTES[i][0]
+            pr = raw(pres) if T[pres]["packed"] == T[pres]["size"] else unpack(raw(pres), T[pres]["size"])
+            _, _, big = aw_hires.hires_from(i, unpack(raw(i), T[i]["size"]), pr)
+            page = big.tobytes()
+            b = aw_hires.pack(page)
+            if unpack(b, len(page)) != page:
+                raise SystemExit(f"aw_extract: the 384x240 bitmap 0x{i:02X} does not unpack to itself")
+            files[f"AWH{i:02X}.AW"] = b
+            hi_packed[i] = len(b)
+        return dict(name=f"AWH{i:02X}.AW", dest=dest, read=hi_packed[i], size=aw_hires.W * aw_hires.H,
+                    id=RES_HI + i, flags=LR_HIRES)
 
     def place(ids_inplace, ids_packed, what):
         out, at = [], area
         for i in ids_inplace:
             out.append(rec(i, f"PART_AREA + 0x{at - area:05X}", True))
             at += (max(T[i]["packed"], T[i]["size"]) + 3) & ~3
-        for i in ids_packed:
-            out.append(rec(i, f"PART_AREA + 0x{at - area:05X}", False))
-            at += (T[i]["packed"] + 3) & ~3
+        for i in ids_packed:                        # a bitmap: one slot for its two sizes, as only the display
+            lo = rec(i, f"PART_AREA + 0x{at - area:05X}", False)    # mode's is read (cnv_main.s LoadStep)
+            hi = hi_rec(i, lo["dest"])
+            lo["flags"] |= LR_LOWRES
+            out += [lo, hi]
+            at += (max(lo["read"], hi["read"]) + 3) & ~3
         if at > area_end:
             raise SystemExit(f"aw_extract: part {what} needs {at - area} bytes; PART_AREA holds {area_end - area}")
         return out, at - area
@@ -438,7 +463,11 @@ def write_parts(path, src, ents, layout_inc, fonts):
         f".equ PART_NEED_MAX,   {max(need.values())}     # bytes of PART_AREA the largest part uses",
         f".equ LR_NAME,         0", f".equ LR_DEST,         4", f".equ LR_READ,         8",
         f".equ LR_SIZE,         12", f".equ LR_ID,           16", f".equ LR_FLAGS,        18",
-        f".equ LR_LEN,          20", f".equ LR_INPLACE,      1", ""]))
+        f".equ LR_LEN,          20", f".equ LR_INPLACE,      1",
+        f".equ LR_LOWRES,       {LR_LOWRES}     # read only in the 320x200 mode",
+        f".equ LR_HIRES,        {LR_HIRES}     # read only in the 384x240 mode (id RES_HI + the bitmap's)",
+        f".equ RES_HI,          0x{RES_HI:X}   # RES_TAB[RES_HI + id]: where bitmap id is resident at 384x240",
+        f".equ RES_TAB_N,       {RES_HI + len(ents)}   # RES_TAB's entries", ""]))
     out = head + ["    .align  4", "PartLists:                          # u32 per part id 0x3E80..0x3E89"]
     out += [f"    .long   PartList{k}" for k in range(len(part_ids))] + [f"    .long   PartList{len(part_ids) - 1}"]
     for label, rs in lists:
@@ -452,6 +481,8 @@ def write_parts(path, src, ents, layout_inc, fonts):
         out.append("    .byte   0, 0")
     out.append("ResPacked:                          # u32 per id: a bitmap's packed size (0 = stored as is)")
     out += [f"    .long   {e['packed'] if e['type'] == 2 and e['packed'] != e['size'] else 0}" for e in ents]
+    out.append("HiPacked:                           # u32 per id: a bitmap's 384x240 file's packed size (0: none)")
+    out += [f"    .long   {hi_packed.get(e['id'], 0)}" for e in ents]
     out.append("ResType:                            # u8 per id: 0 sound 1 music 2 bitmap 3 palette 4 bytecode 5 video1 6 video2")
     out += [f"    .byte   {e['type']}" for e in ents]
     out.append("    .align  2")
