@@ -14,7 +14,7 @@
 # burst and at the explosion in the lake Lester lands in, the lift's bouncing light chased along the PANEL MEMORY ring (2-1-8-7-6-5-4-3 left to right in eight even steps
 # over the light's sweep, 3 back to 2 on its way back: the lead and the one behind it, two at most; none once the light
 # is gone), and a blinking light
-# above the stranded guard (part 0x3E86, room 170) on the leftmost red LED, SPLIT POINT G2, the guard under the glass
+# above the stranded guard (part 0x3E86, room 170) on the red LATIN & WORLD LED, the guard under the glass
 # globe in the dome (part 0x3E84, room 80) on PANEL MEMORY 1-4, and the globe's crash: the ring pulsing and fireworks
 # on the LEDs around it, the nearer the more (led_glass). Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
@@ -110,7 +110,7 @@
 .equ W_TG2,           0x8000         # ... BEAT 3
 .equ W_APC,           0x10000        # its white button: the four AUTO PLAY CHORD / SOUND ARRANGER LEDs
 .equ W_LIFT,          0x20000        # the lift's chase (LED_LIFTMASK)
-.equ W_GLIGHT,        0x40000        # the guard's light: SPLIT POINT G2
+.equ W_GLIGHT,        0x40000        # the guard's light: LATIN & WORLD
 .equ W_GRNRND,        0x80000        # the recharge's random green LEDs (LED_GRNMASK)
 .equ W_GRNALL,        0x100000       # every green LED, the PANEL MEMORY ring's too (a skeleton, the lake)
 .equ W_FW,            0x200000       # the glass crash's sparks (LED_FWMASK)
@@ -1311,8 +1311,8 @@ led_beat3:                          # BEAT 3 (green)
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 led_apc:                            # AUTO PLAY CHORD MODE, SOUND ARRANGER SET, AUTO PLAY CHORD OFF/ON, SOUND ARRANGER OFF/ON
     .byte   0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-led_g2:                             # SPLIT POINT G2: the leftmost red LED (x 202 of the layout)
-    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_latin:                          # LATIN & WORLD (red; Felipe 2026-11-03, in place of SPLIT POINT G2)
+    .byte   0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 led_fw0:                            # the LEDs by their distance from the PANEL MEMORY ring's centre (probes/ledrings.py,
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86, 0x1A, 0x00, 0x3C, 0x0F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
 led_fw1:                            # MAME layout units): below 250 (15 LEDs), 250-500 (26), 500-900 (8), the left
@@ -1353,7 +1353,7 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_TG2, led_beat3
     .long   W_APC, led_apc
     .long   W_LIFT, LED_LIFTMASK
-    .long   W_GLIGHT, led_g2
+    .long   W_GLIGHT, led_latin
     .long   W_GRNRND, LED_GRNMASK
     .long   W_GRNALL, led_grnall
     .long   W_FW, LED_FWMASK

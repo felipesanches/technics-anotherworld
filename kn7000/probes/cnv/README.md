@@ -1076,3 +1076,18 @@ MAME replay at NextThread's end-of-frame thread 0 write, rustyworld after its la
 Before that change, var 0xF4 differed at the end of 13 frames of these two sessions, all frames whose logged mark came
 after the last thread that ran, while the pages all agreed. The replay's own log has no R record, as the replay sets
 the requested part itself, past ReadInput, which logs them; `run_inplog.sh` checks the I and P records.
+
+## The guard's lamp on LATIN & WORLD (2026-11-03)
+
+Felipe moved the stranded guard's red lamp (part 0x3E86, room 170, code TXHF) from SPLIT POINT G2 to the red LATIN &
+WORLD LED (register 3, bit 0x02; src/leds.s `led_latin`). `../onelamp.py` gives an LED's lit and dark runs and the
+frames another LED is lit. Build `9bdf1224...` (program 893):
+
+| session (frames)             | check                                                                                                                                          |
+|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e86-txhf-guard-lamp` (761) | LATIN & WORLD lit 3 frames, dark 2, 61 times over; SPLIT POINT G2 lit only in frames 344, 699, 700 and 739, which show the firmware's own LEDs |
+
+    T=~/compartilhado/tmp/aw-lamp2; S=probes/sessions
+    AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e86-txhf-guard-lamp.awr
+    python3 -I probes/onelamp.py $T/lamp.led 3 0x02
+    python3 -I probes/onelamp.py $T/lamp.led 7 0x01

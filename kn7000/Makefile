@@ -136,10 +136,11 @@ build/loader.ok: $(LOADER_CNV) $(LOADER_FLOPPY)
 	echo "$(FLOPPY_SHA1)  $(LOADER_FLOPPY)" | sha1sum -c --quiet
 	@touch $@
 
-# Before KN7APP.BIN is written, three checks must pass (each stops the build otherwise):
+# Before KN7APP.BIN is written, these checks must pass (each stops the build otherwise):
 #   tools/leafcheck.py   a routine entered with `call X, 0, 0` must not call anything before it makes
 #                        a frame (the nested call overwrites its return address; that hung the first
 #                        unpacker);
+#   tools/help_codes.py  every code the HELP screen lists is one the game's code screen accepts;
 #   tools/ic23_guard.py  no address the build names may lie in CS1 (IC23) or the user pools, and none in
 #                        the loader's resident area 0x502B8000-0x502B9FFF but loads from its service
 #                        table (--loader): "clean";
@@ -152,9 +153,10 @@ build/loader.ok: $(LOADER_CNV) $(LOADER_FLOPPY)
 $(KN7MENU_DIR)/build/tramp_bin.inc: $(KN7MENU_DIR)/tramp.s $(KN7MENU_DIR)/menu.inc $(KN7MENU_DIR)/cachesync.inc
 	$(MAKE) -C $(KN7MENU_DIR) build/tramp_bin.inc
 
-build/KN7APP.BIN: $(APP_SRC) src/platformcnv.inc src/inplog.inc src/vm.inc $(RES_OUT)/awpart.inc $(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc $(LOADER_DIR)/kn7cnv.inc $(LOADER_DIR)/mkapp.py $(DISASM_REPO)/tools/xapasm.py tools/leafcheck.py tools/ic23_guard.py tools/cnv_layout.py tools/chain_check.py $(KN7MENU_DIR)/build/tramp_bin.inc build/loader.ok
+build/KN7APP.BIN: $(APP_SRC) src/platformcnv.inc src/inplog.inc src/vm.inc $(RES_OUT)/awpart.inc $(RES_OUT)/dsp_equ.inc $(RES_OUT)/dsp_data.inc $(LOADER_DIR)/kn7cnv.inc $(LOADER_DIR)/mkapp.py $(DISASM_REPO)/tools/xapasm.py tools/leafcheck.py tools/ic23_guard.py tools/cnv_layout.py tools/chain_check.py tools/help_codes.py $(KN7MENU_DIR)/build/tramp_bin.inc build/loader.ok
 	@mkdir -p build
 	$(PYTHON) -I tools/leafcheck.py $(APP_SRC)
+	$(PYTHON) -I tools/help_codes.py src/help.s $(RES_OUT)/resource-0x7e.bin
 	$(PYTHON) -I tools/chain_check.py src/chain.s $(KN7MENU_DIR)/menu.inc $(KN7MENU_DIR)/build/tramp_syms.inc
 	$(PYTHON) -I tools/ic23_guard.py $(DISASM_REPO)/tools src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) -I $(KN7MENU_DIR) -I $(KN7MENU_DIR)/build --loader $(LOADER_DIR)/kn7cnv.inc
 	$(XAPASM) src/cnv_main.s -I src -I $(RES_OUT) -I $(LOADER_DIR) -I $(KN7MENU_DIR) -I $(KN7MENU_DIR)/build -o build/kn7app.bin -m build/kn7app.map
