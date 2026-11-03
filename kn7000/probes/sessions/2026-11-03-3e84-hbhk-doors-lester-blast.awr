@@ -1,0 +1,16 @@
+# made by probes/jump_session.py from 3e84-cp47-doors-lester-blast.awr: part 0x3E84 at frame 300, 00=47
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 47
+R 300 0x3E84
+I 302 play 0x00
+I 306 play 0x01
+I 361 play 0x09
+I 389 play 0x81
+I 479 play 0x00
+I 483 play 0x80
+I 485 play 0x00
+I 491 play 0x80
+I 526 play 0x00
+I 528 play 0x81
+E 701 0
