@@ -344,17 +344,13 @@ ba_grp:
     ret     [d2,d3,a2,a3], 0x30
 
 # ShadowOut: SHADOW to the whole window through the palette now (the help and stop screens, drawn in SHADOW: help.s
-# HelpText). The border is not touched. The next blit of a page compares it with what this showed.
+# HelpText); then, if the window's size is new (the settings page's resolution changed it), the border's pattern,
+# after the window, so that the page shows at once (Felipe 2026-11-03). The next blit of a page compares it with
+# what this showed.
 ShadowOut:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
     call    PalCheck, 0, 0
-    mov     (AMB_GEOM), d0          # the border's pattern, if the window's size is new (a setting changed it)
-    mov     (PG_W), d1
-    cmp     d1, d0
-    beq     so_go
-    call    AmbiFill, 0, 0
-so_go:
     call    WinBase, 0, 0
     mov     a1, (0x14, sp)
     mov     SHADOW, a3
@@ -379,6 +375,12 @@ so_grp:
     mov     a1, (0x14, sp)
     add     -1, d3
     bne     so_row
+    mov     (AMB_GEOM), d0          # the border's pattern, if the window's size is new
+    mov     (PG_W), d1
+    cmp     d1, d0
+    beq     so_done
+    call    AmbiFill, 0, 0
+so_done:
     clr     d0
     mov     d0, (PF_DAMAGE)
     mov     SHADOW, d0              # no page is on the LCD (the next page's blit compares), and the

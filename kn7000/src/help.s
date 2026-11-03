@@ -27,6 +27,7 @@ HelpScreen:
     clr     d0
     mov     d0, (HELP_PAGE_NO)
     mov     d0, (HELP_TICK)
+    mov     d0, (HELP_CODES)
 hs_wait_help:                       # let go of HELP first
     call    HelpSleep, 0, 0
     mov     (FWV_PANEL), a0
@@ -40,6 +41,14 @@ hs_poll:
     movbu   (BTN_PAGE_OFS, a0), d0
     and     BTN_EXIT_BIT, d0
     bne     hs_exit
+    mov     (FWV_PANEL), a0         # OTHER PART & FR: out, to the code screen (ReadInput, HELP_CODES)
+    movbu   (BTN_CODES_OFS, a0), d0
+    and     BTN_CODES_BIT, d0
+    beq     hs_nocodes
+    mov     1, d0
+    mov     d0, (HELP_CODES)
+    bra     hs_exit
+hs_nocodes:
     mov     (FWV_PANEL), a0
     movbu   (BTN_HELP_OFS, a0), d0
     and     BTN_HELP_BIT, d0

@@ -4,9 +4,12 @@
 # leds.s -- the control panel's LEDs follow the game (README-CNV.md, "The panel's LEDs"; Felipe, 2026-11-02): from the
 # end of the firmware search to the quit every LED is off but those the game's effects light: the red LEDs at a laser
 # shot (a guard's: all of them; Lester's: those of the half of the instrument he shoots towards), the eight PANEL
-# MEMORY LEDs pulsing while his gun builds a charge, every LED while the mega-blast shows, the green ones while the gun
-# recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
-# random by the waterfall, more of them the louder it is (led_water). Shared by both builds; the LED effects setting
+# MEMORY LEDs pulsing while his gun builds a charge (and, once it is the big blob, the green ones blinking with them),
+# a flash of about 30% of the red LEDs (each with that chance, drawn anew each time) when a small charge is let go as
+# a shield, every LED while the
+# mega-blast shows, the green ones while the gun recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
+# random by the waterfall, more of them the louder it is (led_water), and the battle tank's panel mirrored (its LEDs,
+# button blocks and lamps; its blinking white button on the four AUTO PLAY CHORD / SOUND ARRANGER LEDs). Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
 # The panel's LEDs (research-scratch kn7000-leds, MAME-checked on 893 and 941): the firmware keeps them in a shadow
@@ -35,6 +38,11 @@
 #   lightning          SET_PALETTE 0x02 in the intro (part 0x3E81): the screen white for three frames
 #   thunder            PLAY_SOUND 0x0A at a volume of 50 or more in the intro
 #   the strike         SET_PALETTE 0x17 at pc 0x065A in the intro: the bolt hits the tower
+#   the tank's panel   part 0x3E85 while thread 59 runs (it shows the panel); a press: var 0xFA != 0 on the cell var
+#                      0x5F names; cell 0x0B lights about 30 of the panel's LEDs until the panel goes (no var: latched
+#                      here); var 0x67 >= 2 and >= 3 its two button blocks; vars 0x72, 0x71 its red lamps, 0x74, 0x75
+#                      its green ones; var 0x67 set to 6 at frame t6: the white button blinks, lit while
+#                      (frame - t6 - 1) mod 4 < 2 (fingerprints tanksig.py, "Fourth pass")
 
 .equ LED_REGS,        20
 .equ LED_LASER_MS,    150
@@ -44,6 +52,8 @@
 .equ LED_PULSE_MS,    200            # the charge's pulse: a half period; 100 once the big blob forms
 .equ LED_GREEN_MS,    1440           # the recharge: 18 ticks of 80 ms
 .equ LED_RND_MS,      50             # the random LEDs drawn again this often
+.equ LED_SHIELD_MS,   150            # the shield's flash
+.equ LED_SHIELD_P,    77             # each red LED's chance in it, of 256 (30%), drawn anew each time
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -54,6 +64,15 @@
 .equ W_REDR,          0x20           # ... of the right half
 .equ W_GREEN,         0x40           # the green LEDs
 .equ W_RAND,          0x80           # those of LED_RNDMASK
+.equ W_SHIELD,        0x100          # those of LED_SHMASK
+.equ W_TMANY,         0x200          # the tank: its "lot of LEDs" (led_tank)
+.equ W_TB1,           0x400          # its first button block (register 13's eight red LEDs)
+.equ W_TB2,           0x800          # its second (register 12's)
+.equ W_TR1,           0x1000         # its red lamps: INTRO & ENDING 1
+.equ W_TR2,           0x2000         # ... INTRO & ENDING 2
+.equ W_TG1,           0x4000         # its green lamps: BEAT 2
+.equ W_TG2,           0x8000         # ... BEAT 3
+.equ W_APC,           0x10000        # its white button: the four AUTO PLAY CHORD / SOUND ARRANGER LEDs
 
 # LedInit: the LEDs' addresses for this program build, or effects off (LED_SH 0). After the firmware search (the
 # converter's main task, cnv_main.s) and at the game task's start (display.s); only the first call does anything.
@@ -181,7 +200,17 @@ lev_mega:
     mov     d0, (LED_CHARGE)
     rets
 lev_stop:
-    clr     d0                      # LEV_STOP: no charge
+    cmp     LEV_SHIELD, d0
+    bne     lev_nocharge
+    mov     (LED_CHARGE), d0        # a shield: the charge let go at its first stage
+    cmp     1, d0
+    bne     lev_nocharge
+    add     LED_SHIELD_MS, d1
+    mov     d1, (LED_SHIELD_T)
+    mov     1, d0
+    mov     d0, (LED_SHIELD_NEW)
+lev_nocharge:
+    clr     d0                      # LEV_STOP, LEV_SHIELD: no charge
     mov     d0, (LED_CHARGE)
 lev_ret:
     rets
@@ -236,7 +265,7 @@ ls_mega:
     mov     LEV_MEGA, d0
     cmp     0x59, d2
     beq     ls_event
-    mov     LEV_STOP, d0
+    mov     LEV_SHIELD, d0
     cmp     0x58, d2
     beq     ls_event
     bra     ls_ret
@@ -288,6 +317,18 @@ LedVar:
     mov     LEV_GREEN, d0
     bra     lvr_event
 lvr_blast:
+    cmp     0x67, d0                # the tank's white button: var 0x67 = 6 in part 0x3E85
+    bne     lvr_blast2
+    cmp     6, d1
+    bne     lvr_ret
+    movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E85, d0
+    bne     lvr_ret
+    mov     (FRAME_NO), d0
+    inc     d0
+    mov     d0, (LED_T6)
+    bra     lvr_ret
+lvr_blast2:
     cmp     0x88, d0
     bne     lvr_ret
     cmp     100, d1
@@ -301,9 +342,9 @@ lvr_event:
 lvr_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# led_water: LED_WATER from the loudest channel the waterfall plays on (LED_WCH): twice its volume of 256, so half
-# the LEDs by the waterfall (64) and an eighth beside it (16); LedService draws them again every LED_RND_MS. Leaf;
-# uses d0, d1, a1.
+# led_water: LED_WATER from the loudest channel the waterfall plays on (LED_WCH): its volume squared / 32 of 256, so
+# half the LEDs by the waterfall (64), one in 32 beside it (16: Felipe 2026-11-03, fainter); LedService draws them
+# again every LED_RND_MS. Leaf; uses d0, d1, a1.
 led_water:
     clr     d0
     mov     LED_WCH, a1
@@ -319,7 +360,9 @@ lwa_next:
     inc     a1
     add     -1, d1
     bne     lwa_ch
-    asl     1, d0
+    mov     d0, d1
+    mulu    d1, d0
+    lsr     5, d0
     cmp     256, d0
     bcs     lwa_set
     mov     255, d0
@@ -412,7 +455,7 @@ lsv_blast_off:
 lsv_charge:
     mov     (LED_CHARGE), d0
     cmp     0, d0
-    beq     lsv_water
+    beq     lsv_shield
     mov     d3, d1
     mov     (LED_PULSE_T), d0
     sub     d0, d1                  # d1 = ms since the pulse began
@@ -429,20 +472,108 @@ lsv_fast:
 lsv_div:
     divu    d1, d0                  # halves so far
     btst    1, d0
-    bne     lsv_water               # (the odd halves: off)
+    bne     lsv_shield              # (the odd halves: off)
     or      W_PM, d2
+    mov     (LED_CHARGE), d0        # the big blob: the green LEDs blink with the ring
+    cmp     2, d0
+    bne     lsv_shield
+    or      W_GREEN, d2
+lsv_shield:
+    mov     (LED_SHIELD_NEW), d0    # a new shield: a new sample of 30% of the red LEDs
+    cmp     0, d0
+    beq     lsv_sh_t
+    clr     d0
+    mov     d0, (LED_SHIELD_NEW)
+    mov     LED_SHIELD_P, d0
+    mov     led_red, a0
+    mov     LED_SHMASK, a1
+    call    led_draw, 0, 0
+lsv_sh_t:
+    mov     (LED_SHIELD_T), d0
+    sub     d3, d0
+    ble     lsv_water
+    or      W_SHIELD, d2
 lsv_water:
     mov     (LED_WATER), d0
     cmp     0, d0
-    beq     lsv_blink
+    beq     lsv_tank
     or      W_RAND, d2
     mov     (LED_RND_T), d0
     sub     d3, d0
-    bgt     lsv_blink
+    bgt     lsv_tank
     mov     d3, d0
     add     LED_RND_MS, d0
     mov     d0, (LED_RND_T)
-    call    led_random, 0, 0
+    mov     (LED_WATER), d0
+    mov     led_all, a0
+    mov     LED_RNDMASK, a1
+    call    led_draw, 0, 0
+lsv_tank:
+    movhu   (CURRENT_PART_ID), d0   # the tank's panel, while thread 59 shows it
+    cmp     0x3E85, d0
+    bne     lsv_tank_off
+    movhu   (THREADS_DATA + 59 * 4 + PC_OFFSET), d0
+    cmp     INACTIVE_THREAD, d0
+    beq     lsv_tank_off
+    movhu   (VM_VARIABLES + 2 * 0xFA), d0   # a press of cell 0x0B: its LEDs from now on
+    cmp     0, d0
+    beq     lt_latch
+    movhu   (VM_VARIABLES + 2 * 0x5F), d0
+    cmp     0x0B, d0
+    bne     lt_latch
+    mov     1, d0
+    mov     d0, (LED_TANK)
+lt_latch:
+    mov     (LED_TANK), d0
+    cmp     0, d0
+    beq     lt_blocks
+    or      W_TMANY, d2
+lt_blocks:
+    movhu   (VM_VARIABLES + 2 * 0x67), d0
+    cmp     2, d0
+    blt     lt_lamps
+    or      W_TB1, d2
+    cmp     3, d0
+    blt     lt_lamps
+    or      W_TB2, d2
+lt_lamps:
+    movhu   (VM_VARIABLES + 2 * 0x72), d0
+    cmp     0, d0
+    beq     lt_l2
+    or      W_TR1, d2
+lt_l2:
+    movhu   (VM_VARIABLES + 2 * 0x71), d0
+    cmp     0, d0
+    beq     lt_l3
+    or      W_TR2, d2
+lt_l3:
+    movhu   (VM_VARIABLES + 2 * 0x74), d0
+    cmp     0, d0
+    beq     lt_l4
+    or      W_TG1, d2
+lt_l4:
+    movhu   (VM_VARIABLES + 2 * 0x75), d0
+    cmp     0, d0
+    beq     lt_white
+    or      W_TG2, d2
+lt_white:
+    movhu   (VM_VARIABLES + 2 * 0x67), d0   # the white button: lit while (frame - t6 - 1) mod 4 < 2
+    cmp     6, d0
+    bne     lsv_blink
+    mov     (LED_T6), d1
+    cmp     0, d1
+    beq     lsv_blink
+    mov     (FRAME_NO), d0
+    sub     d1, d0
+    and     3, d0
+    cmp     2, d0
+    bcc     lsv_blink
+    or      W_APC, d2
+    bra     lsv_blink
+lsv_tank_off:
+    clr     d0
+    mov     d0, (LED_TANK)
+    mov     d0, (LED_T6)
 lsv_blink:
     mov     (LED_BLINKS), d0
     cmp     0, d0
@@ -473,13 +604,15 @@ lsv_apply:
 lsv_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# led_random: LED_RNDMASK drawn again: each LED bit set with the chance LED_WATER of 256 (a linear congruential
-# generator, LED_SEED, its bits 16-23).
-led_random:
+# led_draw(d0 = chance of 256, a0 = the LED bits to draw from, 20 bytes; a1 = out, 20 bytes): each of those bits set
+# with that chance (a linear congruential generator, LED_SEED, its bits 16-23): the waterfall's random LEDs, the
+# shield's 30% of the red ones.
+led_draw:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     LED_RNDMASK, a2
-    mov     led_all, a3
+    mov     d0, (0x04, sp)          # the chance
+    mov     a1, a2
+    mov     a0, a3
     clr     d3                      # d3 = the register
 lr_reg:
     movbu   (d3, a3), d2            # d2 = its LED bits
@@ -498,7 +631,7 @@ lr_bit:
     mov     d0, (LED_SEED)
     lsr     16, d0
     and     0xFF, d0
-    mov     (LED_WATER), d1
+    mov     (0x04, sp), d1
     cmp     d1, d0
     bcc     lr_next                 # not below the chance: off
     mov     (0x0C, sp), d0
@@ -676,6 +809,22 @@ led_green:                          # ... green (22)
     .byte   0x00, 0x10, 0x10, 0x10, 0x11, 0x13, 0x01, 0x12, 0x07, 0x12, 0x03, 0x83, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00
 led_pm:                             # ... the PANEL MEMORY ring, amber (8)
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+led_tank:                           # the tank's "lot of LEDs": 30 drawn once (probes/ledmasks.py)
+    .byte   0x28, 0x2A, 0x1C, 0x09, 0x08, 0x00, 0x07, 0x0A, 0xE5, 0x80, 0x04, 0x52, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x01, 0x01
+led_r13:                            # register 13: STRINGS & VOCAL ... ACCORDION REGISTER (8 red)
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_r12:                            # register 12: SOLO ... TRANSPOSE / OCTAVE (8 red)
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_ie1:                            # INTRO & ENDING 1 (red)
+    .byte   0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_ie2:                            # INTRO & ENDING 2 (red)
+    .byte   0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_beat2:                          # BEAT 2 (green)
+    .byte   0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_beat3:                          # BEAT 3 (green)
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_apc:                            # AUTO PLAY CHORD MODE, SOUND ARRANGER SET, AUTO PLAY CHORD OFF/ON, SOUND ARRANGER OFF/ON
+    .byte   0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     .align  4
 led_groups:                         # LedWrite: each wanted bit and the LEDs it lights
     .long   W_RED, led_red
@@ -684,5 +833,14 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_PM, led_pm
     .long   W_GREEN, led_green
     .long   W_RAND, LED_RNDMASK
+    .long   W_SHIELD, LED_SHMASK
+    .long   W_TMANY, led_tank
+    .long   W_TB1, led_r13
+    .long   W_TB2, led_r12
+    .long   W_TR1, led_ie1
+    .long   W_TR2, led_ie2
+    .long   W_TG1, led_beat2
+    .long   W_TG2, led_beat3
+    .long   W_APC, led_apc
     .long   W_ALL, led_all
     .long   0

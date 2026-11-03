@@ -3,14 +3,15 @@
 #
 # ledcheck.py LEDLOG [FP] -- do the panel LEDs follow the game (src/leds.s)? LEDLOG: a MAME replay's LED log
 # (probes/cnv/awcnv_inplog.lua AW_LEDLOG, a line a frame: "tick active charge red_ms all_ms blinks shadow mirror lit
-# ms pulse_t panel fifo blast water redl_ms redr_ms green_ms v04"); FP (optional): the reference VM's events for the
+# ms pulse_t panel fifo blast water redl_ms redr_ms green_ms v04 [shield_ms tank]"); FP (optional): the reference VM's events for the
 # same session through awfp.py (research-scratch kn7000-aw-reference/fingerprints: replayawr AW_EVENTS=EV, then
 # awfp.py EV PART > FP; lines "tick KIND part=.. ch=.."). For each event, in the frames from it to 4 later:
 #   LASER_OTHER                  every red LED bit set in the shadow, and in the mirror (sent) within 7 frames
 #   LASER_LESTER                 the red LEDs of the half var 0x04 says he faces (bit 0x10: right) set, the other
 #                                half's not (unless another shot lit them), and sent
 #   CHARGE_START / MEGA_CHARGE   the charge state >= 1 / 2
-#   SHIELD                       the charge state 0
+#   SHIELD                       the charge state 0, and (a shield of the first stage) the flash: about 30% of the
+#                                red LEDs and nothing else, a different set at each shield
 #   MEGA_RELEASE                 the blast followed (its flag) and every LED bit set
 #   STORM_FLASH / STORM_THUNDER  every LED bit set, shadow and mirror; STORM_STRIKE: blinking
 # (the lit bits, not the effect's timer: a 100 ms flash can end inside one game frame, before the frame is logged).
@@ -41,7 +42,8 @@ def load_log(p):
         rows[int(f[0])] = dict(active=int(f[1]), charge=int(f[2]), red=int(f[3]), all=int(f[4]), blinks=int(f[5]),
                                sh=bytes.fromhex(f[6]), mi=bytes.fromhex(f[7]), lit=int(f[8]),
                                panel=bytes.fromhex(f[11]), blast=int(f[13]), water=int(f[14]), redl=int(f[15]),
-                               redr=int(f[16]), green=int(f[17]), v04=int(f[18], 16))
+                               redr=int(f[16]), green=int(f[17]), v04=int(f[18], 16),
+                               shield=int(f[19]) if len(f) > 19 else 0, tank=int(f[20]) if len(f) > 20 else 0)
     return rows
 
 
@@ -107,7 +109,7 @@ def main():
     def calm(t):
         r = log.get(t)
         return r is not None and not (r["charge"] or r["red"] or r["all"] or r["blinks"] or r["blast"] or r["water"]
-                                      or r["redl"] or r["redr"] or r["green"])
+                                      or r["redl"] or r["redr"] or r["green"] or r["shield"] or r["tank"])
     quiet = [t for t in own if calm(t) and calm(t - 1)]
     dark = [t for t in quiet if bits(log[t]["sh"]) == 0]
     print(f"ledcheck: dark     {len(dark)}/{len(quiet)} frames with no effect have every LED off"
@@ -121,13 +123,36 @@ def main():
     endok = led(log[ticks[-1]]["panel"]) == led(log[ticks[-1]]["sh"])
     print(f"ledcheck: panel    {len(ticks) - len(stale)}/{len(ticks)} frames as the shadow (3 frames' lag allowed);"
           f" at the end {'the same' if endok else 'DIFFERENT'}" + (f"; first stale {stale[:5]}" if stale else ""))
-    # the pulse: frames of a charge alone (no other effect): the ring lit about half of them, nothing else lit
-    ch = [t for t in ticks if log[t]["charge"] and not (log[t]["blinks"] or log[t]["blast"] or log[t]["red"]
-                                                         or log[t]["redl"] or log[t]["redr"] or log[t]["all"])]
-    if ch:
-        ring = sum(1 for t in ch if covers(log[t]["sh"], PM))
-        stray = sum(1 for t in ch if bits(log[t]["sh"], bytes(a & ~p & 0xFF for a, p in zip(ALL, PM))))
-        print(f"ledcheck: pulse    {ring}/{len(ch)} frames of a charge with the PANEL MEMORY ring lit; {stray} with another LED lit")
+    # the pulse: frames of a charge alone (no other effect): the ring lit about half of them; at the first stage
+    # nothing else lit, at the big blob the green LEDs with the ring (and nothing else)
+    calm_fx = lambda r: not (r["blinks"] or r["blast"] or r["red"] or r["redl"] or r["redr"] or r["all"] or r["shield"])
+    pmg = bytes(p | g for p, g in zip(PM, GREEN))
+    for stage, other in ((1, PM), (2, pmg)):
+        ch = [t for t in ticks if log[t]["charge"] == stage and calm_fx(log[t]) and t - 1 in log and calm_fx(log[t - 1])]
+        if ch:
+            ring = sum(1 for t in ch if covers(log[t]["sh"], PM))
+            grn = sum(1 for t in ch if covers(log[t]["sh"], GREEN))
+            both = sum(1 for t in ch if covers(log[t]["sh"], PM) == covers(log[t]["sh"], GREEN))
+            stray = sum(1 for t in ch if bits(log[t]["sh"], bytes(a & ~o & 0xFF for a, o in zip(ALL, other))))
+            print(f"ledcheck: pulse{stage}   {ring}/{len(ch)} frames of {'a charge' if stage == 1 else 'the big blob'} with the PANEL MEMORY ring lit,"
+                  f" {grn} with every green LED{f' ({both} with the two together)' if stage == 2 else ''}; {stray} with another LED lit")
+    # the shield's flash: its frames, the share of the red LEDs lit, nothing but red, the sets differ
+    sh = [t for t in ticks if log[t]["shield"]]
+    if sh:
+        groups, cur = [], []
+        for t in sh:
+            if cur and t != cur[-1] + 1:
+                groups.append(cur); cur = []
+            cur.append(t)
+        groups.append(cur)
+        sets = []
+        for g in groups:
+            t = next((u for u in g if bits(log[u]["sh"], RED)), g[0])
+            sets.append(bytes(x & m for x, m in zip(log[t]["sh"], RED)))
+            share = bits(log[t]["sh"], RED) / 71
+            only = bits(log[t]["sh"], bytes(a & ~r & 0xFF for a, r in zip(ALL, RED))) == 0 or not calm_fx(dict(log[t], shield=0))
+            print(f"ledcheck: shield   frames {g[0]}-{g[-1]}: {share:.0%} of the red LEDs lit, {'nothing else' if only else 'OTHER LEDs too'}")
+        print(f"ledcheck: shield   {len(sets)} flashes, {len(set(sets))} different sets")
     gr = [t for t in ticks if log[t]["green"]]
     if gr:
         g = sum(1 for t in gr if covers(log[t]["sh"], GREEN))

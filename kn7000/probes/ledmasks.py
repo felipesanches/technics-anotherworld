@@ -2,7 +2,8 @@
 # (c) 2026 Felipe Correa da Silva Sanches <juca@members.fsf.org>; GPL v3+
 #
 # ledmasks.py LAYOUT COLOURS -- the LED groups src/leds.s lights, as its 20-byte register masks: which bits are red,
-# red on the left half of the instrument, red on the right half, green, and the eight PANEL MEMORY LEDs.
+# red on the left half of the instrument, red on the right half, green, the eight PANEL MEMORY LEDs, and the tank's
+# "lot of LEDs" set (30, a fixed draw).
 # LAYOUT: the MAME layout kn7000_mame src/mame/layout/kn7000.lay (where each LED is: its "Full Unit" view puts the
 # left panel block at x 0-1000, the screen block at 1000-3000, the right block at 3000-4000; left = x < 2000).
 # COLOURS: research-scratch kn7000-leds/README.md (the table "reg | wire | bit | 893 byte | MAME output | function |
@@ -59,6 +60,15 @@ for reg, bit, out, func, col in rows:
         masks["green"][reg] |= bit
     elif col == "amber":
         masks["pm"][reg] |= bit
+# the tank's "lot of LEDs" (cell 0x0B, part 0x3E85): 30 LEDs drawn once with a fixed seed (7000) from all but those
+# the tank's other lights use (registers 12 and 13, INTRO & ENDING 1 and 2, BEAT 2 and 3, the four AUTO PLAY CHORD /
+# SOUND ARRANGER LEDs: bit 0x10 of registers 4-7)
+import random
+used = {(12, b) for b in range(8)} | {(13, b) for b in range(8)} | {(0, 0), (1, 0), (4, 0), (5, 0)} | {(r, 4) for r in range(4, 8)}
+pool = [(r, b) for r in range(20) for b in range(8) if masks["all"][r] >> b & 1 and (r, b) not in used]
+masks["tank"] = [0] * 20
+for r, b in random.Random(7000).sample(pool, 30):
+    masks["tank"][r] |= 1 << b
 for k, v in masks.items():
     n = sum(bin(b).count("1") for b in v)
     print(f"led_{k:6s} {n:3d} LEDs: .byte " + ", ".join(f"0x{b:02X}" for b in v))

@@ -168,7 +168,8 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   if ledf then
     -- AW_LEDLOG: the LED effects at every frame (src/leds.s): active, charge, red / all until (ms left), blinks to go,
     -- the shadow and the mirror (sent) bytes, the panel's LED outputs MAME has lit, the kernel ms, the pulse's start, the panel's registers, the TX FIFO's free count,
-    -- then the mega-blast flag, the random LEDs' chance (the waterfall), the left / right red and the green (ms left), and VM var 0x04 (Lester's facing)
+    -- then the mega-blast flag, the random LEDs' chance (the waterfall), the left / right red and the green (ms left), VM var 0x04 (Lester's facing),
+    -- the shield's flash (ms left), and 1 while the battle tank's panel shows (part 0x3E85, thread 59 running)
     local LV, sh = 0x502DAD00, sp:read_u32(0x502DAD00)
     local ms = sp:read_u32(sp:read_u32(MISC + 0x200))
     local lit = 0
@@ -188,10 +189,11 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
       pv[#pv + 1] = string.format("%02X", v)
     end
     local function left(o) return math.max(0, sp:read_u32(LV + o) - ms) end
-    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d %s %d %d %d %d %d %d %04X\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
+    ledf:write(string.format("%d %d %d %d %d %d %s %s %d %d %d %s %d %d %d %d %d %d %04X %d %d\n", tick, sp:read_u32(LV + 8), sp:read_u32(LV + 0xC),
       left(0x10), left(0x14), sp:read_u32(LV + 0x18),
       sh ~= 0 and hex(sh) or "-", sh ~= 0 and hex(sh + 0x20) or "-", lit, ms, sp:read_u32(LV + 0x20), table.concat(pv), sp:read_u16(0x5006BD98),
-      sp:read_u32(LV + 0x30), sp:read_u32(LV + 0x34), left(0x24), left(0x28), left(0x2C), sp:read_u16(VAR(0x04))))
+      sp:read_u32(LV + 0x30), sp:read_u32(LV + 0x34), left(0x24), left(0x28), left(0x2C), sp:read_u16(VAR(0x04)), left(0xA0),
+      (sp:read_u16(PART) == 0x3E85 and sp:read_u16(INTERP + 0x400 + 59 * 4) ~= 0xFFFF) and 1 or 0))
   end
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1

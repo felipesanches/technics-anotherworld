@@ -10,8 +10,10 @@
 -- Then, the game running: HELP, PAGE DOWN three times (page 4, the settings); A5 (down), C6 (right): the ambilight
 -- off; Ab5 (up), C6: the resolution 320x200; A5 twice, C6: the light scatter one more (long to very long); A5, C6: the keybed sound off;
 -- A5, C6: the LED effects off; each checked in RAM (PREFS_AT) and in effect (PG_W, AMB_LUT all black, AU_KEYWANT);
+-- at the resolution's change, the order: the window redrawn before the ambilight's border ("order");
 -- the page dumped (settings.bin). EXIT: back to the game; 3 s; AWPREFS.CFG written (PR_WROTE, PR_DIRTY); then EXIT
--- held: the quit. run_perf.sh brings AWPREFS.CFG back.
+-- held... first HELP and OTHER PART & FR: the code screen must come ("codes"); then EXIT held: the quit.
+-- run_perf.sh brings AWPREFS.CFG back.
 -- AWPR_PHASE=2 (the card with that AWPREFS.CFG): the settings read (PR_STATUS 1) and in effect from the start.
 -- Prints "awpr: ..." lines.
 --   probes/cnv/run_prefs.sh OUT
@@ -53,6 +55,25 @@ local function amb_black()
   return true
 end
 local function dump(name) local f = io.open(OUT .. "/" .. name, "wb"); f:write((screen:pixels())); f:close() end
+-- the order of a resolution change on the settings page (Felipe 2026-11-03: the page first, the ambilight's border
+-- later): from the key, at every MAME frame, a sample of FB8 inside the new 320x200 window and one of the border's
+-- left strip (x 0-127, outside both windows); the frame each first changed, and a snapshot of each changed frame
+local FB8 = 0x9CE00000 + 0x50000
+local OR = { on = false, f = 0, win = nil, bor = nil, w0 = nil, b0 = nil, shots = 0 }
+local function sample(x0, x1, dx, y0, y1, dy)
+  local h = 0
+  for y = y0, y1, dy do for x = x0, x1, dx do h = (h * 31 + sp:read_u8(FB8 + y * 640 + x)) & 0xFFFFFF end end
+  return h
+end
+AWPR_ORDER = emu.add_machine_frame_notifier(function()
+  if not OR.on then return end
+  OR.f = OR.f + 1
+  local w, b = sample(160, 479, 8, 20, 219, 6), sample(0, 127, 4, 0, 239, 6)
+  if OR.w0 == nil then OR.w0, OR.b0 = w, b; return end
+  if not OR.win and w ~= OR.w0 then OR.win = OR.f end
+  if not OR.bor and b ~= OR.b0 then OR.bor = OR.f end
+  if (w ~= OR.w0 or b ~= OR.b0) and OR.shots < 12 then OR.shots = OR.shots + 1; screen:snapshot(string.format("order_%03d.png", OR.f)) end
+end)
 local results = {}
 local function result(name, ok, detail) results[#results + 1] = ok; log(string.format("%-10s %s  %s", name, ok and "PASS" or "FAIL", detail)) end
 
@@ -99,7 +120,13 @@ local co = coroutine.create(function()
     local pg = sp:read_u32(HELP_PAGE)
     key("A5"); key("C6")              -- row 1: the ambilight off
     local ambi_off = sp:read_u8(PREFS + 5) == 0 and amb_black()
-    key("G5#"); key("C6")             -- row 0: the resolution 320x200
+    key("G5#")
+    OR.on = true
+    key("C6")                         -- row 0: the resolution 320x200
+    wait(1.5)
+    OR.on = false
+    result("order", OR.win ~= nil and OR.bor ~= nil and OR.win <= OR.bor, string.format("after the key: the window first changed at MAME frame %s, the border at %s (%d snapshots)",
+      tostring(OR.win), tostring(OR.bor), OR.shots))
     local res = sp:read_u8(PREFS + 4) == 1 and sp:read_u32(PG_W) == 320
     key("A5"); key("A5"); key("C6")   -- row 2: the scatter one more
     local scat = sp:read_u8(PREFS + 6) == 3
@@ -117,6 +144,14 @@ local co = coroutine.create(function()
     result("saved", sp:read_u32(PR_WROTE) >= 1 and sp:read_u32(PR_DIRTY) == 0 and sp:read_u32(PR_FAILS) == 0
       and (sp:read_u32(FRAME_NO) & 0xffff) ~= f0, string.format("written %d, failed %d, dirty %d; the game running %s; %s",
         sp:read_u32(PR_WROTE), sp:read_u32(PR_FAILS), sp:read_u32(PR_DIRTY), tostring((sp:read_u32(FRAME_NO) & 0xffff) ~= f0), prefs()))
+    local PART_ID = 0x502E1000 + 0x102A  -- (not from the splash, part 0x3E80: the code screen is refused there, as in DOS)
+    wait_until(function() return sp:read_u16(PART_ID) ~= 0x3E80 end, 60)
+    press("CPC_SEG5", 0x02); wait(2)  -- HELP, then OTHER PART & FR: the code screen (part 0x3E88)
+    local before = sp:read_u16(PART_ID)
+    press("CPC_SEG5", 0x01)
+    local codes = wait_until(function() return sp:read_u16(PART_ID) == 0x3E88 end, 8)
+    result("codes", codes, string.format("OTHER PART & FR on the help screen: part %04X -> %04X", before, sp:read_u16(PART_ID)))
+    wait(2)
   else
     local ok = sp:read_u32(PR_STATUS) == 1 and sp:read_u8(PREFS + 4) == 1 and sp:read_u8(PREFS + 5) == 0
       and sp:read_u8(PREFS + 6) == 3 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0

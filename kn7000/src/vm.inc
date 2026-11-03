@@ -147,6 +147,11 @@
 .equ LED_RNDMASK,     LED_VARS + 0x80   # 20 bytes: the random LEDs, a register's bits a byte
 .equ LED_MAGIC,       LED_VARS + 0x98   # u32: LED_MAGIC_V once LedInit has run
 .equ LED_WCH,         LED_VARS + 0x9C   # 4 bytes: the waterfall's volume on each audio channel (sound 0x6A), 0 none
+.equ LED_SHIELD_T,    LED_VARS + 0xA0   # u32: the shield's flash on until this ms
+.equ LED_SHIELD_NEW,  LED_VARS + 0xA4   # u32: 1: a new shield, its LEDs to draw (LedService)
+.equ LED_SHMASK,      LED_VARS + 0xA8   # 20 bytes: the shield's flash: about 30% of the red LEDs, drawn anew each time
+.equ LED_TANK,        LED_VARS + 0xBC   # u32: 1 once the tank panel's "lot of LEDs" button (cell 0x0B) was pressed
+.equ LED_T6,          LED_VARS + 0xC0   # u32: the VM frame + 1 the tank's white button began to blink (var 0x67 = 6)
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -158,6 +163,7 @@
 .equ LEV_LASER_R,     9                 # ... to the right
 .equ LEV_BLAST,       10
 .equ LEV_GREEN,       11
+.equ LEV_SHIELD,      12                # 0x58 by the gun's thread: the charge let go early (a shield, at its first stage)
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320
@@ -324,6 +330,7 @@
 .equ END_TICK,        VM_MISC_BASE + 0x0240     # u32: the VM frame the last words showed, 0 not yet
 .equ END_STOP_MS,     VM_MISC_BASE + 0x0244     # u32: the kernel ms when the picture stopped (| 1), 0 not yet
 .equ END_HELD,        VM_MISC_BASE + 0x0248     # u32: a key was held at the last look
+.equ HELP_CODES,      VM_MISC_BASE + 0x024C     # u32: OTHER PART & FR pressed on the help screen: the code screen next
 .equ END_PART,        0x3E87
 .equ END_STRING,      0x265
 .equ END_SCROLL,      100            # ticks from the words to the still picture

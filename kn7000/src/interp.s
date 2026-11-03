@@ -684,10 +684,18 @@ ReadInput:
     beq     ri_nohelp
     call    HelpScreen, 0, 0
 ri_nohelp:
+    mov     (HELP_CODES), d0        # OTHER PART & FR pressed on the help screen: as if pressed now
+    cmp     0, d0
+    beq     ri_codes_btn
+    clr     d0
+    mov     d0, (HELP_CODES)
+    bra     ri_codes
+ri_codes_btn:
     mov     (FWV_PANEL), a0         # OTHER PART & FR: the level-code screen, as the DOS
     movbu   (BTN_CODES_OFS, a0), d0
     and     BTN_CODES_BIT, d0       # game's C key -- not from the protection or code screens
     beq     ri_nocodes
+ri_codes:
     movhu   (CURRENT_PART_ID), d0
     cmp     PART_PROTECTION, d0
     beq     ri_nocodes
