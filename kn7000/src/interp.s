@@ -190,6 +190,7 @@ lb_next:
     mov     PAGE_BITMAP_0, a0
     call    PageUp, 0, 0
 lb_shadow:
+    call    SmLoaded, 0, 0          # page 0 to smooth, with the bilinear filter (smooth.s)
     mov     (PF_DAMAGE), d0         # (BITMAP_BUF is SHADOW)
     or      PFD_SHADOW, d0
     mov     d0, (PF_DAMAGE)
@@ -212,6 +213,10 @@ InitForPart:
     bgt     ifp_ret
     mov     d0, d2
     call    LedPart, 0, 0           # no charge, blast or waterfall goes on across a part switch (leds.s)
+    clr     d0
+    mov     d0, (SM_PEND)           # nor a bitmap still to smooth (smooth.s)
+    mov     -1, d0
+    mov     d0, (SM_SAME)
     call    AudioStopAll, 0, 0      # nothing sounds across a part switch (rawgl restartAt), and the
     mov     d2, d0                  # module player must not read MUSIC_BUF while the next part loads
     call    EnsurePart, 0, 0        # d0 = partId; returns once its resources are resident
@@ -442,6 +447,7 @@ ud_swap:
     mov     a3, (CUR_PAGE_2)
     mov     a2, (CUR_PAGE_3)
 ud_show:
+    call    SmAll, 0, 0             # bitmaps still to smooth: now, in this palette (smooth.s)
     mov     (CUR_PAGE_2), a0
     call    BlitPage, 0, 0          # a0 = page -> palette-blit to the LCD frame
     ret     [d2,d3,a2,a3], 0x20
@@ -464,6 +470,7 @@ FillPageOp:
     bne     fpo_ret
     call    PerfMarkDirty, 0, 0
     mov     a0, a2
+    call    SmClear, 0, 0           # (a0: the page; no longer a bitmap to smooth)
     and     0xff, d3
     mov     0x01010101, d0
     mul     d0, d3                  # d3 = the colour, four times
@@ -535,6 +542,10 @@ CopyPage:
 cp_novscroll:
     cmp     0, d3
     bne     cp_scrolled
+    mov     a2, a0                  # a bitmap still to smooth: the copy is one too (smooth.s)
+    mov     a3, a1
+    mov     1, d0
+    call    SmCopy, 0, 0
     # plain full-page copy, 32-bit words, 8 a turn (PG_SIZE % 32 == 0 in both modes)
     mov     (PG_SIZE), d2
     lsr     5, d2
@@ -574,6 +585,10 @@ cp_absrange:
     cmp     199, d2
     bgt     cp_ret
 cp_off:
+    mov     a2, a0                  # a bitmap still to smooth: smoothed before it is shifted (smooth.s)
+    mov     a3, a1
+    clr     d0
+    call    SmCopy, 0, 0
     mov     d2, d0                  # the scroll in the page's rows (6/5 of it in the high-resolution mode)
     call    ToPg, 0, 0
     mov     d0, d2
@@ -1248,11 +1263,13 @@ ExecuteInstruction:
     mov     d1, d0
     and     0x80, d0
     beq     ei_not80
+    call    SmDraw, 0, 0            # (the work page smoothed first when pending: smooth.s; keeps d1)
     bra     Op80
 ei_not80:
     mov     d1, d0
     and     0x40, d0
     beq     ei_not40
+    call    SmDraw, 0, 0
     bra     Op40
 ei_not40:
     # standard opcodes 0x00..0x1A (d1 = opcode)
@@ -1654,6 +1671,7 @@ OpSetPalette:
     movbu   (a2), d0
     add     2, a2                   # skip 2-byte word
     call    SetupPalette, 0, 0
+    call    SmAll, 0, 0             # bitmaps still to smooth: in this palette (smooth.s)
     bra     ei_end
 
 # ---- 0x0C RESET_THREAD: freeze/unfreeze/delete thread range [first..last] -----
@@ -1774,6 +1792,7 @@ OpDrawString:
     mov     1, d1                   # a key held now does not count: a press does
     mov     d1, (END_HELD)
 ods_go:
+    call    SmDraw, 0, 0            # (keeps d0, the string)
     movbu   (2, a2), d1             # x (char column)
     movbu   (3, a2), d2             # y (pixels)
     movbu   (4, a2), d3             # colour

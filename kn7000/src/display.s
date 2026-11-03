@@ -539,6 +539,10 @@ msw_ret:
 DisplayConvert:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    clr     d0
+    mov     d0, (SM_PEND)           # a bitmap still to smooth stays as it was enlarged (smooth.s)
+    mov     -1, d0
+    mov     d0, (SM_SAME)
     mov     (PF_MODE), d0
     cmp     0, d0
     bne     dc_down

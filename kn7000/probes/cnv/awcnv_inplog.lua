@@ -241,6 +241,9 @@ local function session()
   if not wait_until(function() return sp:read_u32(CV_STATE) == 3 and sp:read_u32(CV_TASK) ~= 0 end, 120) then
     log("the game did not start"); return
   end
+  -- AW_SMOOTH=0: the bitmap filter off (PR_SMOOTH, PREFS_AT + 9; read from the card by now), for a nearest-pixel
+  -- baseline of the same session (probes/smoothcheck.py)
+  if os.getenv("AW_SMOOTH") == "0" then sp:write_u8(0x502DF909, 0) end
   log(string.format("game task %d at t=%.1f s", sp:read_u32(CV_TASK), now()))
   if REPLAY then
     wait_until(function() return END and frame() >= END end, 7200)
