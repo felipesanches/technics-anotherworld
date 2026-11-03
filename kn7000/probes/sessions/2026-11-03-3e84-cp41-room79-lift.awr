@@ -1,0 +1,14 @@
+# made by probes/jump_session.py from 3e84-cp41-room79-recharge.awr: part 0x3E84 at frame 300, 00=41, pokes 20:67=78:01=340:02=100
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 41
+R 300 0x3E84
+V 321 0x67 78
+V 321 0x01 340
+V 321 0x02 100
+I 302 play 0x00
+I 351 play 0x01
+I 363 play 0x00
+I 381 play 0x02
+I 384 play 0x00
+E 501 0

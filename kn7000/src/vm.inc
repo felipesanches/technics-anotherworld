@@ -152,6 +152,11 @@
 .equ LED_SHMASK,      LED_VARS + 0xA8   # 20 bytes: the shield's flash: about 30% of the red LEDs, drawn anew each time
 .equ LED_TANK,        LED_VARS + 0xBC   # u32: 1 once the tank panel's "lot of LEDs" button (cell 0x0B) was pressed
 .equ LED_T6,          LED_VARS + 0xC0   # u32: the VM frame + 1 the tank's white button began to blink (var 0x67 = 6)
+.equ LED_SKEL_T,      LED_VARS + 0xC4   # u32: the green flash of a skeleton exploding on until this ms
+.equ LED_LIFT,        LED_VARS + 0xC8   # 3 bytes: the lift's chase: the lead's ring position (0-7), then the two behind
+                                        # it (0xFF: none)
+.equ LED_LIFTMASK,    LED_VARS + 0xCC   # 20 bytes: the chase's LEDs this time (the trail's by its duty cycle)
+.equ LED_LIFT_T,      LED_VARS + 0xE0   # u32: when the lead last moved (the trail goes out LED_TRAIL_MS later)
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -164,6 +169,7 @@
 .equ LEV_BLAST,       10
 .equ LEV_GREEN,       11
 .equ LEV_SHIELD,      12                # 0x58 by the gun's thread: the charge let go early (a shield, at its first stage)
+.equ LEV_SKEL,        13                # a skeleton explodes (0x5A at the dying character's pc)
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320

@@ -8,7 +8,9 @@
 # the shadow holds the tank's LED set after that press, register 13's red LEDs from var 0x67 >= 2, register 12's from
 # >= 3, INTRO & ENDING 1 / 2 with vars 0x72 / 0x71, BEAT 2 / 3 with 0x74 / 0x75, and, from var 0x67 = 6 at frame t6,
 # the four AUTO PLAY CHORD / SOUND ARRANGER LEDs lit exactly while (frame - t6 - 1) mod 4 < 2. One frame's lag is
-# allowed (the shadow is written at the game task's next yield); up to the eject (var 0x63 = 1), which ends the panel.
+# allowed (the shadow is written at the game task's next yield), and an "off" not checked while another effect (a
+# laser: every red LED) is on; up to the eject (var 0x63 = 1) or the panel's end
+# (the LED log's tank column: thread 59 stopped).
 # Prints each rule's frames right / checked.
 #   python3 -I probes/tankcheck.py OUT.led OUT/vars.bin
 import struct
@@ -32,11 +34,13 @@ def none_of(b, m):
     return all((x & y) == 0 for x, y in zip(b, m))
 
 
-rows = []
+rows, shown, other = [], [], []           # every line (the variables are a record for each): '-' before the shadow
 for line in open(sys.argv[1]):
     f = line.split()
-    if len(f) >= 9 and f[6] != "-":
-        rows.append((int(f[0]), bytes.fromhex(f[6])))
+    if len(f) >= 9:
+        rows.append((int(f[0]), bytes.fromhex(f[6]) if f[6] != "-" else bytes(20)))
+        shown.append(int(f[20]) if len(f) > 20 else 1)
+        other.append(len(f) > 17 and any(int(x) for x in (f[3], f[4], f[5], f[15], f[16], f[17])))  # a laser, flash...
 raw = open(sys.argv[2], "rb").read()
 n = min(len(rows), len(raw) // 512)
 var = [struct.unpack_from("<256h", raw, 512 * i) for i in range(n)]
@@ -49,6 +53,8 @@ wrong = []
 
 def check(name, i, mask, on):
     """frame i: mask lit when on, or not lit when not (in frame i or i + 1: the lag)."""
+    if not on and any(0 <= i + d < n and other[i + d] for d in (-1, 0, 1)):
+        return                            # (another effect lighting them meanwhile: a laser lights every red LED)
     ok = any(i + d < n and (covers(rows[i + d][1], mask) if on else none_of(rows[i + d][1], mask)) for d in (0, 1))
     rules[name][0] += ok
     rules[name][1] += 1
@@ -59,8 +65,8 @@ def check(name, i, mask, on):
 if press is not None:
     for i in range(press + 1, n - 1):
         v = var[i]
-        if v[0x63] == 1:                  # the eject (var 0x63 = 1): the panel is gone, and its LEDs
-            break
+        if v[0x63] == 1 or not shown[i]:  # the eject (var 0x63 = 1), or the panel gone (the log's tank column: the
+            break                         # tank destroyed): its LEDs with it
         if v[0x67] < 0 or v[0x67] > 6 or var[i + 1][0x67] != v[0x67]:
             continue                      # (the panel's progress changing this frame: next frame's rule)
         check("leds", i, TANK, True)

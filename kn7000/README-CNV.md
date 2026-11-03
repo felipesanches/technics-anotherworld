@@ -41,7 +41,7 @@ writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `b
 
 | file(s)                              | bytes   | what                                                                                                                  |
 |--------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 40,620  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
+| `KN7APP.BIN`                         | 41,948  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                      |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                 |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)          |
@@ -180,15 +180,15 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
    The panel's buttons are the port's own controls:
 
-| what         | panel                                                                   |
-|--------------|-------------------------------------------------------------------------|
-| codes        | OTHER PART & FR: the level code screen                                  |
-| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns     |
-| settings     | HELP, then PAGE DOWN three times ("Settings", below)                    |
-| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too) |
-| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off  |
-| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200     |
-| quit         | hold EXIT for 1.5 s                                                     |
+| what         | panel                                                                                                |
+|--------------|------------------------------------------------------------------------------------------------------|
+| codes        | OTHER PART & FR: the level code screen                                                               |
+| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns; OTHER PART & FR the code screen |
+| settings     | HELP, then PAGE DOWN three times ("Settings", below)                                                 |
+| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too)                              |
+| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off                               |
+| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200                                  |
+| quit         | hold EXIT for 1.5 s                                                                                  |
 
    **The screen.** The game starts in its high-resolution mode: it draws at 384x240, the LCD's whole height,
    centred with black strips at the sides, in the original's proportions (6/5 of 320x200 both ways). The
@@ -243,7 +243,8 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
 The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds five settings. They are
 chosen and changed on the keybed, with the game's own direction keys: **UP** (A♭5 or B♭5) and **DOWN** (A5)
-choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page:
+choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
+resolution redraws the page first and the ambilight's border after it):
 
 | setting       | values                         | default | what it does                                                           |
 |---------------|--------------------------------|---------|------------------------------------------------------------------------|
@@ -265,26 +266,33 @@ settings changed on the page, then read back from the card on the next start).
 With the LED effects on (the default), every LED of the panel goes dark once the firmware search is done (while
 "Loading..." still counts), and from then on only the game lights them (`src/leds.s`):
 
-| moment                                          | LEDs                                                                       |
-|-------------------------------------------------|----------------------------------------------------------------------------|
-| a guard's laser shot                            | every red LED on for 150 ms                                                |
-| Lester's laser shot                             | the red LEDs on the half of the instrument he shoots towards, 150 ms       |
-| Lester's gun charging (a shield or a big blast) | the eight PANEL MEMORY LEDs pulse (200 ms on, 200 off)                     |
-| the charge grown to the big energy blob         | the same, twice as fast                                                    |
-| the big blast                                   | every LED on while the blast shows (the beam and its impact, about 0.9 s)  |
-| the gun recharging at a station                 | every green LED on for the 1.4 s the station's sparkles last               |
-| by the waterfall (the caves)                    | LEDs at random every 50 ms: half on its two screens, an eighth beside them |
-| the intro's lightning                           | every LED on for 150 ms at each flash                                      |
-| the intro's thunder                             | every LED on for 100 ms at each loud clap                                  |
-| the lightning striking the lab                  | every LED blinks three times                                               |
+| moment                                          | LEDs                                                                                                                                                                                                                                                                                                 |
+|-------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| a guard's laser shot                            | every red LED on for 150 ms                                                                                                                                                                                                                                                                          |
+| Lester's laser shot                             | the red LEDs on the half of the instrument he shoots towards, 150 ms                                                                                                                                                                                                                                 |
+| Lester's gun charging (the small ball)          | the eight PANEL MEMORY LEDs pulse (200 ms on, 200 off)                                                                                                                                                                                                                                               |
+| the charge grown to the big ball                | the ring twice as fast, and every green LED blinking with it                                                                                                                                                                                                                                         |
+| the small ball let go: a shield                 | a 150 ms flash of the red LEDs, each with a 30% chance, drawn anew each time                                                                                                                                                                                                                         |
+| the big blast                                   | every LED on while the blast shows (the beam and its impact, about 0.9 s)                                                                                                                                                                                                                            |
+| a skeleton exploding (a guard or Lester)        | every green LED on for 200 ms                                                                                                                                                                                                                                                                        |
+| the gun recharging at a station                 | every green LED on for the 1.4 s the station's sparkles last                                                                                                                                                                                                                                         |
+| by the waterfall (the caves)                    | LEDs at random every 50 ms: half on its two screens, one in 32 beside them                                                                                                                                                                                                                           |
+| the lift's bouncing light (the caves)           | the PANEL MEMORY ring follows it: 2-1-8-7-6-5-4-3 left to right and back, the lead on, the two behind it at half and a quarter (out once it rests)                                                                                                                                                   |
+| the battle tank's panel                         | its lights mirrored: its "lot of LEDs" button lights a fixed 30 of ours, its button blocks the sound group's red LEDs (and the SOLO row), its red lamps INTRO & ENDING 1 and 2, its green ones BEAT 2 and 3, its blinking white button the four AUTO PLAY CHORD / SOUND ARRANGER LEDs, in its rhythm |
+| a guard's blinking light (part 0x3E83, room 68) | SPLIT POINT G2, the leftmost red LED, blinking with it (the scene not yet confirmed)                                                                                                                                                                                                                 |
+| the intro's lightning                           | every LED on for 150 ms at each flash                                                                                                                                                                                                                                                                |
+| the intro's thunder                             | every LED on for 100 ms at each loud clap                                                                                                                                                                                                                                                            |
+| the lightning striking the lab                  | every LED blinks three times                                                                                                                                                                                                                                                                         |
 
 At the quit the LEDs go back to what the firmware has them showing; with the LED effects turned off in the
 settings, at once (and the game leaves them to the firmware from then on).
 
 The moments are recognised in the game's own bytecode as it runs, the way the reference VM's event log showed them
-(research-scratch `kn7000-aw-reference/fingerprints`): a sound and which thread plays it (lasers, the charge, the
-waterfall's loop, sound 0x6A, whose volume on its channel gives the share of LEDs lit), a variable (the blast,
-var 0x88; the recharge, var 0x06 set to 1000; Lester's facing, var 0x04), a palette (the intro). The red LEDs'
+(research-scratch `kn7000-aw-reference/fingerprints`): a sound and which thread plays it, or where (lasers, the
+charge, a shield, a skeleton's 0x5A at the dying character's own pc, the waterfall's loop, sound 0x6A, whose volume
+on its channel gives the share of LEDs lit, its square over 32 of 256), a variable (the blast, var 0x88; the recharge,
+var 0x06 set to 1000; Lester's facing, var 0x04; the tank panel's vars 0x5F, 0x67, 0x71-0x75 and its press, var 0xFA),
+a thread's pc (the lift's light: the frame its thread draws; the guard's light), a palette (the intro). The red LEDs'
 halves are split at the middle of the instrument by where each LED is on the panel (the MAME layout), their colour
 by the service manual's parts list (`probes/ledmasks.py`). The game writes the firmware's own LED shadow, so the
 firmware's 24 ms flush carries the pattern; any LED the firmware changed meanwhile keeps the change when its LEDs
@@ -874,7 +882,7 @@ map, laid out around the loader's contract `kn7cnv.inc` (which the game includes
 | `0x502B9C00`-`0x502B9C7F` | LV_STR: the loader's line buffer                                                                 |
 | `0x502B9D00`-`0x502B9DFF` | LOADER_VARS: the loader's variables and the saved SD folder                                      |
 | `0x502B9E00`-`0x502B9E6B` | SVC: the loader's service table (the game reads it)                                              |
-| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (40,620 bytes, to 0x502C3EAC)                                |
+| `0x502BA000`-`0x502C7FFF` | KN7APP.BIN: header, code and tables (41,948 bytes, to 0x502C43DC)                                |
 | `0x502C8000`-`0x502D33FF` | SHADOW: the window as the LCD shows it, 4 bits a pixel; help and stop screens, a bitmap's planes |
 | `0x502D4000`-`0x502D5FFF` | REPORT_BUF: the text of AWPERF.TXT                                                               |
 | `0x502D8000`-`0x502D82FF` | AW_FONT: the 8x8 font, from AWFONT.AW                                                            |

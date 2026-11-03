@@ -1,0 +1,11 @@
+# made by probes/jump_session.py from 3e86-cp66-room170-guard-kill.awr: part 0x3E86 at frame 300, 00=66
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 66
+R 300 0x3E86
+I 302 play 0x00
+I 311 play 0x02
+I 393 play 0x00
+I 397 play 0x80
+I 400 play 0x00
+E 501 0

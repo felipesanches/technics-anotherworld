@@ -1,0 +1,13 @@
+# made by probes/jump_session.py from 3e84-cp41-room109-lift.awr: part 0x3E84 at frame 300, 00=41
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 41
+R 300 0x3E84
+I 302 play 0x00
+I 311 play 0x02
+I 489 play 0x00
+I 501 play 0x08
+I 507 play 0x00
+I 561 play 0x04
+I 567 play 0x00
+E 631 0

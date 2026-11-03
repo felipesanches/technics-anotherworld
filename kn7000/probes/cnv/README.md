@@ -781,6 +781,34 @@ is findable by its first 14 bytes in all four builds: `cfe0f8feecf1e682fccf00000
     TREE=<card tree, root KN7APP.BIN = the menu> MT_PROGRAM="Another World" MT_GAME_UP="0x502DF000=3" \
       ~/compartilhado/technics-roms-disasm/kn7000/tools/kn7menu/test/run_menu_tests.sh $T/menu leave
 
+## The panel's LEDs, third round; the help screen (2026-11-03)
+
+Felipe's third list. The signals: research-scratch `kn7000-aw-reference/fingerprints`, "Fourth pass" (the tank:
+`tanksig.py`, `tank_probe.sh`) and "Fifth pass" (the lift, the skeletons, the guard's light: `lift_probe.sh`,
+`hit_probe.sh`). Replays in MAME (`run_inplog.sh`, program 893), the jump sessions made with `../jump_session.py`
+from the reference VM's:
+
+| session (frames)               | check                                                                                                                                                                                                                                                                                                                              |
+|--------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e86-via-code-gun` (1400)     | dark 1280/1280; the small ball: the ring in 13 of 24 frames, nothing else; the big ball: the ring with every green LED together in 51 of 52, nothing else; 2 shields, 2 different red sets (34%, and one with a guard's shot at the same moment: every red LED); blast, lasers as before; pictures 1400/1400 as the reference VM's |
+| `3e84-waterfall-48-4a` (901)   | beside the waterfall (chance 8/256): 3% of the LEDs lit on average; on it (128/256): 48%                                                                                                                                                                                                                                           |
+| `3e85-tank-panel-solve` (933)  | `../tankcheck.py`: from the press of cell 0x0B (frame 461) to the eject, each rule 64/64; the white button 8/8 (from frame 521)                                                                                                                                                                                                    |
+| `3e85-tank-panel-hold` (721)   | to the tank's destruction (the panel gone at frame 598): each rule 132/132, the white button 44/44                                                                                                                                                                                                                                 |
+| `3e86-cp66-guard-kill` (jump)  | every green LED at frames 427-428: the reference VM's explosion at the part's tick 125 = frame 426                                                                                                                                                                                                                                 |
+| `3e84-cp41-room109-lift` (631) | `../liftcheck.py`: the lead's path 0134673201367653013465320, at most 3 lit; at rest on the left, the lead alone                                                                                                                                                                                                                   |
+| `3e84-cp41-room79-lift` (501)  | the lead's path sweeping 0-7-0 over and over, at most 3 lit                                                                                                                                                                                                                                                                        |
+
+The guard's blinking light is a candidate only (part 0x3E83, room 68, thread 2's polygon): no session reaches it.
+`run_prefs.sh` (`awcnv_prefs.lua`): "order" (the settings page's resolution change: the window redrawn at MAME frame 8,
+the border at 10) and "codes" (OTHER PART & FR on the help screen in the intro: part 0x3E81 to 0x3E88) pass, with the
+rest (7 and 2 checks).
+
+    T=~/compartilhado/tmp/aw-leds3; S=probes/sessions
+    AW_LEDLOG=$T/tank.led probes/cnv/run_inplog.sh $T/tank replay $S/2026-11-03-3e85-tank-panel-solve.awr
+    python3 -I probes/tankcheck.py $T/tank.led $T/tank/vars.bin
+    AW_LEDLOG=$T/l109.led probes/cnv/run_inplog.sh $T/l109 replay $S/2026-11-03-3e84-cp41-room109-lift.awr
+    python3 -I probes/liftcheck.py $T/l109.led
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer
