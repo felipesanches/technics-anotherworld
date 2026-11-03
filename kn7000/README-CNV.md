@@ -164,7 +164,7 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 3. The loader's screen flashes by. As soon as the game is first called, the whole LCD goes black and
    "Loading... NN%" counts up in its middle: the firmware search, the font, the strings, the sound tables and
    the shared polygons, then, the first time after the instrument was switched on, the game's samples going
-   into the effects DSP ("Sound"; in MAME 11.6 s; HELP's first page shows how long it took on your unit), the
+   into the effects DSP ("Sound"; in MAME 11.6 s), the
    sound's settling and the first part. At 100% the splash starts. Whenever the game moves to another part,
    the screen goes black for a moment while the part's files are read from the card.
 4. The controls (the HELP screen shows them too, with the level codes). **The game is played on the keybed
@@ -275,14 +275,15 @@ With the LED effects on (the default), every LED of the panel goes dark once the
 | the small ball let go: a shield                 | a 150 ms flash of the red LEDs, each with a 30% chance, drawn anew each time                                                                                                                                                                                                                         |
 | the big blast                                   | every LED on while the blast shows (the beam and its impact, about 0.9 s)                                                                                                                                                                                                                            |
 | a skeleton exploding (a guard or Lester)        | every green LED on for 200 ms                                                                                                                                                                                                                                                                        |
-| the gun recharging at a station                 | every green LED on for the 1.4 s the station's sparkles last                                                                                                                                                                                                                                         |
+| the gun recharging at a station                 | the green LEDs blinking fast at random, each with a 50% chance every 60 ms, for the 1.4 s the station's sparkles last                                                                                                                                                                                |
 | by the waterfall (the caves)                    | LEDs at random every 50 ms: half on its two screens, one in 32 beside them                                                                                                                                                                                                                           |
-| the lift's bouncing light (the caves)           | the PANEL MEMORY ring follows it: 2-1-8-7-6-5-4-3 left to right and back, the lead on, the two behind it at half and a quarter (out once it rests)                                                                                                                                                   |
+| the lift's bouncing light (the caves)           | the PANEL MEMORY ring follows it: 2-1-8-7-6-5-4-3 left to right and back, the lead and the one it just left on (at most two, no dimming), out once it rests                                                                                                                                          |
 | the battle tank's panel                         | its lights mirrored: its "lot of LEDs" button lights a fixed 30 of ours, its button blocks the sound group's red LEDs (and the SOLO row), its red lamps INTRO & ENDING 1 and 2, its green ones BEAT 2 and 3, its blinking white button the four AUTO PLAY CHORD / SOUND ARRANGER LEDs, in its rhythm |
 | a guard's blinking light (part 0x3E83, room 68) | SPLIT POINT G2, the leftmost red LED, blinking with it (the scene not yet confirmed)                                                                                                                                                                                                                 |
 | the intro's lightning                           | every LED on for 150 ms at each flash                                                                                                                                                                                                                                                                |
 | the intro's thunder                             | every LED on for 100 ms at each loud clap                                                                                                                                                                                                                                                            |
 | the lightning striking the lab                  | every LED blinks three times                                                                                                                                                                                                                                                                         |
+| the explosion in the lake (Lester's arrival)    | every green LED on for 300 ms                                                                                                                                                                                                                                                                        |
 
 At the quit the LEDs go back to what the firmware has them showing; with the LED effects turned off in the
 settings, at once (and the game leaves them to the firmware from then on).
@@ -292,7 +293,8 @@ The moments are recognised in the game's own bytecode as it runs, the way the re
 charge, a shield, a skeleton's 0x5A at the dying character's own pc, the waterfall's loop, sound 0x6A, whose volume
 on its channel gives the share of LEDs lit, its square over 32 of 256), a variable (the blast, var 0x88; the recharge,
 var 0x06 set to 1000; Lester's facing, var 0x04; the tank panel's vars 0x5F, 0x67, 0x71-0x75 and its press, var 0xFA),
-a thread's pc (the lift's light: the frame its thread draws; the guard's light), a palette (the intro). The red LEDs'
+a thread's pc (the lift's light: the frame its thread draws; the guard's light), a palette (the intro; the
+lake's explosion, palette 0x02 loaded at pc 0x3BCD of part 0x3E82). The red LEDs'
 halves are split at the middle of the instrument by where each LED is on the panel (the MAME layout), their colour
 by the service manual's parts list (`probes/ledmasks.py`). The game writes the firmware's own LED shadow, so the
 firmware's 24 ms flush carries the pattern; any LED the firmware changed meanwhile keeps the change when its LEDs
@@ -433,8 +435,9 @@ sounds, played by the instrument's effects DSP), **tone generator** (the KN7000'
 iteration) and **off**: DSP, then tone generator, then off, then DSP again (off goes to the tone generator when
 the DSP cannot be used). RIGHT 2 works in the HELP screen too, and its first page shows the mode at once:
 "NOW: DSP SAMPLES", "NOW: TONE GENERATOR" or "NOW: OFF", with "NO DSP n" after it when the DSP was given up (n
-below); under it "KEYBED SOUND: ON" or "OFF" (PART SELECT RIGHT 1, "Playing it"), and on the right how long the
-sample bank took ("SENT IN 11.4 S", "CHECKED IN 0.3 S" when it was already there, or "NOT LOADED"). The game
+below); under it "KEYBED SOUND: ON" or "OFF" (PART SELECT RIGHT 1, "Playing it"). (Until 2026-11-03 it also showed
+how long the sample bank took, "SENT IN 11.4 S"; Felipe had it removed: the game still builds that text, DV_BANKTXT,
+but shows it nowhere.) The game
 starts in the DSP mode when it could set the DSP up, else in the tone generator's. In every mode the module
 player runs and writes its sync marks into var 0xF4 as before, so the intro keeps its timing.
 
@@ -498,7 +501,7 @@ it):
 
   On the unit the handshakes take one DSP frame each (pass 8: 96.8 % of the firmware's accesses), 8.16 s before
   and 5.41 s now; MAME's took 34 and 31.5 us each. If the card and the CPU go as in MAME, the unit should take
-  about 9.5 s where it took about 22; the HELP screen's first page shows the time it took ("SENT IN ...").
+  about 9.5 s where it took about 22.
   The whole bank rather than a part's sounds at each part switch: one wait, no pause added to the part
   switches, and no list of which part needs which sound.
 - **The mixer.** 303 SHARC instructions at PM `0x8140` (the bank's decoder and checksum included), eight voices: PLAY_SOUND's four channels on voices 0-3
@@ -550,7 +553,7 @@ it):
    starts only have the DSP check the bank (a fraction of a second).
 3. In the intro you should hear the original game's own sounds: its music and its effects, not the instrument's
    voices. HELP's first page shows "NOW: DSP SAMPLES"; "NO DSP n" there means the DSP was not used (n above):
-   note n. On its right, "SENT IN n S": how long the bank took on your unit (photograph it).
+   note n.
 4. Then with **REVERB off**: quit, switch REVERB off on the main screen, start the game again (quick now). Is it
    heard, and how loud against REVERB on? That decides which of the two paths the instrument mixes.
 5. PART SELECT RIGHT 2: the tone generator (the first iteration's GM sound), again: off, again: the DSP. The same
@@ -559,7 +562,7 @@ it):
 
 What to report: whether the game's own sounds were heard with REVERB on and with it off; how loud against your
 notes; anything garbled, clicking or stuck (a sound that keeps playing after the help screen, a part switch, RIGHT
-2 or the quit); the help line ("NO DSP n"); how long the sounds took to load (HELP's "SENT IN n S"); whether the
+2 or the quit); the help line ("NO DSP n"); whether the
 reverb and the chorus
 were back after quitting. **If anything goes wrong, switch the instrument off and on**: the firmware resets and
 reloads the DSP at every power-on, and nothing of this outlives that (no IC23, no user memory, no card writes

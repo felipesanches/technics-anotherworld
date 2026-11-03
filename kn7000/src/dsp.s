@@ -708,7 +708,7 @@ dpr_load:
     mov     DF_HOOK, d2
     cmp     0, d0
     bne     dpr_fail
-    call    DspNow, 0, 0            # the bank's time starts here (the help screen shows it)
+    call    DspNow, 0, 0            # the bank's time starts here (DV_BANKTXT)
     mov     d0, (DV_BK_MS)
     clr     d0
     mov     d0, (DV_BK_FILE)

@@ -157,6 +157,8 @@
                                         # it (0xFF: none)
 .equ LED_LIFTMASK,    LED_VARS + 0xCC   # 20 bytes: the chase's LEDs this time (the trail's by its duty cycle)
 .equ LED_LIFT_T,      LED_VARS + 0xE0   # u32: when the lead last moved (the trail goes out LED_TRAIL_MS later)
+.equ LED_GRNMASK,     LED_VARS + 0xE4   # 20 bytes: the recharge's green LEDs this time (random, drawn every LED_GRN_MS)
+.equ LED_GRN_RT,      LED_VARS + 0xF8   # u32: when they are drawn next
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -170,6 +172,7 @@
 .equ LEV_GREEN,       11
 .equ LEV_SHIELD,      12                # 0x58 by the gun's thread: the charge let go early (a shield, at its first stage)
 .equ LEV_SKEL,        13                # a skeleton explodes (0x5A at the dying character's pc)
+.equ LEV_LAKE,        14                # the explosion in the lake Lester lands in (part 0x3E82)
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320

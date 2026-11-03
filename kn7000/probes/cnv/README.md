@@ -809,6 +809,27 @@ rest (7 and 2 checks).
     AW_LEDLOG=$T/l109.led probes/cnv/run_inplog.sh $T/l109 replay $S/2026-11-03-3e84-cp41-room109-lift.awr
     python3 -I probes/liftcheck.py $T/l109.led
 
+## The panel's LEDs, fourth round; the help screen's bank time (2026-11-03)
+
+Felipe's fourth list: the recharge's green LEDs blinking fast at random, every green LED flashing at the lake's
+explosion (Lester's arrival, part 0x3E82: the reference VM loads palette 0x02 from thread 3 at pc 0x3BCD, the part's
+tick 25), the lift's ring with no dimming and at most two LEDs lit, and the help screen without the bank's time
+("SENT IN 11.4 S", whose last letter wrapped). Build `2ff75e4c...`; replays in MAME (`run_inplog.sh`, program 893):
+
+| session (frames)               | check                                                                                                                                                                              |
+|--------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e84-cp31-recharge` (501)     | `../ledcheck.py`: dark 481/481; the recharge, frames 349-366: 50% of the green LEDs lit on average, 18 different sets in 18 frames, nothing else                                   |
+| `3e84-cp41-room109-lift` (631) | `../liftcheck.py`: the lead's path 0134675320134675320134675320 (the thread's frames, `lift109`), at most 2 lit                                                                    |
+| `intro-rec2` (3218)            | every green LED, nothing else, at frames 2923-2925, 3069-3071 and 3187-3189: the lake's explosion each time the session shows it (its pages: the splash seen from under the water) |
+
+    T=~/compartilhado/tmp/aw-leds4; S=probes/sessions
+    AW_LEDLOG=$T/rch.led probes/cnv/run_inplog.sh $T/rch replay $S/2026-11-02-3e84-cp31-recharge.awr
+    python3 -I probes/ledcheck.py $T/rch.led
+    AW_LEDLOG=$T/l109.led probes/cnv/run_inplog.sh $T/l109 replay $S/2026-11-03-3e84-cp41-room109-lift.awr
+    python3 -I probes/liftcheck.py $T/l109.led
+    AW_LEDLOG=$T/intro.led probes/cnv/run_inplog.sh $T/intro replay $S/2026-11-02-intro-rec2.awr
+    python3 -I probes/greenframes.py $T/intro.led
+
 ## What the platform does with a converter
 
 Three small converters, each alone on a floppy, ask what a converter may do on 941. They answer

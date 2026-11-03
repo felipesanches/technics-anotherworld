@@ -349,10 +349,6 @@ help_page0:                         # the status lines (DV_*TXT) are dsp.s DspMo
     .long   hs_action
     .word   80, 94, 1, 0
     .long   hs_action_key
-    .word   200, 50, 2, 0
-    .long   hs_bank_lbl
-    .word   200, 61, 1, 0
-    .long   DV_BANKTXT
     .word   8, 110, 1, 0
     .long   hs_col_panel
     .word   8, 120, 3, 0
@@ -478,7 +474,6 @@ hs_title2:       .asciz "KN7000 PORT"
 hs_controls:     .asciz "CONTROLS"
 hs_col_keys:     .asciz "KEYBED / MIDI 1-3"
 hs_col_panel:    .asciz "PANEL BUTTONS"
-hs_bank_lbl:     .asciz "SOUND BANK"
 hs_up:           .asciz "UP"
 hs_up_key:       .asciz "Ab5 or Bb5"
 hs_down:         .asciz "DOWN"

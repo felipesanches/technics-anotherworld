@@ -4,14 +4,15 @@
 # leds.s -- the control panel's LEDs follow the game (README-CNV.md, "The panel's LEDs"; Felipe, 2026-11-02): from the
 # end of the firmware search to the quit every LED is off but those the game's effects light: the red LEDs at a laser
 # shot (a guard's: all of them; Lester's: those of the half of the instrument he shoots towards), the eight PANEL
-# MEMORY LEDs pulsing while his gun builds a charge (and, once it is the big blob, the green ones blinking with them),
+# MEMORY LEDs pulsing while his gun builds a charge (and, once it is the big ball, the green ones blinking with them),
 # a flash of about 30% of the red LEDs (each with that chance, drawn anew each time) when a small charge is let go as
 # a shield, every LED while the
-# mega-blast shows, the green ones while the gun recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
+# mega-blast shows, the green ones blinking fast at random while the gun recharges at a station, every LED at the intro's lightning and thunder (blinking at the strike), and LEDs lit at
 # random by the waterfall, more of them the louder it is (led_water), and the battle tank's panel mirrored (its LEDs,
 # button blocks and lamps; its blinking white button on the four AUTO PLAY CHORD / SOUND ARRANGER LEDs), the green
-# LEDs flashing when a skeleton explodes, the lift's bouncing light chased round the PANEL MEMORY ring (2-1-8-7-6-5-4-3
-# left to right, the other way back, the lead full on and two behind it at half and a quarter), and a blinking light
+# LEDs flashing when a skeleton explodes and at the explosion in the lake Lester lands in, the lift's bouncing light
+# chased round the PANEL MEMORY ring (2-1-8-7-6-5-4-3 left to right, the other way back: the lead and the one behind
+# it, two at most), and a blinking light
 # by a guard (part 0x3E83) on the leftmost red LED, SPLIT POINT G2. Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
@@ -41,6 +42,8 @@
 #   lightning          SET_PALETTE 0x02 in the intro (part 0x3E81): the screen white for three frames
 #   thunder            PLAY_SOUND 0x0A at a volume of 50 or more in the intro
 #   the strike         SET_PALETTE 0x17 at pc 0x065A in the intro: the bolt hits the tower
+#   the lake           SET_PALETTE 0x02 at pc 0x3BCD in part 0x3E82, thread 3, at its tick 25 (with sounds 0x3E and
+#                      0x31): the explosion in the lake Lester lands in, the screen white for two ticks
 #   a skeleton explodes PLAY_SOUND 0x5A at the dying character's pc: guards 3E83 0x1044, 3E84 0x4D16, 3E86 0x417A;
 #                      Lester 0x0FD6, 0x4CA4, 0x4101 (0x5A is also the mega-blast's impact: hence the pc)
 #   the lift's light   part 0x3E84, the drawing thread's pc: room (var 0x67) 79, thread 5, pc 0x081F + 5k, k 0-12
@@ -65,8 +68,10 @@
 .equ LED_SHIELD_MS,   150            # the shield's flash
 .equ LED_SHIELD_P,    77             # each red LED's chance in it, of 256 (30%), drawn anew each time
 .equ LED_SKEL_MS,     200            # the skeleton's green flash
-.equ LED_PWM_MS,      24             # the chase's trail: on or off for a whole flush of the firmware's
-.equ LED_TRAIL_MS,    200            # ... and out this long after the lead last moved (the light at rest)
+.equ LED_LAKE_MS,     300            # the lake's
+.equ LED_TRAIL_MS,    200            # the chase's trail: out this long after the lead last moved (the light at rest)
+.equ LED_GRN_MS,      60             # the recharge's green LEDs drawn again this often ...
+.equ LED_GRN_P,       128            # ... each lit with this chance, of 256
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -88,6 +93,7 @@
 .equ W_APC,           0x10000        # its white button: the four AUTO PLAY CHORD / SOUND ARRANGER LEDs
 .equ W_LIFT,          0x20000        # the lift's chase (LED_LIFTMASK)
 .equ W_GLIGHT,        0x40000        # the guard's light: SPLIT POINT G2
+.equ W_GRNRND,        0x80000        # the recharge's random green LEDs (LED_GRNMASK)
 
 # LedInit: the LEDs' addresses for this program build, or effects off (LED_SH 0). After the firmware search (the
 # converter's main task, cnv_main.s) and at the game task's start (display.s); only the first call does anything.
@@ -197,8 +203,14 @@ lev_blast:
     rets
 lev_green:
     cmp     LEV_SKEL, d0
-    bne     lev_green2
+    bne     lev_lake
     add     LED_SKEL_MS, d1
+    mov     d1, (LED_SKEL_T)
+    rets
+lev_lake:
+    cmp     LEV_LAKE, d0
+    bne     lev_green2
+    add     LED_LAKE_MS, d1
     mov     d1, (LED_SKEL_T)
     rets
 lev_green2:
@@ -327,6 +339,15 @@ LedPalette:
     add     -0x10, sp
     mov     d0, d2
     movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E82, d0              # the lake's explosion: SET_PALETTE 0x02 at pc 0x3BCD
+    bne     lp_intro
+    cmp     0x02, d2
+    bne     lp_ret
+    cmp     0x3BCD, d1
+    bne     lp_ret
+    mov     LEV_LAKE, d0
+    bra     lp_event
+lp_intro:
     cmp     0x3E81, d0
     bne     lp_ret
     mov     LEV_FLASH, d0
@@ -465,10 +486,20 @@ lsv_all:
     ble     lsv_green
     or      W_ALL, d2
 lsv_green:
-    mov     (LED_GREEN_T), d0
+    mov     (LED_GREEN_T), d0       # the recharge: the green LEDs at random, drawn again every LED_GRN_MS
     sub     d3, d0
     ble     lsv_skel
-    or      W_GREEN, d2
+    or      W_GRNRND, d2
+    mov     (LED_GRN_RT), d0
+    sub     d3, d0
+    bgt     lsv_skel
+    mov     d3, d0
+    add     LED_GRN_MS, d0
+    mov     d0, (LED_GRN_RT)
+    mov     LED_GRN_P, d0
+    mov     led_green, a0
+    mov     LED_GRNMASK, a1
+    call    led_draw, 0, 0
 lsv_skel:
     mov     (LED_SKEL_T), d0
     sub     d3, d0
@@ -673,9 +704,8 @@ lsk_skip:
 lsk_ret:
     rets
 
-# led_lift -> d0 = W_LIFT while the lift's light bounces (LED_LIFTMASK built: the lead and, by the firmware's flushes,
-# the trail: the one behind it every other flush, the next one every fourth), | W_GLIGHT while the guard's light is
-# lit; 0 else.
+# led_lift -> d0 = W_LIFT while the lift's light bounces (LED_LIFTMASK built: the lead and the one behind it, the
+# latter until the light has rested LED_TRAIL_MS), | W_GLIGHT while the guard's light is lit; 0 else.
 led_lift:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -750,24 +780,11 @@ ll_clr:
     call    lift_set, 0, 0
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
-    mov     (LED_LIFT_T), d1        # the light at rest a while: the trail out
-    mov     d0, d2
-    sub     d1, d2
-    cmp     LED_TRAIL_MS, d2
+    mov     (LED_LIFT_T), d1        # the light at rest a while: the one behind it out
+    sub     d1, d0
+    cmp     LED_TRAIL_MS, d0
     bcc     ll_on
-    clr     d1
-    mov     d1, mdr
-    mov     LED_PWM_MS, d1
-    divu    d1, d0
-    mov     d0, d2                  # d2 = flushes so far
-    btst    1, d2
-    bne     ll_t2
-    movbu   (LED_LIFT + 1), d0      # the one behind: every other flush
-    call    lift_set, 0, 0
-ll_t2:
-    btst    3, d2
-    bne     ll_on
-    movbu   (LED_LIFT + 2), d0      # the next: every fourth
+    movbu   (LED_LIFT + 1), d0      # the one behind it
     call    lift_set, 0, 0
 ll_on:
     or      W_LIFT, d3
@@ -1057,5 +1074,6 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_APC, led_apc
     .long   W_LIFT, LED_LIFTMASK
     .long   W_GLIGHT, led_g2
+    .long   W_GRNRND, LED_GRNMASK
     .long   W_ALL, led_all
     .long   0
