@@ -1,0 +1,7 @@
+# made by probes/jump_session.py from idle200.awr: part 0x3E86 at frame 300, 00=60
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 60
+R 300 0x3E86
+I 302 play 0x00
+E 501 0

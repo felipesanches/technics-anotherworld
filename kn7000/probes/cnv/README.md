@@ -883,7 +883,8 @@ distance: `../ledrings.py`. Build `52503021...` (program 893, 384x240):
 The run-time bitmap filter is gone (it paused the game at each bitmap); `tools/aw_hires.py` enlarges the twelve
 bitmaps at build time, and the card carries each as `AWHxx.AW` (README-CNV.md, "Bitmaps"). `../hirescheck.py` finds,
 in a replay at 384x240, the frame (and, with `--scroll`, the vertical scroll) whose page agrees best with each
-`AWHxx.AW`, and counts, over the pixels where that and the repeated-row enlargement differ, how many show which.
+`AWHxx.AW`, and counts, over the pixels where that and the repeated-row enlargement differ, how many show which
+(0x90, which the bytecode draws just before 0x91, is not shown in these replays).
 Build `ecf2f090...` (program 893):
 
 | session, bitmap                     | frame | where the two differ: as AWH / as repeated rows |
@@ -892,16 +893,21 @@ Build `ecf2f090...` (program 893):
 | `intro-rec2`, 0x47 (Delphine)       | 51    | 100.0 % / 0.0 %                                 |
 | `intro-rec2`, 0x13 (the title)      | 71    | 100.0 % / 0.0 %                                 |
 | `3e84-waterfall-48-4a`, 0x43 (moss) | 615   | 92.5 % / 2.2 % (scrolled 45 rows; Lester over)  |
+| `3e86-cp60-idle`, 0x91 (the baths)  | 342   | 98.5 % / 0.3 %                                  |
 
-Frame times (the LED log's kernel ms, next frame minus this one): the splash's frames 59-70 ms but frame 49 (197 ms),
-the caves' room change (frame 587) 661 ms; with the filter they were 380 and 576 ms (frames 51, 75) and 1432 ms
-(b5cff96's notes).
+Frame times (the LED log's kernel ms, next frame minus this one), against the build just before (`bcdd00b`,
+`ea99b0fa...`: the 320x200 bitmaps with every fifth row and column repeated), the same session: the frames that load
+the splash's bitmaps, 49 and 69, 197 and 260 ms (247 and 320 before), the others 57-70 ms (60-72); the caves' room
+change (frame 587) 661 ms. With the run-time filter (b5cff96's notes) the splash's took 380 and 576 ms, the room
+change 1432 ms.
 
     T=~/compartilhado/tmp/aw-hires; S=probes/sessions
     AW_HIRES=1 AW_LEDLOG=$T/in.led probes/cnv/run_inplog.sh $T/in replay $S/2026-11-02-intro-rec2.awr
     AW_HIRES=1 AW_LEDLOG=$T/wf.led probes/cnv/run_inplog.sh $T/wf replay $S/2026-11-02-3e84-waterfall-48-4a.awr
     python3 -I probes/hirescheck.py $T/in/pages.bin 0x12 0x47 0x13
     python3 -I probes/hirescheck.py $T/wf/pages.bin --scroll 0x43
+    AW_HIRES=1 probes/cnv/run_inplog.sh $T/c60 replay $S/2026-11-03-3e86-cp60-idle.awr
+    python3 -I probes/hirescheck.py $T/c60/pages.bin --scroll 0x90 0x91
 
 ## What the platform does with a converter
 
