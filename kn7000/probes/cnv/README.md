@@ -858,6 +858,26 @@ frame (60 a second; `AW_LEDFINE_THREAD=n` adds thread n's pc), fine enough to se
     AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e84-lamp-fall.awr
     python3 -I probes/greenframes.py $T/lamp.led
 
+## The dome's guard and the glass globe (2026-11-03)
+
+Felipe's request: the guard whose reflection walks in the glass globes of the dome (part 0x3E84, room 80, right of
+room 79's recharge station) on PANEL MEMORY 1-4, two at most (1 at the far left, 2 and 3 under the globe, 4 at the
+far right), and at the globe's crash on his head the ring pulsing with fireworks around it. The signals:
+research-scratch `kn7000-aw-reference/fingerprints`, "Seventh pass" (`domesig.py`, `dome_probe.sh`); the sessions
+from checkpoint 33 (XDDJ) with a teleport into room 79's right edge, made by `../jump_session.py`. `../domecheck.py`
+checks the LED log against the replay's variables and, for the crash, the 60 Hz log (`AW_LEDFINE`); the rings of
+distance: `../ledrings.py`. Build `52503021...` (program 893, 384x240):
+
+| session (frames)             | check                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `3e84-dome-guard-kill` (570) | the guard: 124/124 room-80 frames with PANEL MEMORY 1-4 as var 0xE6 says (all 15 places, -7..7); the globe hit at frame 457, the guard killed; the ring all lit 899 ms later (the crash sound, 11 frames after the hit); in the effect's 1.8 s all eight lit in 63 of 97 lines and none in the other 34; each ring's LEDs lit, nearest first, 62 36 17 4 % in its first half, 21 16 6 2 % in its second; nothing lit after it (0 of 72 lines, to 4 s from the hit) |
+| `3e84-dome-leave` (621)      | the guard: 181/181 frames; no hit; at frame 514 room 79: the next frame the lift's chase (its own effect) takes the ring                                                                                                                                                                                                                                                                                                                                           |
+
+    T=~/compartilhado/tmp/aw-dome-leds; S=probes/sessions
+    AW_HIRES=1 AW_LEDLOG=$T/kill.led AW_LEDFINE=$T/kill.fine AW_LEDFINE_THREAD=5 probes/cnv/run_inplog.sh $T/kill replay $S/2026-11-03-3e84-dome-guard-kill.awr
+    python3 -I probes/domecheck.py $T/kill.led $T/kill/vars.bin $T/kill.fine
+    (the same with dome-leave)
+
 ## Bitmaps at 384x240 (2026-11-03)
 
 The run-time bitmap filter is gone (it paused the game at each bitmap); `tools/aw_hires.py` enlarges the twelve

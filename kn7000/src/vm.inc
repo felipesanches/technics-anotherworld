@@ -160,6 +160,11 @@
 .equ LED_GRNMASK,     LED_VARS + 0xE4   # 20 bytes: the recharge's green LEDs this time (random, drawn every LED_GRN_MS)
 .equ LED_GRN_RT,      LED_VARS + 0xF8   # u32: when they are drawn next
 .equ LED_LIFT_KT,     LED_VARS + 0xFC   # u32: when the lift's light showed its last frame k
+.equ LED_GLASS_S,     LED_VARS + 0x100  # u32: when the glass globe crashed on the guard (its fireworks), 0 none
+.equ LED_FW_RT,       LED_VARS + 0x104  # u32: when the fireworks' sparks are drawn next
+.equ LED_FWMASK,      LED_VARS + 0x108  # 20 bytes: the sparks this time (led_fw0-3, each ring with its chance)
+.equ LED_FWTMP,       LED_VARS + 0x11C  # 20 bytes: one ring's, before they join LED_FWMASK
+.equ LED_GDMASK,      LED_VARS + 0x130  # 20 bytes: the guard under the globe: his PANEL MEMORY LEDs (1-4)
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -174,6 +179,7 @@
 .equ LEV_SHIELD,      12                # 0x58 by the gun's thread: the charge let go early (a shield, at its first stage)
 .equ LEV_SKEL,        13                # a skeleton explodes (0x5A at the dying character's pc)
 .equ LEV_LAKE,        14                # the explosion in the lake Lester lands in (part 0x3E82)
+.equ LEV_GLASS,       15                # the glass globe crashing on the guard's head (fireworks)
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320

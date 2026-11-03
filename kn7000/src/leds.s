@@ -14,7 +14,9 @@
 # burst and at the explosion in the lake Lester lands in, the lift's bouncing light chased along the PANEL MEMORY ring (2-1-8-7-6-5-4-3 left to right in eight even steps
 # over the light's sweep, 3 back to 2 on its way back: the lead and the one behind it, two at most; none once the light
 # is gone), and a blinking light
-# above the stranded guard (part 0x3E86, room 170) on the leftmost red LED, SPLIT POINT G2. Shared by both builds; the LED effects setting
+# above the stranded guard (part 0x3E86, room 170) on the leftmost red LED, SPLIT POINT G2, the guard under the glass
+# globe in the dome (part 0x3E84, room 80) on PANEL MEMORY 1-4, and the globe's crash: the ring pulsing and fireworks
+# on the LEDs around it, the nearer the more (led_glass). Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
 # The panel's LEDs (research-scratch kn7000-leds, MAME-checked on 893 and 941): the firmware keeps them in a shadow
@@ -58,6 +60,11 @@
 #   a guard's lamp     part 0x3E86, room (var 0x67) 170 (code TXHF, then left): thread 4's pc 0x0FAF-0x0FB9 lit,
 #                      0x0FBA-0x0FBB dark (3 ticks on, 2 off), polygon 0xF54C, red dots above the stranded guard
 #                      (fingerprints "Sixth pass (a)", guardlamp.py)
+#   the dome's guard   part 0x3E84, room (var 0x67) 80, the screen right of room 79's recharge station: thread 5's pc
+#                      0xCD93-0xCE86 while he patrols, var 0xE6 his place (-7 far left .. 0 under the big glass globe
+#                      .. 7 far right; only his reflection in the globes is drawn), var 0xB2 bit 1 once he is killed
+#   the globe's crash  PLAY_SOUND 0x6B at pc 0xCC17 of part 0x3E84 (thread 4, 11 ticks after the shot hits; also
+#                      0xCC1D the same tick and 0xCC4B two later; 0x6B in other parts too) (fingerprints "Seventh pass")
 #   the tank's panel   part 0x3E85 while thread 59 runs (it shows the panel); a press: var 0xFA != 0 on the cell var
 #                      0x5F names; cell 0x0B lights about 30 of the panel's LEDs until the panel goes (no var: latched
 #                      here); var 0x67 >= 2 and >= 3 its two button blocks; vars 0x72, 0x71 its red lamps, 0x74, 0x75
@@ -79,6 +86,10 @@
 .equ LED_TRAIL_MS,    200            # the chase's trail: out this long after the lead last moved (the light at rest)
 .equ LED_GRN_MS,      60             # the recharge's green LEDs drawn again this often ...
 .equ LED_GRN_P,       128            # ... each lit with this chance, of 256
+.equ LED_GLASS_MS,    1800           # the glass globe's crash: its fireworks last this long
+.equ LED_GLPULSE_MS,  120            # ... the PANEL MEMORY ring's pulse: a half period
+.equ LED_FW_MS,       50             # ... the sparks drawn again this often
+.equ LED_FW_STEP,     90             # ... each ring of distance starting this much after the one inside it
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -102,6 +113,8 @@
 .equ W_GLIGHT,        0x40000        # the guard's light: SPLIT POINT G2
 .equ W_GRNRND,        0x80000        # the recharge's random green LEDs (LED_GRNMASK)
 .equ W_GRNALL,        0x100000       # every green LED, the PANEL MEMORY ring's too (a skeleton, the lake)
+.equ W_FW,            0x200000       # the glass crash's sparks (LED_FWMASK)
+.equ W_GUARD,         0x400000       # the guard under the globe (LED_GDMASK)
 
 # LedInit: the LEDs' addresses for this program build, or effects off (LED_SH 0). After the firmware search (the
 # converter's main task, cnv_main.s) and at the game task's start (display.s); only the first call does anything.
@@ -126,6 +139,14 @@ LedInit:
     mov     d0, (LED_WATER)
     mov     d0, (LED_RND_T)
     mov     d0, (LED_SKEL_T)
+    mov     d0, (LED_GLASS_S)
+    mov     LED_GDMASK, a0          # the guard's mask: only registers 8 and 15 are ever written
+    mov     LED_REGS / 4, d1
+lin_gd:
+    mov     d0, (a0)
+    add     4, a0
+    add     -1, d1
+    bne     lin_gd
     mov     0x2545F491, d0
     mov     d0, (LED_SEED)
     mov     -1, d0
@@ -217,9 +238,16 @@ lev_green:
     rets
 lev_lake:
     cmp     LEV_LAKE, d0
-    bne     lev_green2
+    bne     lev_glass
     add     LED_LAKE_MS, d1
     mov     d1, (LED_SKEL_T)
+    rets
+lev_glass:
+    cmp     LEV_GLASS, d0
+    bne     lev_green2
+    mov     d1, (LED_FW_RT)         # the sparks drawn at once
+    or      1, d1                   # (never 0: none)
+    mov     d1, (LED_GLASS_S)
     rets
 lev_green2:
     cmp     LEV_GREEN, d0
@@ -309,6 +337,21 @@ ls_lamp:
     call    LedEvent, 0, 0
     bra     ls_ret
 ls_nolamp:
+    cmp     0x6B, d2                # the glass globe crashing down in the dome (part 0x3E84, room 80): 0x6B at pc
+    bne     ls_noglass              # 0xCC17, thread 4 (0x6B also at 0xCC1D, 0xCC4B after it, and in other parts)
+    movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E84, d0
+    bne     ls_noglass
+    mov     a0, d0
+    mov     (CUR_BYTECODE), d1
+    sub     d1, d0
+    add     -1, d0
+    cmp     0xCC17, d0
+    bne     ls_noglass
+    mov     LEV_GLASS, d0
+    call    LedEvent, 0, 0
+    bra     ls_ret
+ls_noglass:
     movbu   (2, a0), d3             # d3 = frequency
     movbu   (3, a0), d0
     mov     d0, (0x0C, sp)          # (the volume)
@@ -462,6 +505,7 @@ LedPart:
     mov     d0, (LED_BLAST)
     mov     d0, (LED_WATER)
     mov     d0, (LED_WCH)
+    mov     d0, (LED_GLASS_S)
     rets
 
 # LedService: at every yield of the game task (cnv_main.s DLY_TSK), and on the converter's calls before the game task
@@ -675,6 +719,11 @@ lsv_tank_off:
     mov     d0, (LED_T6)
 lsv_lift:
     call    led_lift, 0, 0          # the lift's chase, the guard's light: d0 = their W_ bits
+    or      d0, d2
+    mov     d3, d0
+    call    led_glass, 0, 0         # the glass globe's crash: its fireworks
+    or      d0, d2
+    call    led_guard, 0, 0         # the guard walking under it
     or      d0, d2
 lsv_blink:
     mov     (LED_BLINKS), d0
@@ -898,6 +947,146 @@ lift_set:
     movbu   d0, (a1)
 lse_ret:
     rets
+
+# led_guard -> d0 = W_GUARD while the guard under the glass globe patrols (part 0x3E84, room (var 0x67) 80, thread
+# 5's pc 0xCD93-0xCE86, var 0xB2 bit 1 clear: alive), LED_GDMASK then his place on PANEL MEMORY 1-4: var 0xE6, -7 at
+# the far left to +7 at the far right, 0 right under the globe, in seven half steps: 1, 1+2, 2, 2+3 (under the globe),
+# 3, 3+4, 4 (led_gd_r8, led_gd_r15); else 0. Leaf.
+led_guard:
+    movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E84, d0
+    bne     lgd_none
+    movhu   (VM_VARIABLES + 2 * 0x67), d0
+    cmp     80, d0
+    bne     lgd_none
+    movhu   (VM_VARIABLES + 2 * 0xB2), d0
+    btst    0x02, d0
+    bne     lgd_none
+    movhu   (THREADS_DATA + 5 * 4 + PC_OFFSET), d0
+    cmp     0xCD93, d0
+    bcs     lgd_none
+    cmp     0xCE86, d0
+    bhi     lgd_none
+    movhu   (VM_VARIABLES + 2 * 0xE6), d0
+    exth    d0
+    cmp     -7, d0                  # (alerted, he walks on to 14: the far right)
+    bge     lgd_lo
+    mov     -7, d0
+lgd_lo:
+    cmp     7, d0
+    ble     lgd_hi
+    mov     7, d0
+lgd_hi:
+    add     7, d0
+    mov     led_gd_r8, a0
+    add     d0, a0
+    movbu   (a0), d1
+    mov     LED_GDMASK, a0
+    movbu   d1, (8, a0)
+    mov     led_gd_r15, a0
+    add     d0, a0
+    movbu   (a0), d1
+    mov     LED_GDMASK, a0
+    movbu   d1, (15, a0)
+    mov     W_GUARD, d0
+    rets
+lgd_none:
+    clr     d0
+    rets
+
+# led_glass(d0 = now) -> d0 = the W_* bits of the glass globe's crash (LEV_GLASS), 0 when none: for LED_GLASS_MS the
+# PANEL MEMORY ring pulsing, on and off every LED_GLPULSE_MS, and the other LEDs sparking around it, drawn anew every
+# LED_FW_MS: each LED of ring k of distance from the ring (led_fw0-3, probes/ledrings.py) lit with chance
+# led_fw_p[k] x (what is left of the effect), from k x LED_FW_STEP on: the near ones first and most, the far ones
+# later and sparser, all fading out.
+led_glass:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     d0, d3                  # d3 = now
+    mov     (LED_GLASS_S), d0
+    cmp     0, d0
+    beq     lgl_none
+    mov     d3, d2
+    sub     d0, d2                  # d2 = ms into it
+    cmp     LED_GLASS_MS, d2
+    bcs     lgl_on
+    clr     d0
+    mov     d0, (LED_GLASS_S)
+lgl_none:
+    clr     d0
+    bra     lgl_ret
+lgl_on:
+    mov     (LED_FW_RT), d0
+    sub     d3, d0
+    bgt     lgl_pulse
+    mov     d3, d0
+    add     LED_FW_MS, d0
+    mov     d0, (LED_FW_RT)
+    clr     d0
+    mov     d0, (LED_FWMASK)        # no sparks yet: LED_FWMASK's 20 bytes cleared
+    mov     d0, (LED_FWMASK + 4)
+    mov     d0, (LED_FWMASK + 8)
+    mov     d0, (LED_FWMASK + 12)
+    mov     d0, (LED_FWMASK + 16)
+    clr     d0
+    mov     d0, (0x04, sp)          # (0x04, sp) = the ring k
+lgl_ring:
+    mov     (0x04, sp), d0
+    mov     LED_FW_STEP, d1
+    mulu    d1, d0                  # its start
+    cmp     d0, d2
+    bcs     lgl_pulse               # not yet (nor the rings outside it)
+    mov     LED_GLASS_MS, d0        # the chance: led_fw_p[k] x (LED_GLASS_MS - ms) / LED_GLASS_MS
+    sub     d2, d0
+    mov     led_fw_p, a0
+    mov     (0x04, sp), d1
+    add     d1, a0
+    movbu   (a0), d1
+    mulu    d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     LED_GLASS_MS, d1
+    divu    d1, d0
+    mov     d0, (0x08, sp)          # (0x08, sp) = the chance
+    mov     (0x04, sp), d1          # a0 = led_fw0 + 20 k
+    mov     LED_REGS, d0
+    mulu    d0, d1
+    mov     led_fw0, a0
+    add     d1, a0
+    mov     (0x08, sp), d0
+    mov     LED_FWTMP, a1
+    call    led_draw, 0, 0
+    mov     LED_FWTMP, a0           # joined to LED_FWMASK
+    mov     LED_FWMASK, a1
+    mov     LED_REGS / 4, d1
+lgl_or:
+    mov     (a0), d0
+    mov     (a1), d3
+    or      d3, d0
+    mov     d0, (a1)
+    add     4, a0
+    add     4, a1
+    add     -1, d1
+    bne     lgl_or
+    mov     (0x04, sp), d0
+    inc     d0
+    mov     d0, (0x04, sp)
+    cmp     4, d0
+    bne     lgl_ring
+lgl_pulse:
+    mov     W_FW, d3                # the sparks; the ring's pulse: on in the even halves
+    mov     d2, d0
+    clr     d1
+    mov     d1, mdr
+    mov     LED_GLPULSE_MS, d1
+    divu    d1, d0
+    btst    1, d0
+    bne     lgl_d3
+    or      W_PM, d3
+lgl_d3:
+    mov     d3, d0
+lgl_ret:
+    ret     [d2,d3,a2,a3], 0x20
 
 # led_draw(d0 = chance of 256, a0 = the LED bits to draw from, 20 bytes; a1 = out, 20 bytes): each of those bits set
 # with that chance (a linear congruential generator, LED_SEED, its bits 16-23): the waterfall's random LEDs, the
@@ -1124,6 +1313,20 @@ led_apc:                            # AUTO PLAY CHORD MODE, SOUND ARRANGER SET, 
     .byte   0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 led_g2:                             # SPLIT POINT G2: the leftmost red LED (x 202 of the layout)
     .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_fw0:                            # the LEDs by their distance from the PANEL MEMORY ring's centre (probes/ledrings.py,
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86, 0x1A, 0x00, 0x3C, 0x0F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
+led_fw1:                            # MAME layout units): below 250 (15 LEDs), 250-500 (26), 500-900 (8), the left
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xFF, 0xC3, 0xF0, 0x61, 0x02, 0x00, 0x03, 0x03, 0x01, 0x00
+led_fw2:                            # half of the instrument (44)
+    .byte   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9E, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03
+led_fw3:
+    .byte   0x3F, 0x3F, 0x3F, 0x3F, 0x1F, 0x1F, 0x1F, 0x1F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+led_fw_p:                           # each ring's chance at the crash, of 256 (then fading with the effect)
+    .byte   220, 140, 80, 30
+led_gd_r8:                          # the guard's var 0xE6 + 7 (0-14): his PANEL MEMORY 2, 3, 4 (register 8: 0x40 0x20 0x10)
+    .byte   0x00, 0x00, 0x40, 0x40, 0x40, 0x40, 0x60, 0x60, 0x60, 0x20, 0x20, 0x30, 0x30, 0x10, 0x10
+led_gd_r15:                         # ... and PANEL MEMORY 1 (register 15: 0x01)
+    .byte   0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 led_pm_seq:                         # the PANEL MEMORY ring left to right: 2, 1, 8, 7, 6, 5, 4, 3 (register, bit)
     .byte   8, 0x40, 15, 0x01, 9, 0x80, 9, 0x40, 9, 0x20, 8, 0x08, 8, 0x10, 8, 0x20
     .align  2
@@ -1153,5 +1356,7 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_GLIGHT, led_g2
     .long   W_GRNRND, LED_GRNMASK
     .long   W_GRNALL, led_grnall
+    .long   W_FW, LED_FWMASK
+    .long   W_GUARD, LED_GDMASK
     .long   W_ALL, led_all
     .long   0

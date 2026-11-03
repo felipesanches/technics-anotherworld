@@ -1,0 +1,16 @@
+# made by probes/jump_session.py from 3e84-cp33-room80-dome-early-hit.awr: part 0x3E84 at frame 300, 00=33, pokes 30:67=79:01=340:02=176
+P 0 0x3E80
+I 1 intro 0x00
+V 300 0x00 33
+R 300 0x3E84
+V 331 0x67 79
+V 331 0x01 340
+V 331 0x02 176
+I 302 play 0x00
+I 333 play 0x01
+I 351 play 0x00
+I 355 play 0x04
+I 363 play 0x84
+I 365 play 0x04
+I 377 play 0x00
+E 631 0
