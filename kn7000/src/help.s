@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU General Public License v3 or later
 #
 # The help screens (HELP button), after the KN5000 port's HELP_SCREEN: the game pauses and four
-# pages show the controls, the fifteen level codes and the speed figures (perf.s PerfPageBuild). PAGE UP / PAGE DOWN turn the pages; EXIT,
+# pages show the controls, sixteen level codes (in the order the game reaches them: their checkpoints, var 0x00) and the speed figures (perf.s PerfPageBuild). PAGE UP / PAGE DOWN turn the pages; EXIT,
 # HELP again, or any keybed / MIDI key returns to the game once everything is released. PART SELECT RIGHT 2 (the
 # sound mode) and RIGHT 1 (the keybed's own sound) work here too (audio.s AudioPoll, from every HelpSleep), and the
 # first page shows the change at once.
@@ -461,11 +461,15 @@ help_page2:
     .long   hs_c15
     .word   56, 140, 1, 0
     .long   hs_l15
-    .word   60, 160, 2, 0
+    .word   8, 154, 3, 0
+    .long   hs_c16
+    .word   56, 154, 1, 0
+    .long   hs_l16
+    .word   60, 166, 2, 0
     .long   hs_url1
-    .word   76, 170, 2, 0             # 21 columns, centred under hs_url1 (60..259)
+    .word   76, 175, 2, 0             # 21 columns, centred under hs_url1 (60..259)
     .long   hs_url2
-    .word   128, 184, 1, 0
+    .word   128, 187, 1, 0
     .long   hs_page_3
     .word   0xFFFF, 0               # end of page (4 bytes, so the next page stays aligned)
 
@@ -523,14 +527,16 @@ hs_c10:          .asciz "XJRT"
 hs_l10:          .asciz "Back up to the top"
 hs_c11:          .asciz "HBHK"
 hs_l11:          .asciz "Dash through doors"
-hs_c12:          .asciz "TFBB"
-hs_l12:          .asciz "Lester to the rescue"
-hs_c13:          .asciz "TXHF"
-hs_l13:          .asciz "Wait before you shoot"
-hs_c14:          .asciz "CKJL"
-hs_l14:          .asciz "In the armoured car"
-hs_c15:          .asciz "LFCK"
-hs_l15:          .asciz "The grand finale"
+hs_c12:          .asciz "CKJL"
+hs_l12:          .asciz "In the armoured car"
+hs_c13:          .asciz "LFCK"
+hs_l13:          .asciz "In the baths"
+hs_c14:          .asciz "TFBB"
+hs_l14:          .asciz "Lester to the rescue"
+hs_c15:          .asciz "TXHF"
+hs_l15:          .asciz "Wait before you shoot"
+hs_c16:          .asciz "KRTD"
+hs_l16:          .asciz "The grand finale"
 hs_url1:         .asciz "github.com/felipesanches/"
 hs_url2:         .asciz "technics-anotherworld"
     .align  4

@@ -87,6 +87,8 @@ AWPR_FRAME = emu.add_machine_frame_notifier(function()
   L.samples = L.samples + 1
   if sp:read_u32(LCD_OWNED) == 1 then
     L.owned_at = L.owned_at or now()
+    L.of = (L.of or 0) + 1            -- the first frames the game has the LCD, and after 0.5, 1 and 2 s: first_NNN.bin
+    for _, k in ipairs({ 1, 2, 3, 4, 30, 60, 120 }) do if L.of == k then dump(string.format("first_%03d.bin", k)) end end
     if (sp:read_u8(LCDC + 0x40) & 7) ~= 3 then L.lcd8 = false end
     local p = sp:read_u32(LOAD_PCT)
     if p ~= 0xFFFFFFFF and p ~= L.last then
@@ -116,7 +118,7 @@ local co = coroutine.create(function()
     log("at the start: " .. prefs() .. string.format("; read %d", sp:read_u32(PR_STATUS)))
     result("defaults", sp:read_u32(PR_STATUS) == 2 and prefs() == "res 0 ambi 1 scatter 2 keys 1 leds 1", prefs())
     press("CPC_SEG5", 0x02); wait(2)  -- HELP
-    for i = 1, 3 do press("CPC_SEG11", 0x20); wait(1.2) end  -- PAGE DOWN x3: the settings
+    for i = 1, 3 do dump(string.format("help%d.bin", i)); press("CPC_SEG11", 0x20); wait(1.2) end  -- PAGE DOWN x3: the settings (pages 1-3 dumped on the way)
     local pg = sp:read_u32(HELP_PAGE)
     key("A5"); key("C6")              -- row 1: the ambilight off
     local ambi_off = sp:read_u8(PREFS + 5) == 0 and amb_black()
