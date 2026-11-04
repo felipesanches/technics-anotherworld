@@ -16,7 +16,8 @@
 # is gone), and a blinking light
 # above the stranded guard (part 0x3E86, room 170) on the red LATIN & WORLD LED, the guard under the glass
 # globe in the dome (part 0x3E84, room 80) on PANEL MEMORY 1-4, and the globe's crash: the ring pulsing and fireworks
-# on the LEDs around it, the nearer the more (led_glass). Shared by both builds; the LED effects setting
+# on the LEDs around it, the nearer the more (led_glass), and the green LEDs flashing at each door panel a mega-blast
+# beam bursts (the HBHK corridor's doors, part 0x3E84; over the blast's own all-LED flash). Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
 # The panel's LEDs (research-scratch kn7000-leds, MAME-checked on 893 and 941): the firmware keeps them in a shadow
@@ -65,6 +66,9 @@
 #                      .. 7 far right; only his reflection in the globes is drawn), var 0xB2 bit 1 once he is killed
 #   the globe's crash  PLAY_SOUND 0x6B at pc 0xCC17 of part 0x3E84 (thread 4, 11 ticks after the shot hits; also
 #                      0xCC1D the same tick and 0xCC4B two later; 0x6B in other parts too) (fingerprints "Seventh pass")
+#   a door bursting    PLAY_SOUND 0x56 at pc 0x6B85 (the beam going right) or 0x6CE6 (left) of part 0x3E84, thread 47:
+#                      a mega-blast beam knocking a panel out of a door (rooms 145-148 from code HBHK; 69, 78, 79), the
+#                      burst 9 ticks; also the guards' blast through room 145's left wall (fingerprints "Eighth pass")
 #   the tank's panel   part 0x3E85 while thread 59 runs (it shows the panel); a press: var 0xFA != 0 on the cell var
 #                      0x5F names; cell 0x0B lights about 30 of the panel's LEDs until the panel goes (no var: latched
 #                      here); var 0x67 >= 2 and >= 3 its two button blocks; vars 0x72, 0x71 its red lamps, 0x74, 0x75
@@ -90,6 +94,8 @@
 .equ LED_GLPULSE_MS,  120            # ... the PANEL MEMORY ring's pulse: a half period
 .equ LED_FW_MS,       50             # ... the sparks drawn again this often
 .equ LED_FW_STEP,     90             # ... each ring of distance starting this much after the one inside it
+.equ LED_DOOR_MS,     600            # a door panel's burst: the green LEDs flash this long (the burst shows 9 ticks)
+.equ LED_DOOR_HALF,   100            # ... on, off, on, ...: each half this long
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -140,6 +146,7 @@ LedInit:
     mov     d0, (LED_RND_T)
     mov     d0, (LED_SKEL_T)
     mov     d0, (LED_GLASS_S)
+    mov     d0, (LED_DOOR_S)
     mov     LED_GDMASK, a0          # the guard's mask: only registers 8 and 15 are ever written
     mov     LED_REGS / 4, d1
 lin_gd:
@@ -244,10 +251,16 @@ lev_lake:
     rets
 lev_glass:
     cmp     LEV_GLASS, d0
-    bne     lev_green2
+    bne     lev_door
     mov     d1, (LED_FW_RT)         # the sparks drawn at once
     or      1, d1                   # (never 0: none)
     mov     d1, (LED_GLASS_S)
+    rets
+lev_door:
+    cmp     LEV_DOOR, d0
+    bne     lev_green2
+    or      1, d1                   # each burst starts the flashes again
+    mov     d1, (LED_DOOR_S)
     rets
 lev_green2:
     cmp     LEV_GREEN, d0
@@ -352,6 +365,24 @@ ls_nolamp:
     call    LedEvent, 0, 0
     bra     ls_ret
 ls_noglass:
+    cmp     0x56, d2                # a mega-blast beam bursting a door panel (part 0x3E84: the doors of rooms 145-148,
+    bne     ls_nodoor               # 69, 78, 79): 0x56 at pc 0x6B85 (the beam going right) or 0x6CE6 (left), thread 47
+    movhu   (CURRENT_PART_ID), d0   # (3E83 and 3E86 play 0x56 at other pcs: hence the part and the pc)
+    cmp     0x3E84, d0
+    bne     ls_nodoor
+    mov     a0, d0
+    mov     (CUR_BYTECODE), d1
+    sub     d1, d0
+    add     -1, d0
+    cmp     0x6B85, d0
+    beq     ls_door
+    cmp     0x6CE6, d0
+    bne     ls_nodoor
+ls_door:
+    mov     LEV_DOOR, d0
+    call    LedEvent, 0, 0
+    bra     ls_ret
+ls_nodoor:
     movbu   (2, a0), d3             # d3 = frequency
     movbu   (3, a0), d0
     mov     d0, (0x0C, sp)          # (the volume)
@@ -506,6 +537,7 @@ LedPart:
     mov     d0, (LED_WATER)
     mov     d0, (LED_WCH)
     mov     d0, (LED_GLASS_S)
+    mov     d0, (LED_DOOR_S)
     rets
 
 # LedService: at every yield of the game task (cnv_main.s DLY_TSK), and on the converter's calls before the game task
@@ -725,6 +757,25 @@ lsv_lift:
     or      d0, d2
     call    led_guard, 0, 0         # the guard walking under it
     or      d0, d2
+    mov     (LED_DOOR_S), d1        # a door panel bursting: the green LEDs flash, on first; over every other effect's
+    cmp     0, d1                   # greens, and the mega-blast's all LEDs dropped meanwhile (Lester's own blast
+    beq     lsv_blink               # bursts a door in the same tick: the flashes show through it)
+    mov     d3, d0
+    sub     d1, d0                  # ms since the burst
+    cmp     LED_DOOR_MS, d0
+    bcs     lsv_door
+    clr     d0
+    mov     d0, (LED_DOOR_S)
+    bra     lsv_blink
+lsv_door:
+    clr     d1
+    mov     d1, mdr
+    mov     LED_DOOR_HALF, d1
+    divu    d1, d0                  # halves so far
+    and     ~(W_ALL | W_GRNALL | W_GREEN | W_GRNRND), d2
+    btst    1, d0
+    bne     lsv_blink
+    or      W_GRNALL, d2
 lsv_blink:
     mov     (LED_BLINKS), d0
     cmp     0, d0

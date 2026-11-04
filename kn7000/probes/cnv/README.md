@@ -1091,3 +1091,26 @@ frames another LED is lit. Build `9bdf1224...` (program 893):
     AW_LEDLOG=$T/lamp.led probes/cnv/run_inplog.sh $T/lamp replay $S/2026-11-03-3e86-txhf-guard-lamp.awr
     python3 -I probes/onelamp.py $T/lamp.led 3 0x02
     python3 -I probes/onelamp.py $T/lamp.led 7 0x01
+
+## The doors of the HBHK corridor (2026-11-03)
+
+Felipe: each blasted door in the "dash through doors" run (code HBHK) flashes the green LEDs. The signal: research-scratch
+`kn7000-aw-reference/fingerprints`, "Eighth pass" (`doors_probe.sh`, `doorsig.py`): PLAY_SOUND 0x56 at pc 0x6B85 or
+0x6CE6 of part 0x3E84, thread 47, when a mega-blast beam knocks a panel out of a door (src/leds.s LEV_DOOR: every green
+LED, the PANEL MEMORY ring's too, 100 ms on, 100 off, for 600 ms from each burst; the big blast's all-LED flash dropped
+meanwhile). `../doorcheck.py` takes the LED log and the frames of the bursts' sounds (the eighth pass's list for each
+session). Build `9e680382...` (program 893):
+
+| session                              | bursts (frames)                                                           | check                                                                                                                          |
+|--------------------------------------|---------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `3e84-hbhk-doors-lester-blast` (701) | 525 (room 145's wall), 527 (Lester's blast), 568, 579, 607, 618, 648, 658 | every green LED at the next frame 8/8; in the 600 ms: 3-5 frames all green, 2-4 none; another LED in 3 frames (guards' lasers) |
+| `3e84-hbhk-doors-guards-blast` (701) | 525, 545, 576, 587, 615, 626, 656, 666                                    | 8/8; another LED in 4 frames, each every red LED (the guards' lasers)                                                          |
+
+    T=~/compartilhado/tmp/aw-doors-led; S=probes/sessions
+    AW_LEDLOG=$T/lb.led probes/cnv/run_inplog.sh $T/lb replay $S/2026-11-03-3e84-hbhk-doors-lester-blast.awr
+    python3 -I probes/doorcheck.py $T/lb.led 525 527 568 579 607 618 648 658
+    AW_LEDLOG=$T/gb.led probes/cnv/run_inplog.sh $T/gb replay $S/2026-11-03-3e84-hbhk-doors-guards-blast.awr
+    python3 -I probes/doorcheck.py $T/gb.led 525 545 576 587 615 626 656 666
+
+(The burst frames are the first frame of each burst group; a three-panel door takes up to three beams a tick apart,
+each restarting the flashes. Frames 518-526 of the first session also show the big charge's green blinking.)

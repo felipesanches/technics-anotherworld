@@ -165,6 +165,7 @@
 .equ LED_FWMASK,      LED_VARS + 0x108  # 20 bytes: the sparks this time (led_fw0-3, each ring with its chance)
 .equ LED_FWTMP,       LED_VARS + 0x11C  # 20 bytes: one ring's, before they join LED_FWMASK
 .equ LED_GDMASK,      LED_VARS + 0x130  # 20 bytes: the guard under the globe: his PANEL MEMORY LEDs (1-4)
+.equ LED_DOOR_S,      LED_VARS + 0x144  # u32: when a door panel last burst (its green flashes), | 1; 0 none
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -180,6 +181,7 @@
 .equ LEV_SKEL,        13                # a skeleton explodes (0x5A at the dying character's pc)
 .equ LEV_LAKE,        14                # the explosion in the lake Lester lands in (part 0x3E82)
 .equ LEV_GLASS,       15                # the glass globe crashing on the guard's head (fireworks)
+.equ LEV_DOOR,        16                # a mega-blast beam bursting a door panel (0x56, part 0x3E84)
 .equ DISP_ORIG,       VM_MISC_BASE + 0x0060     # u32
 .equ DISP_ORIG_MAGIC, 0x0A1D0320
 .equ PG_W,            VM_MISC_BASE + 0x0064     # u32: 384 or 320
