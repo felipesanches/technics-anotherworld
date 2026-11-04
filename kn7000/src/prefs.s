@@ -6,8 +6,10 @@
 # at once, and the KN7APP.BIN build keeps them on the SD card, AWPREFS.CFG in its root (cnv_main.s PrefsRead,
 # PrefsSave). The block at PREFS_AT is also the file's 16 bytes:
 #   +0 "AWP1"   +4 resolution (0 384x240, 1 320x200)   +5 ambilight (1 on)   +6 light scatter (0 short .. 3 very long)
-#   +7 keybed sound (1 on)   +8 LED effects (1 on)   +9..+15 zero
-# then the page's state. Defaults: 384x240, ambilight on, scatter long, keybed sound on, LED effects on.
+#   +7 keybed sound (1 on)   +8 LED effects (1 on)   +9 not read   +10 code wheel (1 on)   +11..+15 zero
+# then the page's state. Defaults: 384x240, ambilight on, scatter long, keybed sound on, LED effects on, code wheel off.
+# (+9 was the run-time bitmap filter's, 1 by default, 2026-11-03: a file saved then says 1 there; the code wheel is
+# +10 so that such a file leaves it off.)
 
 # (The block's equates, PR_*: vm.inc.)
 
@@ -46,6 +48,9 @@ PrefsValid:
     cmp     1, d0
     bhi     pva_no
     movbu   (8, a0), d0
+    cmp     1, d0
+    bhi     pva_no
+    movbu   (10, a0), d0
     cmp     1, d0
     bhi     pva_no
     mov     1, d0
@@ -177,7 +182,8 @@ PrefsStep:
 # PrefsApply(d0 = row): make the setting so now. The resolution: the display mode (display.s ModeSwitch: the pages
 # converted, the border drawn for the new window); the ambilight and its scatter: the border's entries again, from
 # the game's picture and palette (lcd8.s AmbiUpdate); the keybed sound: audio.s KeysSync tells the instrument at its
-# next poll; the LED effects: read where they are made.
+# next poll; the LED effects: read where they are made; the code wheel: at the game's next start (interp.s GameReset:
+# "Continue Next?" YES, or the program menu).
 PrefsApply:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -300,12 +306,14 @@ pr_rows:
     .long   PR_REACH, 4
     .long   PR_KEYS, 2
     .long   PR_LEDS, 2
+    .long   PR_WHEEL, 2
 pr_names:
-    .long   prn_res, prn_ambi, prn_reach, prn_keys, prn_leds
+    .long   prn_res, prn_ambi, prn_reach, prn_keys, prn_leds, prn_wheel
 pr_vals:                            # 4 per row
     .long   prv_hi, prv_lo, prv_hi, prv_hi
     .long   prv_off, prv_on, prv_off, prv_off
     .long   prv_short, prv_med, prv_long, prv_vlong
+    .long   prv_off, prv_on, prv_off, prv_off
     .long   prv_off, prv_on, prv_off, prv_off
     .long   prv_off, prv_on, prv_off, prv_off
 pr_head:
@@ -315,11 +323,11 @@ pr_head:
     .long   hs_title2
     .word   8, 40, 1, 0
     .long   prn_title
-    .word   8, 136, 1, 0
+    .word   8, 146, 1, 0                # (below the sixth row: PR_ROW_Y0 + 5 x PR_ROW_DY = 128)
     .long   prn_hint1
-    .word   8, 148, 1, 0
+    .word   8, 158, 1, 0
     .long   prn_hint2
-    .word   8, 164, 1, 0
+    .word   8, 174, 1, 0
     .long   prn_hint3
     .word   256, 188, 1, 0
     .long   prn_page
@@ -330,6 +338,7 @@ prn_ambi:   .asciz  "AMBILIGHT"
 prn_reach:  .asciz  "LIGHT SCATTER"
 prn_keys:   .asciz  "KEYBED SOUND"
 prn_leds:   .asciz  "LED EFFECTS"
+prn_wheel:  .asciz  "CODE WHEEL"
 prv_hi:     .asciz  "384x240"
 prv_lo:     .asciz  "320x200"
 prv_on:     .asciz  "ON"

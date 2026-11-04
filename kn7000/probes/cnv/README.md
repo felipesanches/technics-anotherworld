@@ -1154,3 +1154,14 @@ Build `0366e360...` (program 893), session `2026-11-04-3e87-krtd-finale` (frames
 
 (A first build stepped one column a service call, and the LED service runs at the game task's yields, seldom enough
 that the left wing reached 8 columns 350 ms after the picture: the columns due are now counted by the time.)
+
+## The code wheel setting (2026-11-04)
+
+Felipe: a setting, off by default, for the original game's copy protection. `run_prefs.sh` now also switches CODE WHEEL
+on in its first run (row 5; the running game unchanged) and checks, in its second, that the game starts in part
+0x3E80 from its beginning: thread 20 in the code wheel's question (pc 0x02CE-0x0D7F), var 0xBC without the bypass's
+0x10, var 0xDC 0x21 ("wheel"). Build `d842293d...`: 10 of 10 checks; the question (`p2/phase2.bin`) asked for position
+K3 (N1 on the build before, whose random seed was the fixed 0x1234; it is now the kernel's ms at the start).
+
+    probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-wheel2
+    python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-wheel2/p2/phase2.bin

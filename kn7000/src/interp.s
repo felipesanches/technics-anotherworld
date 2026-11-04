@@ -354,7 +354,28 @@ gr_threads:
     mov     0x54, d0
     mov     0x81, d1
     call    WriteVar, 0, 0
-    # copy-protection bypass: var[0xBC]=0x10, [0xC6]=0x80, [0xF2]=0xFA0, [0xDC]=0x21
+    # the engine's own: var[0xDC] = 0x21 (rawgl: "set by the engine executable")
+    mov     0xDC, d0
+    mov     0x21, d1
+    call    WriteVar, 0, 0
+    movbu   (PR_WHEEL), d0          # the code wheel on (prefs.s): the game's own copy protection, part 0x3E80 from
+    cmp     1, d0                   # its start (thread 20 at 0x02CE asks for the symbols; right, it sets vars 0xBC,
+    bne     gr_bypass               # 0xC6, 0xF2 itself, 0x0CCC-0x0D0D, and goes on to the logo sequence at 0x007F)
+    mov     (NO_SPLASH), d0         # (not for a probe that asked for the intro at tick 0)
+    mov     NO_SPLASH_MAGIC, d1
+    cmp     d1, d0
+    beq     gr_bypass
+    mov     (FWV_KERNEL_MS), a0     # the random seed from the clock, as the DOS game's: the position asked for
+    mov     (a0), d1                # changes from start to start (var 0x3C; 0x1234 otherwise, for the replays)
+    mov     0x3C, d0
+    call    WriteVar, 0, 0
+    clr     d0
+    movhu   d0, (REQ_NEXT_PART)
+    mov     PART_PROTECTION, d0
+    call    InitForPart, 0, 0
+    ret     [d2,d3,a2,a3], 0x20
+gr_bypass:
+    # copy-protection bypass: var[0xBC]=0x10, [0xC6]=0x80, [0xF2]=0xFA0 (what the code wheel sets when answered)
     mov     0xBC, d0
     mov     0x10, d1
     call    WriteVar, 0, 0
@@ -363,9 +384,6 @@ gr_threads:
     call    WriteVar, 0, 0
     mov     0xF2, d0
     mov     0xFA0, d1
-    call    WriteVar, 0, 0
-    mov     0xDC, d0
-    mov     0x21, d1
     call    WriteVar, 0, 0
     clr     d0
     movhu   d0, (REQ_NEXT_PART)
