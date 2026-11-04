@@ -1099,7 +1099,7 @@ Felipe: each blasted door in the "dash through doors" run (code HBHK) flashes th
 0x6CE6 of part 0x3E84, thread 47, when a mega-blast beam knocks a panel out of a door (src/leds.s LEV_DOOR: every green
 LED, the PANEL MEMORY ring's too, 100 ms on, 100 off, for 600 ms from each burst; the big blast's all-LED flash dropped
 meanwhile). `../doorcheck.py` takes the LED log and the frames of the bursts' sounds (the eighth pass's list for each
-session). Build `9e680382...` (program 893):
+session). Build `2a0fc664...` (program 893):
 
 | session                              | bursts (frames)                                                           | check                                                                                                                          |
 |--------------------------------------|---------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
@@ -1114,3 +1114,19 @@ session). Build `9e680382...` (program 893):
 
 (The burst frames are the first frame of each burst group; a three-panel door takes up to three beams a tick apart,
 each restarting the flashes. Frames 518-526 of the first session also show the big charge's green blinking.)
+
+## The loading screen from the first call; the HELP codes (2026-11-04)
+
+Felipe: on the unit a black screen came first, and "Loading..." with its percentage only later. The line was drawn
+from the game's first call, but in the game's 8x8 font at AW_FONT, which the global files (AWFONT.AW) fill only after
+the firmware search: until then every glyph was empty. In MAME, started from the program menu (kn7menu
+`test/run_menu_tests.sh leave`, `MT_WATCH` on CV_STATE, CV_CALLS, LCD_OWNED, LOAD_PCT): the menu gave the LCD back
+0.73 s after RUN, the game took it at 0.80 s (0 %), and the screen stayed black through 4 s (snapshots), the search
+running to 7.3 s (5 %). Since then LoadShow draws with LoadFont, the same font's copy in the image (tools/aw_extract.py
+writes it into awpart_tab.s). `awcnv_prefs.lua` dumps the first frames the game has the LCD (`first_NNN.bin`): build
+`9e680382...`, "Loading...  0%" from the first frame drawn from the game's frame (`first_002`; `first_001` is still the
+loader's screen: MAME's screen image is a frame behind), and at 30 and 120 frames. Its "page" step dumps help pages 1-3
+(`help1-3.bin`): page 3 shows the sixteen codes, TTCT to KRTD, with the address under them.
+
+    probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-load2
+    python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-load2/p1/first_00[12].bin ~/compartilhado/tmp/aw-load2/p1/help3.bin

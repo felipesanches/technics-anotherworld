@@ -483,6 +483,11 @@ def write_parts(path, src, ents, layout_inc, fonts):
     out += [f"    .long   {e['packed'] if e['type'] == 2 and e['packed'] != e['size'] else 0}" for e in ents]
     out.append("HiPacked:                           # u32 per id: a bitmap's 384x240 file's packed size (0: none)")
     out += [f"    .long   {hi_packed.get(e['id'], 0)}" for e in ents]
+    # the font in the image too, for the loading screen's line (lcd8.s LoadShow): AWFONT.AW reaches AW_FONT only with
+    # the global files, after the firmware search, and the line is drawn from the first call
+    out.append("LoadFont:                           # anotherworld_chargen.rom: 96 glyphs of 8 bytes, chars 0x20-0x7F")
+    fb = files["AWFONT.AW"]
+    out += ["    .byte   " + ", ".join(f"0x{x:02X}" for x in fb[k:k + 16]) for k in range(0, len(fb), 16)]
     out.append("ResType:                            # u8 per id: 0 sound 1 music 2 bitmap 3 palette 4 bytecode 5 video1 6 video2")
     out += [f"    .byte   {e['type']}" for e in ents]
     out.append("    .align  2")

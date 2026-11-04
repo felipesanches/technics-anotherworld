@@ -220,7 +220,8 @@ lbl_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # LoadShow(d0 = 0..100): the loading screen's "Loading... NN%", when it shows and the number changed: 16x16 letters
-# (the game's 8x8 font, each dot 2x2) in entry 1, in the middle of the LCD, inside either window (the game's first
+# (the game's 8x8 font, each dot 2x2: the image's copy, LoadFont, there from the first call; until 2026-11-04 AW_FONT,
+# which the global files fill only after the firmware search, so that the line showed only from 5 %) in entry 1, in the middle of the LCD, inside either window (the game's first
 # blit writes over it). The firmware's own screen is not shown: the LCD is the game's from its first call
 # (cnv_main.s), so nothing of the instrument's interface shows while the game loads.
 LoadShow:
@@ -306,7 +307,7 @@ lsh_char:
     inc     a2
     add     -0x20, d0
     asl     3, d0
-    mov     AW_FONT, a0
+    mov     LoadFont, a0            # (the image's copy: AW_FONT is loaded only after the firmware search)
     add     d0, a0                  # the glyph's 8 rows
     mov     a3, a1
     mov     8, d3
