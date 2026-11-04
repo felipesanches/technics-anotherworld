@@ -851,6 +851,15 @@ me_not5:
     bge     me_vol
     clr     d0
 me_vol:
+    cmp     0, d3                   # a note (not a volume change), heard: the LEDs follow it (leds.s LedNote: the
+    beq     me_vol2                 # finale's credits)
+    cmp     0, d0
+    beq     me_vol2
+    mov     d0, (0x0C, sp)
+    mov     d2, d0
+    call    LedNote, 0, 0
+    mov     (0x0C, sp), d0
+me_vol2:
     mov     (DV_MODE), d1
     cmp     MODE_DSP, d1
     bne     me_tg

@@ -17,7 +17,9 @@
 # above the stranded guard (part 0x3E86, room 170) on the red LATIN & WORLD LED, the guard under the glass
 # globe in the dome (part 0x3E84, room 80) on PANEL MEMORY 1-4, and the globe's crash: the ring pulsing and fireworks
 # on the LEDs around it, the nearer the more (led_glass), and the green LEDs flashing at each door panel a mega-blast
-# beam bursts (the HBHK corridor's doors, part 0x3E84; over the blast's own all-LED flash). Shared by both builds; the LED effects setting
+# beam bursts (the HBHK corridor's doors, part 0x3E84; over the blast's own all-LED flash), and the finale's: the
+# dragon's wings opening on the RHYTHM and SOUND GROUPs' red LEDs, a wave on them shrinking to the centre as it flies
+# away, and the credits' LEDs blinking with the music's notes (led_finale). Shared by both builds; the LED effects setting
 # (prefs.s PR_LEDS) off leaves the LEDs to the firmware.
 #
 # The panel's LEDs (research-scratch kn7000-leds, MAME-checked on 893 and 941): the firmware keeps them in a shadow
@@ -69,6 +71,10 @@
 #   a door bursting    PLAY_SOUND 0x56 at pc 0x6B85 (the beam going right) or 0x6CE6 (left) of part 0x3E84, thread 47:
 #                      a mega-blast beam knocking a panel out of a door (rooms 145-148 from code HBHK; 69, 78, 79), the
 #                      burst 9 ticks; also the guards' blast through room 145's left wall (fingerprints "Eighth pass")
+#   the finale         part 0x3E87 (code KRTD): thread 10's pc 0x0600-0x0631 the left wing's shot, 0x0636-0x0649 the
+#                      right's (its step by the pc), thread 14 at 0x04FB the flight (var 0x03 its zoom, thread 12's
+#                      pc 0x0505 + 7k its wing beat), thread 54 at 0x0294-0x031C the credits (fingerprints "Ninth
+#                      pass"); the music's notes: audio.s MusicEvent (LedNote)
 #   the tank's panel   part 0x3E85 while thread 59 runs (it shows the panel); a press: var 0xFA != 0 on the cell var
 #                      0x5F names; cell 0x0B lights about 30 of the panel's LEDs until the panel goes (no var: latched
 #                      here); var 0x67 >= 2 and >= 3 its two button blocks; vars 0x72, 0x71 its red lamps, 0x74, 0x75
@@ -96,6 +102,8 @@
 .equ LED_FW_STEP,     90             # ... each ring of distance starting this much after the one inside it
 .equ LED_DOOR_MS,     600            # a door panel's burst: the green LEDs flash this long (the burst shows 9 ticks)
 .equ LED_DOOR_HALF,   100            # ... on, off, on, ...: each half this long
+.equ LED_WING_MS,     60             # the finale's wings: a column more (or less) this often (2 a tick of 120 ms)
+.equ LED_NOTE_MS,     120            # the credits: a music channel's LEDs lit this long after each of its notes
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -121,6 +129,7 @@
 .equ W_GRNALL,        0x100000       # every green LED, the PANEL MEMORY ring's too (a skeleton, the lake)
 .equ W_FW,            0x200000       # the glass crash's sparks (LED_FWMASK)
 .equ W_GUARD,         0x400000       # the guard under the globe (LED_GDMASK)
+.equ W_FIN,           0x800000       # the finale: the dragon's wings, its flight, the credits (LED_FINMASK)
 
 # LedInit: the LEDs' addresses for this program build, or effects off (LED_SH 0). After the firmware search (the
 # converter's main task, cnv_main.s) and at the game task's start (display.s); only the first call does anything.
@@ -147,6 +156,13 @@ LedInit:
     mov     d0, (LED_SKEL_T)
     mov     d0, (LED_GLASS_S)
     mov     d0, (LED_DOOR_S)
+    mov     LED_WL, a0              # the finale's state (as led_finclr: LED_WL .. LED_NOTE_T + 12)
+    mov     12, d1
+lin_fin:
+    mov     d0, (a0)
+    add     4, a0
+    add     -1, d1
+    bne     lin_fin
     mov     LED_GDMASK, a0          # the guard's mask: only registers 8 and 15 are ever written
     mov     LED_REGS / 4, d1
 lin_gd:
@@ -538,7 +554,7 @@ LedPart:
     mov     d0, (LED_WCH)
     mov     d0, (LED_GLASS_S)
     mov     d0, (LED_DOOR_S)
-    rets
+    bra     led_finclr
 
 # LedService: at every yield of the game task (cnv_main.s DLY_TSK), and on the converter's calls before the game task
 # runs: the pattern the effects running want, written into the shadow; with the setting off, the LEDs as they were
@@ -757,6 +773,9 @@ lsv_lift:
     or      d0, d2
     call    led_guard, 0, 0         # the guard walking under it
     or      d0, d2
+    mov     d3, d0
+    call    led_finale, 0, 0        # the finale: the dragon's wings, its flight away, the credits
+    or      d0, d2
     mov     (LED_DOOR_S), d1        # a door panel bursting: the green LEDs flash, on first; over every other effect's
     cmp     0, d1                   # greens, and the mega-blast's all LEDs dropped meanwhile (Lester's own blast
     beq     lsv_blink               # bursts a door in the same tick: the flashes show through it)
@@ -804,6 +823,372 @@ lsv_apply:
     mov     d2, d0
     call    LedWrite, 0, 0
 lsv_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# LedNote(d0 = the music's channel, 0-3): it plays a note (audio.s MusicEvent): its time, for the credits' LEDs
+# (led_finale). Leaf; uses d0, d1, a0.
+LedNote:
+    cmp     3, d0
+    bhi     lnt_ret
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d1
+    or      1, d1
+    asl     2, d0
+    mov     LED_NOTE_T, a0
+    add     d0, a0
+    mov     d1, (a0)
+lnt_ret:
+    rets
+
+# led_finclr: the finale's state cleared (LedInit, LedPart). Leaf; uses d0, d1, a0.
+led_finclr:
+    clr     d0
+    mov     LED_WL, a0              # LED_WL .. LED_NOTE_T + 12: 12 words
+    mov     12, d1
+lfc_w:
+    mov     d0, (a0)
+    add     4, a0
+    add     -1, d1
+    bne     lfc_w
+    rets
+
+# led_finale(d0 = now) -> d0 = the W_* bits of the finale (part 0x3E87, code KRTD; research-scratch
+# kn7000-aw-reference/fingerprints "Ninth pass"), 0 when none; LED_FINMASK its LEDs:
+#   the wings      thread 10 shows them, one full-screen shot each: the screen-left wing (pc 0x0600-0x0631, a step
+#                  0-4 by its pc: 0x0600, 0x060F, 0x0614, 0x0619, 0x0622 or 0x0631), then the screen-right one (pc
+#                  0x0636-0x0649: 0x0636, 0x063B, 0x0640, then 0x0649, step 3 while var 0xE6 is 10, else 4), a step
+#                  a tick (120 ms). The RHYTHM GROUP's red LEDs are the left wing, the SOUND GROUP's the right
+#                  (led_wing_l, led_wing_r: 8 columns each, from the panel's centre out, probes/ledwings.py): 2
+#                  columns a step, lit one by one every LED_WING_MS from the centre outwards, so in step with the
+#                  wing; the left wing stays open through the right one's shot and the take-off (8 and 8)
+#   the flight     thread 14 at pc 0x04FB (the creature seen from behind, flying away): both wings a wave going
+#                  outwards with its wing beat (thread 12's pc 0x0505 + 7k, k 0-16; fin_wave: top row, both, bottom
+#                  row, both, each column 2 beats behind the one inside it), over the columns var 0x03 / 64 of 8
+#                  (its zoom: 64 at full size, shrinking to 2), so that it shrinks to the centre as it flies off
+#   the credits    thread 54 at pc 0x0294-0x031C (they scroll; the port's EndCheck leaves the part before the
+#                  game's own end): each of the music's channels lights its LEDs LED_NOTE_MS from each note it
+#                  plays (LedNote): channel 0 (the bass) both groups' bottom rows, 1 (the drums) every green LED,
+#                  2 and 3 (the chords) the left group's top row and the right group's
+led_finale:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     d0, d3                  # d3 = now
+    clr     d2                      # d2 = the W_* bits
+    movhu   (CURRENT_PART_ID), d0
+    cmp     0x3E87, d0
+    beq     lfn_on
+    call    led_finclr, 0, 0
+    bra     lfn_ret
+lfn_on:
+    clr     d0
+    mov     LED_FINMASK, a0
+    mov     5, d1
+lfn_clr:
+    mov     d0, (a0)
+    add     4, a0
+    add     -1, d1
+    bne     lfn_clr
+    movhu   (THREADS_DATA + 10 * 4 + PC_OFFSET), d0
+    cmp     0x0600, d0
+    bcs     lfn_t14
+    cmp     0x0631, d0
+    bhi     lfn_right
+    clr     d1                      # the left wing's shot: its step
+    cmp     0x060F, d0
+    bcs     lfn_ls
+    inc     d1
+    cmp     0x0614, d0
+    bcs     lfn_ls
+    inc     d1
+    cmp     0x0619, d0
+    bcs     lfn_ls
+    inc     d1
+    cmp     0x0622, d0
+    bcs     lfn_ls
+    inc     d1
+lfn_ls:
+    asl     1, d1
+    mov     d1, (LED_WL_T)
+    clr     d1
+    mov     d1, (LED_WR_T)
+    bra     lfn_wings
+lfn_right:
+    cmp     0x0636, d0
+    bcs     lfn_t14
+    cmp     0x0649, d0
+    bhi     lfn_t14
+    clr     d1                      # the right wing's shot: its step
+    cmp     0x063B, d0
+    bcs     lfn_rs
+    inc     d1
+    cmp     0x0640, d0
+    bcs     lfn_rs
+    inc     d1
+    cmp     0x0649, d0
+    bcs     lfn_rs
+    inc     d1
+    movhu   (VM_VARIABLES + 2 * 0xE6), d0
+    cmp     10, d0
+    beq     lfn_rs
+    inc     d1
+lfn_rs:
+    asl     1, d1
+    mov     d1, (LED_WR_T)
+    mov     8, d1
+    mov     d1, (LED_WL_T)
+    bra     lfn_wings
+lfn_t14:
+    movhu   (THREADS_DATA + 14 * 4 + PC_OFFSET), d0
+    cmp     0x04FB, d0
+    beq     lfn_flight
+    movhu   (THREADS_DATA + 54 * 4 + PC_OFFSET), d0
+    cmp     0x0294, d0
+    bcs     lfn_wings               # (before the wings: 0 and 0; the take-off: the wings held open)
+    cmp     0x031C, d0
+    bls     lfn_credits
+lfn_wings:
+    mov     (LED_WL), d0            # at rest (both as the wings are): the next change starts at once
+    mov     (LED_WL_T), d1
+    cmp     d1, d0
+    bne     lfn_move
+    mov     (LED_WR), d0
+    mov     (LED_WR_T), d1
+    cmp     d1, d0
+    bne     lfn_move
+    mov     d3, d0
+    add     -LED_WING_MS, d0
+    mov     d0, (LED_WSTEP_T)
+    bra     lfn_draw
+lfn_move:
+    mov     d3, d0                  # the columns due since the last: one every LED_WING_MS, however seldom this
+    mov     (LED_WSTEP_T), d1       # runs (the game task's yields)
+    sub     d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     LED_WING_MS, d1
+    divu    d1, d0                  # d0 = columns due
+    cmp     0, d0
+    beq     lfn_draw
+    mov     d0, (0x14, sp)
+    mulu    d1, d0
+    mov     (LED_WSTEP_T), d1
+    add     d0, d1
+    mov     d1, (LED_WSTEP_T)
+    mov     LED_WL, a0
+    mov     (0x14, sp), d0
+    call    lfn_step, 0, 0
+    mov     LED_WR, a0
+    mov     (0x14, sp), d0
+    call    lfn_step, 0, 0
+lfn_draw:
+    mov     (LED_WL), d0
+    mov     led_wing_l, a0
+    mov     3, d1
+    call    fin_cols, 0, 0
+    mov     (LED_WR), d0
+    mov     led_wing_r, a0
+    mov     3, d1
+    call    fin_cols, 0, 0
+    mov     (LED_WL), d0
+    mov     (LED_WR), d1
+    or      d1, d0
+    beq     lfn_ret
+    mov     W_FIN, d2
+    bra     lfn_ret
+lfn_flight:
+    clr     d0                      # the wings' shots are over
+    mov     d0, (LED_WL)
+    mov     d0, (LED_WR)
+    mov     d0, (LED_WL_T)
+    mov     d0, (LED_WR_T)
+    movhu   (THREADS_DATA + 12 * 4 + PC_OFFSET), d0   # the wing beat k: thread 12 at 0x0505 + 7k
+    add     -0x0505, d0
+    cmp     16 * 7, d0
+    bls     lfn_k
+    clr     d0
+lfn_k:
+    clr     d1
+    mov     d1, mdr
+    mov     7, d1
+    divu    d1, d0
+    mov     d0, (LED_FIN_K)
+    movhu   (VM_VARIABLES + 2 * 0x03), d0   # the columns: var 0x03 (the zoom, 64 full size) x 8 / 64, rounded up
+    exth    d0
+    cmp     0, d0
+    ble     lfn_ret
+    asl     3, d0
+    add     63, d0
+    lsr     6, d0
+    cmp     8, d0
+    bls     lfn_n
+    mov     8, d0
+lfn_n:
+    mov     d0, (0x14, sp)
+    mov     led_wing_l, a0
+    mov     -1, d1
+    call    fin_cols, 0, 0
+    mov     (0x14, sp), d0
+    mov     led_wing_r, a0
+    mov     -1, d1
+    call    fin_cols, 0, 0
+    mov     W_FIN, d2
+    bra     lfn_ret
+lfn_credits:
+    clr     d0
+    mov     d0, (LED_WL)
+    mov     d0, (LED_WR)
+    mov     d0, (LED_WL_T)
+    mov     d0, (LED_WR_T)
+    mov     W_FIN, d2
+    clr     d0                      # channel 0, the bass: both bottom rows
+    call    lfn_note, 0, 0
+    cmp     0, d0
+    beq     lfn_c1
+    mov     8, d0
+    mov     led_wing_l, a0
+    mov     2, d1
+    call    fin_cols, 0, 0
+    mov     8, d0
+    mov     led_wing_r, a0
+    mov     2, d1
+    call    fin_cols, 0, 0
+lfn_c1:
+    mov     1, d0                   # channel 1, the drums: every green LED
+    call    lfn_note, 0, 0
+    cmp     0, d0
+    beq     lfn_c2
+    or      W_GRNALL, d2
+lfn_c2:
+    mov     2, d0                   # channels 2 and 3, the chords: the top rows, left and right
+    call    lfn_note, 0, 0
+    cmp     0, d0
+    beq     lfn_c3
+    mov     8, d0
+    mov     led_wing_l, a0
+    mov     1, d1
+    call    fin_cols, 0, 0
+lfn_c3:
+    mov     3, d0
+    call    lfn_note, 0, 0
+    cmp     0, d0
+    beq     lfn_ret
+    mov     8, d0
+    mov     led_wing_r, a0
+    mov     1, d1
+    call    fin_cols, 0, 0
+lfn_ret:
+    mov     d2, d0
+    ret     [d2,d3,a2,a3], 0x30
+
+# lfn_step(a0 = LED_WL or LED_WR, d0 = columns due): that wing's columns lit that many closer to its target (the word
+# 8 bytes on: LED_WL_T, LED_WR_T), not past it.
+lfn_step:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     (a0), d2                # d2 = shown
+    mov     (8, a0), d1             # d1 = target
+    cmp     d2, d1
+    beq     lst2_ret
+    blt     lst2_down
+    sub     d2, d1                  # target - shown
+    cmp     d0, d1
+    bls     lst2_up
+    mov     d0, d1
+lst2_up:
+    add     d1, d2
+    mov     d2, (a0)
+    bra     lst2_ret
+lst2_down:
+    sub     d1, d2                  # shown - target
+    cmp     d0, d2
+    bls     lst2_dn
+    mov     d0, d2
+lst2_dn:
+    mov     (a0), d1
+    sub     d2, d1
+    mov     d1, (a0)
+lst2_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# lfn_note(d0 = channel; d3 = now, led_finale's) -> d0 = 1 when the channel played a note less than LED_NOTE_MS
+# ago. Leaf; uses d0, d1, a0.
+lfn_note:
+    asl     2, d0
+    mov     LED_NOTE_T, a0
+    add     d0, a0
+    mov     (a0), d1
+    cmp     0, d1
+    beq     lnn_no
+    mov     d3, d0
+    sub     d1, d0
+    cmp     LED_NOTE_MS, d0
+    bcc     lnn_no
+    mov     1, d0
+    rets
+lnn_no:
+    clr     d0
+    rets
+
+# fin_cols(a0 = a wing's columns (led_wing_l / _r: per column the top LED's register and bit, the bottom's; bit 0
+# none), d0 = the columns to light from the centre (0-8), d1 = the rows: 1 the top, 2 the bottom, 3 both, -1 the
+# flight's wave, fin_wave[(LED_FIN_K + 34 - 2 x column) mod 17]): ORed into LED_FINMASK.
+fin_cols:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     d0, d2
+    mov     d1, d3
+    mov     a0, a2
+    mov     0, a3                   # a3 = the column
+fc_col:
+    cmp     d2, a3
+    bcc     fc_ret
+    mov     d3, d1
+    cmp     -1, d1
+    bne     fc_rows
+    mov     (LED_FIN_K), d0
+    add     34, d0
+    mov     a3, d1
+    asl     1, d1
+    sub     d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     17, d1
+    divu    d1, d0
+    mov     mdr, d0
+    mov     fin_wave, a0
+    add     d0, a0
+    movbu   (a0), d1
+fc_rows:
+    mov     d1, (0x04, sp)
+    btst    1, d1
+    beq     fc_bot
+    movbu   (1, a2), d0
+    cmp     0, d0
+    beq     fc_bot
+    movbu   (0, a2), d1
+    mov     LED_FINMASK, a0
+    add     d1, a0
+    movbu   (a0), d1
+    or      d0, d1
+    movbu   d1, (a0)
+fc_bot:
+    mov     (0x04, sp), d1
+    btst    2, d1
+    beq     fc_next
+    movbu   (3, a2), d0
+    cmp     0, d0
+    beq     fc_next
+    movbu   (2, a2), d1
+    mov     LED_FINMASK, a0
+    add     d1, a0
+    movbu   (a0), d1
+    or      d0, d1
+    movbu   d1, (a0)
+fc_next:
+    add     4, a2
+    add     1, a3
+    bra     fc_col
+fc_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # led_skel(d0 = a PLAY_SOUND 0x5A's pc) -> d0 = 1 when it is a dying character's (led_skel_pcs, for the part now).
@@ -1381,6 +1766,15 @@ led_gd_r15:                         # ... and PANEL MEMORY 1 (register 15: 0x01)
 led_pm_seq:                         # the PANEL MEMORY ring left to right: 2, 1, 8, 7, 6, 5, 4, 3 (register, bit)
     .byte   8, 0x40, 15, 0x01, 9, 0x80, 9, 0x40, 9, 0x20, 8, 0x08, 8, 0x10, 8, 0x20
     .align  2
+led_wing_l:                         # the RHYTHM GROUP's red LEDs, the left wing: 8 columns from the panel's centre out
+    .byte   6, 0x02, 0, 0x00, 4, 0x02, 0, 0x00, 2, 0x02, 3, 0x02, 0, 0x02, 1, 0x02    # (probes/ledwings.py: per
+    .byte   6, 0x04, 7, 0x04, 4, 0x04, 5, 0x04, 2, 0x04, 3, 0x04, 0, 0x04, 1, 0x04    # column the top LED, the bottom)
+led_wing_r:                         # the SOUND GROUP's, the right wing
+    .byte   13, 0x10, 19, 0x02, 13, 0x08, 19, 0x01, 13, 0x04, 13, 0x80, 13, 0x02, 13, 0x40
+    .byte   13, 0x01, 13, 0x20, 16, 0x02, 17, 0x02, 16, 0x01, 17, 0x01, 10, 0x80, 0, 0x00
+fin_wave:                           # the flight's wave, by beat: 1 the top row, 3 both, 2 the bottom row
+    .byte   1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 3, 3, 3, 1, 1, 1
+    .align  2
 led_skel_pcs:                       # the part, the PLAY_SOUND 0x5A's pc of a dying character (guards', then Lester's)
     .word   0x3E83, 0x1044, 0x3E84, 0x4D16, 0x3E86, 0x417A
     .word   0x3E83, 0x0FD6, 0x3E84, 0x4CA4, 0x3E86, 0x4101
@@ -1409,5 +1803,6 @@ led_groups:                         # LedWrite: each wanted bit and the LEDs it 
     .long   W_GRNALL, led_grnall
     .long   W_FW, LED_FWMASK
     .long   W_GUARD, LED_GDMASK
+    .long   W_FIN, LED_FINMASK
     .long   W_ALL, led_all
     .long   0

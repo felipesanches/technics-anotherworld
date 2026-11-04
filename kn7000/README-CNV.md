@@ -241,7 +241,7 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
 ## Settings
 
-The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds five settings. They are
+The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds six settings. They are
 chosen and changed on the keybed, with the game's own direction keys: **UP** (A♭5 or B♭5) and **DOWN** (A5)
 choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
 resolution redraws the page first and the ambilight's border after it):
@@ -253,13 +253,26 @@ resolution redraws the page first and the ambilight's border after it):
 | light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                              |
 | keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
 | LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
+| code wheel    | off, on                        | off     | the original game's copy protection, from the next start (below)       |
 
 The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
-a setting in the order above, then zeros; `src/prefs.s`). The game reads it at the start, before the first
+a setting in the order above, the code wheel's at byte 10, then zeros; `src/prefs.s`: byte 9 was the bitmap filter's
+for a day, and a file saved then has 1 there). The game reads it at the start, before the first
 part, and writes it, over the old one, at the first converter call after a change with no panel button down
 (while no part is loading), and at the quit if a change is still unsaved. A missing or unreadable file means the
 defaults; a write that fails is counted (not retried) and the next change writes the file again. Checked in MAME by `probes/cnv/run_prefs.sh` (two runs: the
 settings changed on the page, then read back from the card on the next start).
+
+**The code wheel.** Off (the default), the game starts as the KN5000 port does: part 0x3E80's logo and credits
+sequence, with the variables the copy protection would set already set (0xBC, 0xC6, 0xF2; the engine's own 0xDC
+always). On, the game starts where the DOS game does: part 0x3E80 from its beginning, whose thread 20 shows the
+code wheel's question and takes the three symbols with the game's own controls (UP, DOWN, LEFT, RIGHT, ACTION).
+Answered right, the game's code sets those variables itself and goes on to the logo sequence and the intro, as it
+always has; answered wrong, its code (0x0D4F) stops every thread but its display loop and the screen stays as it is
+(EXIT held leaves; "Continue Next?" YES asks again). The answer is on the code wheel
+that came with the game. The setting is read when the game starts: switched on during a game, it asks at the next
+start ("Continue Next?" YES, or the program menu). The level-code screen (OTHER PART & FR) cannot be reached from the
+protection, as in DOS.
 
 ## The panel's LEDs
 
@@ -284,6 +297,9 @@ With the LED effects on (the default), every LED of the panel goes dark once the
 | the guard under the glass globe (the caves, the dome right of the second recharge station) | PANEL MEMORY 1 to 4 follow his reflection, two at most: 1 at the far left, 2 and 3 right under the globe, 4 at the far right                                                                                                                                                                         |
 | the globe crashing down on him                                                             | for 1.8 s the eight PANEL MEMORY LEDs pulse (120 ms on, 120 off) and the LEDs around them sparkle at random, drawn anew every 50 ms: the nearer ones sooner and more often, the left half of the instrument last and sparsest, all fading out                                                        |
 | a door blasted open (the corridor of code HBHK, the caves)                                 | the green LEDs, the PANEL MEMORY ring's too, flash for 0.6 s (100 ms on, 100 off) at each panel a blast knocks out of a door, Lester's or the guards'; over the big blast's own flash                                                                                                                |
+| the dragon spreading its wings (the end, code KRTD)                                        | the RHYTHM GROUP's red LEDs are its left wing, the SOUND GROUP's its right: they light column by column from the panel's centre outwards as each wing opens on screen (2 columns a step of the wing, one every 60 ms)                                                                                |
+| the dragon flying away                                                                     | a wave runs out along both wings with its wing beats (top row, both, bottom row, both), over fewer and fewer columns as it shrinks into the distance, down to the centre                                                                                                                             |
+| the credits                                                                                | the LEDs blink with the music's notes: the bass on both groups' bottom rows, the drums on every green LED, the two chord channels on the left and the right group's top row (each 120 ms from its note)                                                                                              |
 | the intro's lightning                                                                      | every LED on for 150 ms at each flash                                                                                                                                                                                                                                                                |
 | the intro's thunder                                                                        | every LED on for 100 ms at each loud clap                                                                                                                                                                                                                                                            |
 | the lightning striking the lab                                                             | every LED blinks three times                                                                                                                                                                                                                                                                         |
@@ -299,7 +315,8 @@ on its channel gives the share of LEDs lit, its square over 32 of 256), a variab
 var 0x06 set to 1000; Lester's facing, var 0x04; the tank panel's vars 0x5F, 0x67, 0x71-0x75 and its press, var 0xFA),
 a thread's pc (the lift's light: the frame its thread draws; the guard's lamp), the dome guard's place (var 0xE6, -7 to 7,
 while thread 5 patrols room 80; the globe's crash, sound 0x6B at pc 0xCC17 of part 0x3E84; a door's panel bursting,
-sound 0x56 at pc 0x6B85 or 0x6CE6 of part 0x3E84), a palette (the intro; the
+sound 0x56 at pc 0x6B85 or 0x6CE6 of part 0x3E84; the finale's threads 10, 14 and 54 and its zoom, var 0x03, with
+the music player's own notes), a palette (the intro; the
 lake's explosion, palette 0x02 loaded at pc 0x3BCD of part 0x3E82). The red LEDs'
 halves are split at the middle of the instrument by where each LED is on the panel (the MAME layout), their colour
 by the service manual's parts list (`probes/ledmasks.py`); the crash's rings of distance from the PANEL MEMORY ring

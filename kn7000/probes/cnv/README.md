@@ -1130,3 +1130,27 @@ loader's screen: MAME's screen image is a frame behind), and at 30 and 120 frame
 
     probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-load2
     python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-load2/p1/first_00[12].bin ~/compartilhado/tmp/aw-load2/p1/help3.bin
+
+## The finale: the dragon's wings, its flight, the credits (2026-11-04)
+
+Felipe: the RHYTHM GROUP's and SOUND GROUP's red LEDs as the dragon's two wings, lit from the panel's centre outwards
+as each wing opens; a wave on them as it flies away, shrinking towards the centre; the LEDs blinking with the music
+during the credits. The signals: research-scratch `kn7000-aw-reference/fingerprints`, "Ninth pass" (`finale_probe.sh`,
+`finalesig.py`; part 0x3E87 runs to its end with no input). The columns: `../ledwings.py` (8 a wing, 14 and 15 LEDs).
+`../finalecheck.py` reads the LED log, the variables and the 60 Hz log (`AW_LEDFINE_THREAD=10`: thread 10's pc).
+Build `0366e360...` (program 893), session `2026-11-04-3e87-krtd-finale` (frames = the part's ticks + 300):
+
+| part           | frames   | check                                                                                                                                   |
+|----------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| the left wing  | 468-472  | 2 columns at each step, at the 60 Hz line thread 10's pc changes: 0 (0600), 2 (060F), 4 (0614), 6 (0619), 8 (0622), from the centre out |
+| the right wing | 480-484  | the left held at 8; 2 (063B), 4 (0640), 6 and 8 (0649); both held through the take-off                                                  |
+| the flight     | 501-646  | each wing's extent the zoom's share of 8 (var 0x03 / 64) 146/146 frames; 54 different row patterns on a wing (the wave)                 |
+| the credits    | 647-1928 | the bass's bottom rows lit in 585 frames (408 changes), the drums' greens 593 (402), the chords' top rows 560 and 562; nothing else lit |
+
+    T=~/compartilhado/tmp/aw-finale-led; S=probes/sessions
+    AW_LEDFINE=$T/fin2.fine AW_LEDFINE_THREAD=10 AW_LEDLOG=$T/fin2.led probes/cnv/run_inplog.sh $T/fin2 replay \
+        $S/2026-11-04-3e87-krtd-finale.awr
+    python3 -I probes/finalecheck.py $T/fin2.led $T/fin2/vars.bin $T/fin2.fine
+
+(A first build stepped one column a service call, and the LED service runs at the game task's yields, seldom enough
+that the left wing reached 8 columns 350 ms after the picture: the columns due are now counted by the time.)

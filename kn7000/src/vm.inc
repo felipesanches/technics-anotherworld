@@ -112,6 +112,7 @@
 .equ PR_REACH,        PREFS_AT + 6
 .equ PR_KEYS,         PREFS_AT + 7
 .equ PR_LEDS,         PREFS_AT + 8
+.equ PR_WHEEL,        PREFS_AT + 10     # the code wheel (1 on: the game starts at its copy protection; interp.s GameReset)
 .equ PR_FILE_LEN,     16
 .equ PR_DIRTY,        PREFS_AT + 0x10   # u32: changed since last saved
 .equ PR_SEL,          PREFS_AT + 0x14   # u32: the row chosen on the page
@@ -121,7 +122,7 @@
 .equ PR_ARMED,        PREFS_AT + 0x28   # u32: the page's keys taken in since it was shown (prefs.s PrefsInput)
 .equ PR_KEYPREV,      PREFS_AT + 0x24   # u32: the page's keys held at the last look (bits: up, down, left, right)
 .equ PR_BUF,          PREFS_AT + 0x40   # 32 bytes: the file as read (17 asked for: a longer one is not ours)
-.equ PR_ROWS,         5
+.equ PR_ROWS,         6
 .equ PR_ROW_Y0,       58
 .equ PR_ROW_DY,       14
 
@@ -166,6 +167,14 @@
 .equ LED_FWTMP,       LED_VARS + 0x11C  # 20 bytes: one ring's, before they join LED_FWMASK
 .equ LED_GDMASK,      LED_VARS + 0x130  # 20 bytes: the guard under the globe: his PANEL MEMORY LEDs (1-4)
 .equ LED_DOOR_S,      LED_VARS + 0x144  # u32: when a door panel last burst (its green flashes), | 1; 0 none
+.equ LED_FINMASK,     LED_VARS + 0x148  # 20 bytes: the finale's LEDs this time (led_finale: wings, flight, credits)
+.equ LED_WL,          LED_VARS + 0x15C  # u32: the left wing's columns lit (0-8), stepping towards LED_WL_T
+.equ LED_WR,          LED_VARS + 0x160  # u32: the right wing's
+.equ LED_WL_T,        LED_VARS + 0x164  # u32: the left wing's columns as the dragon's wing is open (2 x its step)
+.equ LED_WR_T,        LED_VARS + 0x168  # u32: the right wing's
+.equ LED_WSTEP_T,     LED_VARS + 0x16C  # u32: when the wings' columns last stepped
+.equ LED_FIN_K,       LED_VARS + 0x170  # u32: the flight's wing beat, 0-16 (thread 12's pc), for the wave
+.equ LED_NOTE_T,      LED_VARS + 0x174  # 4 x u32: when each music channel last played a note (LedNote), | 1
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
