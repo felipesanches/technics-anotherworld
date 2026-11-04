@@ -383,44 +383,48 @@ help_page0:                         # the status lines (DV_*TXT) are dsp.s DspMo
     .long   hs_page_1
     .word   0xFFFF, 0               # end of page (4 bytes, so the next page stays aligned)
 
+# The level codes (pages 2 and 3): one block, left-aligned, centred on the 320-pixel page by its widest row,
+# "TXHF  Wait before you shoot" (code, 2 columns, 21 characters: 48 + 21 x 8 = 216 pixels).
+.equ CODES_X,         (320 - (48 + 21 * 8)) / 2
+
 help_page1:
     .word   108, 8, 2, 0
     .long   hs_title1
     .word   116, 20, 2, 0
     .long   hs_title2
-    .word   8, 40, 1, 0
+    .word   CODES_X, 40, 1, 0
     .long   hs_level_codes
-    .word   8, 56, 3, 0
+    .word   CODES_X, 56, 3, 0
     .long   hs_c1
-    .word   56, 56, 1, 0
+    .word   CODES_X + 48, 56, 1, 0
     .long   hs_l1
-    .word   8, 70, 3, 0
+    .word   CODES_X, 70, 3, 0
     .long   hs_c2
-    .word   56, 70, 1, 0
+    .word   CODES_X + 48, 70, 1, 0
     .long   hs_l2
-    .word   8, 84, 3, 0
+    .word   CODES_X, 84, 3, 0
     .long   hs_c3
-    .word   56, 84, 1, 0
+    .word   CODES_X + 48, 84, 1, 0
     .long   hs_l3
-    .word   8, 98, 3, 0
+    .word   CODES_X, 98, 3, 0
     .long   hs_c4
-    .word   56, 98, 1, 0
+    .word   CODES_X + 48, 98, 1, 0
     .long   hs_l4
-    .word   8, 112, 3, 0
+    .word   CODES_X, 112, 3, 0
     .long   hs_c5
-    .word   56, 112, 1, 0
+    .word   CODES_X + 48, 112, 1, 0
     .long   hs_l5
-    .word   8, 126, 3, 0
+    .word   CODES_X, 126, 3, 0
     .long   hs_c6
-    .word   56, 126, 1, 0
+    .word   CODES_X + 48, 126, 1, 0
     .long   hs_l6
-    .word   8, 140, 3, 0
+    .word   CODES_X, 140, 3, 0
     .long   hs_c7
-    .word   56, 140, 1, 0
+    .word   CODES_X + 48, 140, 1, 0
     .long   hs_l7
-    .word   8, 154, 3, 0
+    .word   CODES_X, 154, 3, 0
     .long   hs_c8
-    .word   56, 154, 1, 0
+    .word   CODES_X + 48, 154, 1, 0
     .long   hs_l8
     .word   128, 184, 1, 0
     .long   hs_page_2
@@ -431,39 +435,39 @@ help_page2:
     .long   hs_title1
     .word   116, 20, 2, 0
     .long   hs_title2
-    .word   8, 40, 1, 0
+    .word   CODES_X, 40, 1, 0
     .long   hs_level_codes2
-    .word   8, 56, 3, 0
+    .word   CODES_X, 56, 3, 0
     .long   hs_c9
-    .word   56, 56, 1, 0
+    .word   CODES_X + 48, 56, 1, 0
     .long   hs_l9
-    .word   8, 70, 3, 0
+    .word   CODES_X, 70, 3, 0
     .long   hs_c10
-    .word   56, 70, 1, 0
+    .word   CODES_X + 48, 70, 1, 0
     .long   hs_l10
-    .word   8, 84, 3, 0
+    .word   CODES_X, 84, 3, 0
     .long   hs_c11
-    .word   56, 84, 1, 0
+    .word   CODES_X + 48, 84, 1, 0
     .long   hs_l11
-    .word   8, 98, 3, 0
+    .word   CODES_X, 98, 3, 0
     .long   hs_c12
-    .word   56, 98, 1, 0
+    .word   CODES_X + 48, 98, 1, 0
     .long   hs_l12
-    .word   8, 112, 3, 0
+    .word   CODES_X, 112, 3, 0
     .long   hs_c13
-    .word   56, 112, 1, 0
+    .word   CODES_X + 48, 112, 1, 0
     .long   hs_l13
-    .word   8, 126, 3, 0
+    .word   CODES_X, 126, 3, 0
     .long   hs_c14
-    .word   56, 126, 1, 0
+    .word   CODES_X + 48, 126, 1, 0
     .long   hs_l14
-    .word   8, 140, 3, 0
+    .word   CODES_X, 140, 3, 0
     .long   hs_c15
-    .word   56, 140, 1, 0
+    .word   CODES_X + 48, 140, 1, 0
     .long   hs_l15
-    .word   8, 154, 3, 0
+    .word   CODES_X, 154, 3, 0
     .long   hs_c16
-    .word   56, 154, 1, 0
+    .word   CODES_X + 48, 154, 1, 0
     .long   hs_l16
     .word   60, 166, 2, 0
     .long   hs_url1
