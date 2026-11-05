@@ -175,6 +175,16 @@
 .equ LED_WSTEP_T,     LED_VARS + 0x16C  # u32: when the wings' columns last stepped
 .equ LED_FIN_K,       LED_VARS + 0x170  # u32: the flight's wing beat, 0-16 (thread 12's pc), for the wave
 .equ LED_NOTE_T,      LED_VARS + 0x174  # 4 x u32: when each music channel last played a note (LedNote), | 1
+.equ LED_NOTE_N,      LED_VARS + 0x184  # 4 x u32: the notes each music channel has played (LedNote)
+.equ LED_NOTE_SEEN,   LED_VARS + 0x194  # 4 x u32: LED_NOTE_N at the light show's last look (fin_party)
+.equ LED_PAT,         LED_VARS + 0x1A4  # u32: the credits' light show: its pattern now (0 to FIN_NPAT - 1)
+.equ LED_PAT_T,       LED_VARS + 0x1A8  # u32: when that pattern started, | 1; 0 the show not started
+.equ LED_SPK_I,       LED_VARS + 0x1AC  # u32: the sparkles made so far (the next one's slot, mod 8)
+.equ LED_SPK_T,       LED_VARS + 0x1B0  # 8 x u32: each sparkle's end, | 1; 0 none
+.equ LED_SPK_C,       LED_VARS + 0x1D0  # 8 bytes: each sparkle's light (fin_lights' index)
+.equ LED_IDLE_T,      LED_VARS + 0x1D8  # u32: the music's last note, or the show's own beat since (fin_party)
+.equ LED_STEP,        LED_VARS + 0x1DC  # u32: the show's beats: looks that found bass or drum notes, or its own beat
+.equ LED_FIN_END,     LED_VARS + 0x1E0  # (the finale's state: LED_WL to here, cleared by led_finclr)
 .equ LEV_LASER,       1                 # LedEvent's events
 .equ LEV_FLASH,       2
 .equ LEV_THUNDER,     3
@@ -358,10 +368,12 @@
 .equ END_STOP_MS,     VM_MISC_BASE + 0x0244     # u32: the kernel ms when the picture stopped (| 1), 0 not yet
 .equ END_HELD,        VM_MISC_BASE + 0x0248     # u32: a key was held at the last look
 .equ HELP_CODES,      VM_MISC_BASE + 0x024C     # u32: OTHER PART & FR pressed on the help screen: the code screen next
+.equ WHEEL_FAIL_MS,   VM_MISC_BASE + 0x0250     # u32: the kernel ms the code wheel's answer was found wrong (| 1), 0 not
 .equ END_PART,        0x3E87
 .equ END_STRING,      0x265
 .equ END_SCROLL,      100            # ticks from the words to the still picture
 .equ END_WAIT_MS,     3000
+.equ WHEEL_RETRY_MS,  3000  # a wrong answer to the code wheel: the ERROR page this long, then again (WheelRetry)
 
 # ================================================================================
 # Speed (perf.s; README-CNV.md, "Speed"). The fine clock is the MN10300's timer 4, which the firmware

@@ -297,6 +297,7 @@ GameReset:
     mov     d0, (GUARD_WHAT)        # a new game: nothing refused yet
     mov     d0, (GUARD_ADDR)
     mov     d0, (GUARD_COUNT)
+    mov     d0, (WHEEL_FAIL_MS)
     mov     TRACE_COUNT, a0         # reset the instruction trace
     mov     d0, (a0)
     mov     FRAME_NO, a0
@@ -690,6 +691,49 @@ ec_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # ================================================================================
+# WheelRetry: the code wheel answered wrong (part 0x3E80 at 0x0D4F: every thread stopped but the display loop; thread
+# 14 at 0x0D62 shows the ERROR page and sets var 0xC9 = 1, its only writer but 0x0300's = 0 as the question is put):
+# WHEEL_RETRY_MS later the part starts again from its pc 0, with a new random seed (var 0x3C, from the clock, as
+# GameReset's), so it asks for another position. (The DOS game stays on the ERROR page.)
+WheelRetry:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    movhu   (CURRENT_PART_ID), d0
+    cmp     PART_PROTECTION, d0
+    bne     wr_disarm
+    movhu   (VM_VARIABLES + 2 * 0xC9), d0
+    cmp     1, d0
+    bne     wr_disarm
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d2                # d2 = now
+    mov     (WHEEL_FAIL_MS), d0
+    cmp     0, d0
+    bne     wr_wait
+    mov     d2, d0
+    or      1, d0
+    mov     d0, (WHEEL_FAIL_MS)
+    bra     wr_ret
+wr_wait:
+    mov     d2, d1
+    sub     d0, d1
+    cmp     WHEEL_RETRY_MS, d1
+    bcs     wr_ret
+    mov     0xC9, d0                # not wrong yet
+    clr     d1
+    call    WriteVar, 0, 0
+    mov     0x3C, d0                # the seed
+    mov     d2, d1
+    call    WriteVar, 0, 0
+    mov     PART_PROTECTION, d0
+    movhu   d0, (REQ_NEXT_PART)
+    call    InpLogRequest, 0, 0     # d0 = the part: into the input log (inplog.s)
+wr_disarm:
+    clr     d0
+    mov     d0, (WHEEL_FAIL_MS)
+wr_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# ================================================================================
 # ReadInput: feed KN7000 controls to the Another World hero variables.
 #
 #   * Intro (0x3E81): any held keybed/MIDI key -> fire, so the player can skip the intro.
@@ -737,6 +781,7 @@ ri_nocodes:
     beq     ri_noend
     call    EndCheck, 0, 0
 ri_noend:
+    call    WheelRetry, 0, 0        # a wrong answer to the code wheel: it asks again
     movhu   (CURRENT_PART_ID), d0
     cmp     0x3E81, d0
     bne     ri_gameplay

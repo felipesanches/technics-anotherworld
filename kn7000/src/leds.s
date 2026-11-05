@@ -103,7 +103,13 @@
 .equ LED_DOOR_MS,     600            # a door panel's burst: the green LEDs flash this long (the burst shows 9 ticks)
 .equ LED_DOOR_HALF,   100            # ... on, off, on, ...: each half this long
 .equ LED_WING_MS,     60             # the finale's wings: a column more (or less) this often (2 a tick of 120 ms)
-.equ LED_NOTE_MS,     120            # the credits: a music channel's LEDs lit this long after each of its notes
+.equ LED_PAT_MS,      4000           # the credits' light show: a pattern at least this long (to a bass note)
+.equ LED_SPARK_MS,    250            # ... a sparkle lit this long
+.equ LED_IDLE_MS,     1000           # ... the music silent this long (it ends before the credits): the show's own beat,
+.equ LED_BEAT_MS,     300            # ... a note on every channel this often
+.equ FIN_NPAT,        6              # ... its patterns (fin_want)
+.equ FIN_NLIGHTS,     101            # ... its LEDs (fin_lights)
+.equ FIN_SPK_NEW,     6              # ... sparkles made at one look, at most (2 a note)
 .equ LED_MAGIC_V,     0x4C454453     # LedInit has run
 # what LedService wants written (LedWrite's d0)
 .equ W_RED,           0x01           # every red LED
@@ -156,8 +162,8 @@ LedInit:
     mov     d0, (LED_SKEL_T)
     mov     d0, (LED_GLASS_S)
     mov     d0, (LED_DOOR_S)
-    mov     LED_WL, a0              # the finale's state (as led_finclr: LED_WL .. LED_NOTE_T + 12)
-    mov     12, d1
+    mov     LED_WL, a0              # the finale's state (as led_finclr: LED_WL to LED_FIN_END)
+    mov     (LED_FIN_END - LED_WL) / 4, d1
 lin_fin:
     mov     d0, (a0)
     add     4, a0
@@ -825,8 +831,8 @@ lsv_apply:
 lsv_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# LedNote(d0 = the music's channel, 0-3): it plays a note (audio.s MusicEvent): its time, for the credits' LEDs
-# (led_finale). Leaf; uses d0, d1, a0.
+# LedNote(d0 = the music's channel, 0-3): it plays a note (audio.s MusicEvent): its time and its count, for the
+# credits' light show (fin_party). Leaf; uses d0, d1, a0.
 LedNote:
     cmp     3, d0
     bhi     lnt_ret
@@ -837,14 +843,17 @@ LedNote:
     mov     LED_NOTE_T, a0
     add     d0, a0
     mov     d1, (a0)
+    mov     (LED_NOTE_N - LED_NOTE_T, a0), d1
+    inc     d1
+    mov     d1, (LED_NOTE_N - LED_NOTE_T, a0)
 lnt_ret:
     rets
 
 # led_finclr: the finale's state cleared (LedInit, LedPart). Leaf; uses d0, d1, a0.
 led_finclr:
     clr     d0
-    mov     LED_WL, a0              # LED_WL .. LED_NOTE_T + 12: 12 words
-    mov     12, d1
+    mov     LED_WL, a0              # LED_WL to LED_FIN_END
+    mov     (LED_FIN_END - LED_WL) / 4, d1
 lfc_w:
     mov     d0, (a0)
     add     4, a0
@@ -866,9 +875,8 @@ lfc_w:
 #                  row, both, each column 2 beats behind the one inside it), over the columns var 0x03 / 64 of 8
 #                  (its zoom: 64 at full size, shrinking to 2), so that it shrinks to the centre as it flies off
 #   the credits    thread 54 at pc 0x0294-0x031C (they scroll; the port's EndCheck leaves the part before the
-#                  game's own end): each of the music's channels lights its LEDs LED_NOTE_MS from each note it
-#                  plays (LedNote): channel 0 (the bass) both groups' bottom rows, 1 (the drums) every green LED,
-#                  2 and 3 (the chords) the left group's top row and the right group's
+#                  game's own end): a light show over every LED of the panel, as an amusement park's, stepping
+#                  with the music's notes (fin_party)
 led_finale:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -1040,42 +1048,8 @@ lfn_credits:
     mov     d0, (LED_WL_T)
     mov     d0, (LED_WR_T)
     mov     W_FIN, d2
-    clr     d0                      # channel 0, the bass: both bottom rows
-    call    lfn_note, 0, 0
-    cmp     0, d0
-    beq     lfn_c1
-    mov     8, d0
-    mov     led_wing_l, a0
-    mov     2, d1
-    call    fin_cols, 0, 0
-    mov     8, d0
-    mov     led_wing_r, a0
-    mov     2, d1
-    call    fin_cols, 0, 0
-lfn_c1:
-    mov     1, d0                   # channel 1, the drums: every green LED
-    call    lfn_note, 0, 0
-    cmp     0, d0
-    beq     lfn_c2
-    or      W_GRNALL, d2
-lfn_c2:
-    mov     2, d0                   # channels 2 and 3, the chords: the top rows, left and right
-    call    lfn_note, 0, 0
-    cmp     0, d0
-    beq     lfn_c3
-    mov     8, d0
-    mov     led_wing_l, a0
-    mov     1, d1
-    call    fin_cols, 0, 0
-lfn_c3:
-    mov     3, d0
-    call    lfn_note, 0, 0
-    cmp     0, d0
-    beq     lfn_ret
-    mov     8, d0
-    mov     led_wing_r, a0
-    mov     1, d1
-    call    fin_cols, 0, 0
+    mov     d3, d0
+    call    fin_party, 0, 0
 lfn_ret:
     mov     d2, d0
     ret     [d2,d3,a2,a3], 0x30
@@ -1110,24 +1084,304 @@ lst2_dn:
 lst2_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# lfn_note(d0 = channel; d3 = now, led_finale's) -> d0 = 1 when the channel played a note less than LED_NOTE_MS
-# ago. Leaf; uses d0, d1, a0.
-lfn_note:
-    asl     2, d0
-    mov     LED_NOTE_T, a0
-    add     d0, a0
-    mov     (a0), d1
-    cmp     0, d1
-    beq     lnn_no
-    mov     d3, d0
+# fin_party(d0 = now): the credits' light show, ORed into LED_FINMASK. Each of the panel's LEDs (fin_lights, left to
+# right, with its column xq and row yq) is lit or not by the pattern now (fin_want), which steps with the music's
+# notes (LED_NOTE_N; audio.s MusicEvent's LedNote): channel 0 the bass, 1 the drums, 2 and 3 the chords. The
+# pattern changes at the first note LED_PAT_MS after the last change, through the six in turn. The music ends some
+# 11 s before the credits do, its drums a few seconds earlier: LED_IDLE_MS after the bass's or the drums' last note,
+# the show plays a note on every channel itself each LED_BEAT_MS.
+fin_party:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x20, sp
+    mov     d0, d3                  # d3 = now
+    clr     d0
+    mov     d0, (0x0C, sp)          # the show's own beat this time
+    mov     d3, d0                  # the music silent?
+    mov     (LED_IDLE_T), d1
     sub     d1, d0
-    cmp     LED_NOTE_MS, d0
-    bcc     lnn_no
+    cmp     LED_IDLE_MS, d0
+    bcs     fp_count
+    mov     d3, d0                  # the show's own beat; the next one LED_BEAT_MS on
+    add     LED_BEAT_MS - LED_IDLE_MS, d0
+    mov     d0, (LED_IDLE_T)
     mov     1, d0
+    mov     d0, (0x0C, sp)
+    clr     d2
+fp_beat:
+    mov     d2, d0
+    call    LedNote, 0, 0
+    inc     d2
+    cmp     4, d2
+    bne     fp_beat
+fp_count:
+    clr     d0
+    mov     d0, (0x04, sp)          # the notes since the last look, all channels
+    mov     d0, (0x08, sp)          # the bass's and drums' among them
+    mov     LED_NOTE_N, a2
+    mov     LED_NOTE_SEEN, a3
+    clr     d2                      # the channel
+fp_seen:
+    mov     (a2), d0
+    mov     (a3), d1
+    mov     d0, (a3)
+    sub     d1, d0                  # its new notes
+    beq     fp_seen_n
+    cmp     2, d2
+    bcc     fp_seen_add
+    mov     (0x08, sp), d1
+    add     d0, d1
+    mov     d1, (0x08, sp)
+fp_seen_add:
+    mov     (0x04, sp), d1
+    add     d0, d1
+    mov     d1, (0x04, sp)
+fp_seen_n:
+    add     4, a2
+    add     4, a3
+    inc     d2
+    cmp     4, d2
+    bne     fp_seen
+    mov     (0x0C, sp), d0          # the show's own beat: a step
+    cmp     0, d0
+    bne     fp_step
+    mov     (0x08, sp), d0          # the bass's or drums' notes: a step, and the music not silent
+    cmp     0, d0
+    beq     fp_pat
+    mov     d3, (LED_IDLE_T)
+fp_step:
+    mov     (LED_STEP), d0
+    inc     d0
+    mov     d0, (LED_STEP)
+fp_pat:
+    mov     (LED_PAT_T), d0         # the pattern
+    cmp     0, d0
+    bne     fp_pat_run
+    clr     d0                      # the show starts: the first pattern
+    mov     d0, (LED_PAT)
+    bra     fp_pat_new
+fp_pat_run:
+    mov     (0x04, sp), d1
+    cmp     0, d1
+    beq     fp_spark
+    mov     d3, d1
+    sub     d0, d1
+    cmp     LED_PAT_MS, d1
+    bcs     fp_spark
+    mov     (LED_PAT), d0
+    inc     d0
+    cmp     FIN_NPAT, d0
+    bcs     fp_pat_set
+    clr     d0
+fp_pat_set:
+    mov     d0, (LED_PAT)
+fp_pat_new:
+    mov     d3, d0
+    or      1, d0
+    mov     d0, (LED_PAT_T)
+fp_spark:
+    mov     (0x04, sp), d2          # the sparkles: 2 a note, at most FIN_SPK_NEW
+    asl     1, d2
+    cmp     FIN_SPK_NEW, d2
+    bls     fp_sp_n
+    mov     FIN_SPK_NEW, d2
+fp_sp_n:
+    cmp     0, d2
+    beq     fp_draw
+    mov     d3, d0
+    call    fin_spark, 0, 0
+    add     -1, d2
+    bra     fp_sp_n
+fp_draw:
+    mov     fin_lights, a2          # a2 = the light
+    clr     d2                      # d2 = its index
+fp_light:
+    mov     d2, d0
+    call    fin_want, 0, 0
+    cmp     0, d0
+    beq     fp_next
+    movbu   (1, a2), d0             # lit: its bit into LED_FINMASK
+    movbu   (0, a2), d1
+    mov     LED_FINMASK, a0
+    add     d1, a0
+    movbu   (a0), d1
+    or      d0, d1
+    movbu   d1, (a0)
+fp_next:
+    add     4, a2
+    inc     d2
+    cmp     FIN_NLIGHTS, d2
+    bne     fp_light
+    ret     [d2,d3,a2,a3], 0x30
+
+# fin_spark(d0 = now): a sparkle, a light drawn at random (LED_SEED), lit LED_SPARK_MS. Leaf; uses d0, d1, a0, a1.
+fin_spark:
+    mov     d0, a1                  # a1 = now
+    mov     (LED_SEED), d0
+    mov     1103515245, d1
+    mulu    d1, d0
+    add     12345, d0
+    mov     d0, (LED_SEED)
+    lsr     16, d0
+    clr     d1
+    mov     d1, mdr
+    mov     FIN_NLIGHTS, d1
+    divu    d1, d0
+    mov     mdr, d1                 # d1 = the light
+    mov     (LED_SPK_I), d0
+    inc     d0
+    mov     d0, (LED_SPK_I)
+    and     7, d0                   # its slot
+    mov     LED_SPK_C, a0
+    add     d0, a0
+    movbu   d1, (a0)
+    asl     2, d0
+    mov     LED_SPK_T, a0
+    add     d0, a0
+    mov     a1, d1
+    add     LED_SPARK_MS, d1
+    or      1, d1
+    mov     d1, (a0)
     rets
-lnn_no:
+
+# fin_want(d0 = the light's index; a2 = its fin_lights entry: register, bit, xq 0-63, yq 0-15; d3 = now) -> d0 = 1
+# when the pattern now (LED_PAT) lights it. The notes counted: n0 the bass, n1 the drums, n2 + n3 the chords.
+#   0 the marquee  every third light, left to right, one on at each beat (LED_STEP: a look that found bass or drum
+#                  notes, however many; or the show's own beat): (index + LED_STEP) mod 3 = 0
+#   1 the ripple   rings from the panel's centre, a ring further out at each bass note: |xq - 32| / 4 - n0 = 0 mod 4
+#   2 the sparkle  2 random lights at each note of any channel, each LED_SPARK_MS (fin_spark)
+#   3 the scanner  the top rows' beam (yq < 8) bouncing left and right with the chords, the bottom rows' the other
+#                  way with the bass: |xq - p| < 3, p 0-62 4 columns on at each note
+#   4 the checker  blocks 4 columns wide, 2 rows high, swapping at each beat: (xq / 4 + yq / 2 + LED_STEP) even
+#   5 the meter    from the centre out, as far as 32 - (ms since the last bass note) / 8: |xq - 32| < that
+# Leaf; uses d0, d1, a0, a1.
+fin_want:
+    mov     (LED_PAT), d1
+    cmp     1, d1
+    beq     fw_ripple
+    cmp     2, d1
+    beq     fw_sparkle
+    cmp     3, d1
+    beq     fw_scan
+    cmp     4, d1
+    beq     fw_checker
+    cmp     5, d1
+    beq     fw_meter
+    mov     (LED_STEP), d1          # 0, the marquee
+    add     d1, d0
+    clr     d1
+    mov     d1, mdr
+    mov     3, d1
+    divu    d1, d0
+    mov     mdr, d0
+fwn_zero:
+    cmp     0, d0
+    beq     fwn_yes
+fwn_no:
     clr     d0
     rets
+fwn_yes:
+    mov     1, d0
+    rets
+fw_ripple:
+    movbu   (2, a2), d0
+    add     -32, d0
+    bge     fwr_abs
+    not     d0
+    add     1, d0
+fwr_abs:
+    lsr     2, d0
+    mov     (LED_NOTE_N), d1
+    sub     d1, d0
+    and     3, d0
+    bra     fwn_zero
+fw_sparkle:
+    mov     d0, d1                  # d1 = the light
+    mov     LED_SPK_C, a0
+    mov     LED_SPK_T, a1
+fws_k:
+    movbu   (a0), d0
+    cmp     d1, d0
+    bne     fws_next
+    mov     (a1), d0
+    cmp     0, d0
+    beq     fws_next
+    sub     d3, d0                  # its end - now
+    bgt     fwn_yes
+fws_next:
+    add     1, a0
+    add     4, a1
+    cmp     LED_SPK_C + 8, a0
+    bne     fws_k
+    bra     fwn_no
+fw_scan:
+    mov     0, a1                   # a1 = 0 the top rows, 1 the bottom
+    movbu   (3, a2), d0
+    cmp     8, d0
+    bcc     fwsc_bot
+    mov     (LED_NOTE_N + 8), d0
+    mov     (LED_NOTE_N + 12), d1
+    add     d1, d0
+    bra     fwsc_b
+fwsc_bot:
+    mov     1, a1
+    mov     (LED_NOTE_N), d0
+fwsc_b:
+    asl     2, d0                   # p: 4 columns a note, there and back over 0-62
+    clr     d1
+    mov     d1, mdr
+    mov     124, d1
+    divu    d1, d0
+    mov     mdr, d0
+    cmp     62, d0
+    bls     fwsc_p
+    mov     124, d1
+    sub     d0, d1
+    mov     d1, d0
+fwsc_p:
+    cmp     0, a1
+    beq     fwsc_x
+    mov     62, d1                  # the bottom rows' the other way
+    sub     d0, d1
+    mov     d1, d0
+fwsc_x:
+    movbu   (2, a2), d1
+    sub     d0, d1                  # xq - p
+    bge     fwsc_abs
+    not     d1
+    add     1, d1
+fwsc_abs:
+    cmp     3, d1
+    bcs     fwn_yes
+    bra     fwn_no
+fw_checker:
+    movbu   (2, a2), d0
+    lsr     2, d0
+    movbu   (3, a2), d1
+    lsr     1, d1
+    add     d1, d0
+    mov     (LED_STEP), d1
+    add     d1, d0
+    and     1, d0
+    bra     fwn_zero
+fw_meter:
+    mov     (LED_NOTE_T), d1
+    cmp     0, d1
+    beq     fwn_no
+    mov     d3, d0
+    sub     d1, d0                  # ms since the last bass note
+    lsr     3, d0
+    mov     32, d1
+    sub     d0, d1                  # d1 = how far out
+    blt     fwn_no
+    movbu   (2, a2), d0
+    add     -32, d0
+    bge     fwm_abs
+    not     d0
+    add     1, d0
+fwm_abs:
+    cmp     d1, d0
+    blt     fwn_yes
+    bra     fwn_no
 
 # fin_cols(a0 = a wing's columns (led_wing_l / _r: per column the top LED's register and bit, the bottom's; bit 0
 # none), d0 = the columns to light from the centre (0-8), d1 = the rows: 1 the top, 2 the bottom, 3 both, -1 the
@@ -1774,6 +2028,34 @@ led_wing_r:                         # the SOUND GROUP's, the right wing
     .byte   13, 0x01, 13, 0x20, 16, 0x02, 17, 0x02, 16, 0x01, 17, 0x01, 10, 0x80, 0, 0x00
 fin_wave:                           # the flight's wave, by beat: 1 the top row, 3 both, 2 the bottom row
     .byte   1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 3, 3, 3, 1, 1, 1
+fin_lights:                         # the credits' light show: every LED, left to right (probes/ledcells.py): its
+                                    # register, bit, column xq 0-63, row yq 0-15
+    .byte   2, 0x10, 0, 0, 1, 0x10, 1, 7, 7, 0x01, 2, 14, 0, 0x10, 7, 9
+    .byte   0, 0x08, 7, 11, 4, 0x10, 9, 0, 1, 0x08, 9, 11, 5, 0x10, 10, 3
+    .byte   3, 0x10, 10, 5, 6, 0x10, 11, 0, 7, 0x10, 11, 3, 2, 0x08, 11, 11
+    .byte   2, 0x20, 11, 14, 3, 0x08, 13, 11, 0, 0x04, 14, 0, 1, 0x04, 14, 3
+    .byte   2, 0x04, 15, 0, 3, 0x04, 15, 3, 4, 0x08, 16, 9, 5, 0x08, 16, 11
+    .byte   4, 0x04, 17, 0, 5, 0x04, 17, 3, 6, 0x08, 18, 9, 7, 0x08, 18, 11
+    .byte   6, 0x04, 19, 0, 7, 0x04, 19, 3, 0, 0x01, 20, 11, 0, 0x02, 21, 0
+    .byte   1, 0x02, 21, 3, 1, 0x01, 21, 11, 1, 0x20, 21, 14, 2, 0x02, 22, 0
+    .byte   3, 0x02, 22, 3, 3, 0x01, 23, 11, 4, 0x02, 24, 0, 5, 0x02, 24, 3
+    .byte   2, 0x01, 24, 9, 4, 0x01, 24, 11, 5, 0x01, 24, 11, 6, 0x01, 25, 11
+    .byte   6, 0x02, 26, 0, 7, 0x02, 26, 3, 3, 0x20, 28, 15, 0, 0x20, 32, 15
+    .byte   13, 0x10, 35, 0, 19, 0x02, 35, 3, 13, 0x08, 37, 0, 19, 0x01, 37, 3
+    .byte   13, 0x04, 38, 0, 13, 0x80, 38, 3, 18, 0x02, 38, 9, 13, 0x02, 40, 0
+    .byte   13, 0x40, 40, 3, 18, 0x01, 41, 9, 12, 0x40, 41, 11, 13, 0x01, 42, 0
+    .byte   13, 0x20, 42, 3, 12, 0x80, 42, 9, 12, 0x20, 42, 11, 16, 0x02, 44, 0
+    .byte   17, 0x02, 44, 3, 16, 0x01, 45, 0, 17, 0x01, 45, 3, 12, 0x10, 45, 9
+    .byte   14, 0x02, 45, 11, 10, 0x80, 47, 0, 11, 0x80, 47, 3, 12, 0x02, 47, 7
+    .byte   12, 0x08, 47, 9, 14, 0x01, 47, 11, 10, 0x40, 49, 0, 11, 0x40, 49, 3
+    .byte   12, 0x01, 49, 7, 12, 0x04, 49, 9, 8, 0x80, 49, 11, 10, 0x20, 52, 0
+    .byte   11, 0x20, 52, 3, 9, 0x10, 52, 5, 10, 0x10, 53, 0, 11, 0x10, 53, 3
+    .byte   9, 0x80, 53, 9, 15, 0x01, 53, 11, 9, 0x40, 54, 8, 8, 0x40, 54, 11
+    .byte   10, 0x08, 55, 0, 11, 0x08, 55, 3, 9, 0x20, 55, 8, 8, 0x20, 55, 11
+    .byte   8, 0x08, 56, 9, 8, 0x10, 56, 11, 10, 0x04, 57, 0, 11, 0x04, 57, 3
+    .byte   9, 0x08, 58, 4, 8, 0x02, 59, 10, 10, 0x02, 60, 0, 11, 0x02, 60, 3
+    .byte   9, 0x02, 61, 5, 8, 0x04, 61, 14, 10, 0x01, 62, 0, 11, 0x01, 62, 3
+    .byte   8, 0x01, 63, 10
     .align  2
 led_skel_pcs:                       # the part, the PLAY_SOUND 0x5A's pc of a dying character (guards', then Lester's)
     .word   0x3E83, 0x1044, 0x3E84, 0x4D16, 0x3E86, 0x417A

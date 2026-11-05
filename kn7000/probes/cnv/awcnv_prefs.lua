@@ -17,7 +17,10 @@
 -- run_perf.sh brings AWPREFS.CFG back.
 -- AWPR_PHASE=2 (the card with that AWPREFS.CFG): the settings read (PR_STATUS 1) and in effect from the start; with
 -- the code wheel on, the game in part 0x3E80 from its start: thread 20 asking for the symbols (pc 0x02CE-0x0D7F),
--- var 0xBC without the bypass's 0x10 ("wheel"; the screen dumped, phase2.bin).
+-- var 0xBC without the bypass's 0x10 ("wheel"; the screen dumped, phase2.bin). Then, twice, a wrong answer: thread 20
+-- sent to the answer's check (0x0C2A, the VM's own setvec: its requested pc) with no symbol given; the ERROR page
+-- (var 0xC9 1, wrong1.bin) for 3 s, the part still 0x3E80, then the question again (thread 20 at 0x02CE-0x0D7F, var
+-- 0xC9 0) with a new seed (var 0x3C) ("retry"; retry1.bin; interp.s WheelRetry).
 -- Prints "awpr: ..." lines.
 --   probes/cnv/run_prefs.sh OUT
 local M = manager.machine
@@ -174,6 +177,23 @@ local co = coroutine.create(function()
     result("effect", sp:read_u32(PG_W) == 320 and amb_black() and sp:read_u32(AU_KEYWANT) == 1,
       string.format("PG_W %d, ambilight black %s, keybed muted %d", sp:read_u32(PG_W), tostring(amb_black()), sp:read_u32(AU_KEYWANT)))
     wait(1); dump("phase2.bin")
+    for n = 1, 2 do
+      local seed = sp:read_u16(VI + 2 * 0x3C)
+      for v = 0x1E, 0x21 do sp:write_u16(VI + 2 * v, 0) end
+      sp:write_u16(VI + 0x400 + 20 * 4 + 2, 0x0C2A)
+      local wrong = wait_until(function() return sp:read_u16(VI + 2 * 0xC9) == 1 end, 2)
+      local t0 = now()
+      wait(0.5); dump("wrong" .. n .. ".bin")
+      local held = wait_until(function() return sp:read_u16(VI + 2 * 0xC9) ~= 1 or sp:read_u16(VI + 0x102A) ~= 0x3E80 end, 2.2)
+      local back = wait_until(function()
+        local t = sp:read_u16(VI + 0x400 + 20 * 4)
+        return sp:read_u16(VI + 2 * 0xC9) == 0 and t >= 0x02CE and t <= 0x0D7F end, 3)
+      local dt = now() - t0
+      wait(1.5); dump("retry" .. n .. ".bin")
+      result("retry", wrong and not held and back and sp:read_u16(VI + 0x102A) == 0x3E80 and dt > 2.8,
+        string.format("wrong answer %d: ERROR %s, held there %s, asked again %s after %.2f s, part %04X, seed %04X -> %04X",
+          n, tostring(wrong), tostring(not held), tostring(back), dt, sp:read_u16(VI + 0x102A), seed, sp:read_u16(VI + 2 * 0x3C)))
+    end
   end
   press("CPC_SEG11", 0x80, 2.0)       -- EXIT held: quit
   wait_until(function() return sp:read_u32(CV_ENDED) == 1 end, 30)

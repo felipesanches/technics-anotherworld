@@ -13,9 +13,13 @@
 #   flight   frames 501-646: each wing's outermost lit column + 1 against ceil(var 0x03 x 8 / 64), the zoom's share
 #            of 8 (this frame's or the one before's: the shadow is written at the next yield), frames equal / all (a
 #            column with no bottom LED is dark while the wave is on its bottom row: one column less is allowed); the distinct row patterns seen (the wave moving)
-#   credits  frames 647 to END (default 1928: the port asks for the intro at 1929 in this session): the share of frames each of the four sets is lit (the bottom rows: the
-#            bass; the greens: the drums; the left / right top rows: the chords) and its on-off changes; LEDs lit
-#            outside the four sets
+#   credits  frames 647 to END (default 1928: the port asks for the intro at 1929 in this session): the light show
+#            (src/leds.s fin_party, every LED stepping with the music's notes in six patterns): how many of the 101
+#            LEDs were lit at some frame; how many different on-off timelines they had over the credits (the LEDs
+#            blinking as one group would share one; the show before 2026-11-05 had 4); each LED's on-off changes
+#            (fewest, median, most); the frames' different lit sets; the lit LEDs a frame (fewest, median, most);
+#            the longest the LEDs stayed as they were (ms, frames): the music ends before the credits, its drums
+#            earlier, and the show keeps its own beat then (a stretch of 4.1 s before 2026-11-05's fix)
 #   python3 -I probes/finalecheck.py T/fin.led T/fin/vars.bin T/fin.fine
 import struct
 import sys
@@ -24,7 +28,6 @@ WL = [(6, 0x02, 0, 0), (4, 0x02, 0, 0), (2, 0x02, 3, 0x02), (0, 0x02, 1, 0x02), 
       (2, 0x04, 3, 0x04), (0, 0x04, 1, 0x04)]
 WR = [(13, 0x10, 19, 0x02), (13, 0x08, 19, 0x01), (13, 0x04, 13, 0x80), (13, 0x02, 13, 0x40), (13, 0x01, 13, 0x20),
       (16, 0x02, 17, 0x02), (16, 0x01, 17, 0x01), (10, 0x80, 0, 0)]
-GREEN = bytes.fromhex("00101010111301127FF203830000000100000200")
 ALL = bytes.fromhex("3F3F3F3F1F1F1F1FFFFAFFFFFFFF030103030303")
 
 
@@ -39,16 +42,6 @@ def cols(sh, w):
 def rows(sh, w):
     return "".join("B" if lit(sh, t, tb) and lit(sh, bo, bb) else "t" if lit(sh, t, tb) else "b" if lit(sh, bo, bb)
                    else "." for t, tb, bo, bb in w)
-
-
-def mask(w, top, bot):
-    m = bytearray(20)
-    for t, tb, bo, bb in w:
-        if top and tb:
-            m[t] |= tb
-        if bot and bb:
-            m[bo] |= bb
-    return bytes(m)
 
 
 sh, ms = {}, {}
@@ -95,15 +88,23 @@ for k in range(501, 647):
     pats.add(rows(sh[k], WL))
 print(f"finalecheck: flight: {eq}/{tot} frames with the wings' extent the zoom's share of 8 (within one column); "
       f"{len(pats)} row patterns on the left wing")
-sets = {"bass (bottom rows)": bytes(a | b for a, b in zip(mask(WL, False, True), mask(WR, False, True))),
-        "drums (greens)": GREEN, "chord L (top row)": mask(WL, True, False), "chord R (top row)": mask(WR, True, False)}
-union = bytes(a | b | c | d for a, b, c, d in zip(*sets.values()))
 end = int(sys.argv[4]) if len(sys.argv) > 4 else 1928       # the part's last frame (MAME: the intro asked at 1929)
 frames = [k for k in range(647, end + 1) if k in sh]
-for name, m in sets.items():
-    on = [all(x & y == y for x, y in zip(sh[k], m)) for k in frames]
-    changes = sum(1 for a, b in zip(on, on[1:]) if a != b)
-    print(f"finalecheck: credits {name}: lit in {sum(on)} of {len(frames)} frames, {changes} changes")
-outside = sum(1 for k in frames if any(x & a & ~u for x, a, u in zip(sh[k], ALL, union)))
-print(f"finalecheck: credits: frames {frames[0] if frames else '-'}-{frames[-1] if frames else '-'}, with an LED lit "
-      f"outside the four sets: {outside}")
+bits = [(r, 1 << b) for r in range(20) for b in range(8) if ALL[r] >> b & 1]
+lines = ["".join("1" if sh[k][r] & m else "0" for k in frames) for r, m in bits]
+flips = sorted(sum(1 for a, b in zip(t, t[1:]) if a != b) for t in lines)
+count = sorted(sum(1 for r, m in bits if sh[k][r] & m) for k in frames)
+print(f"finalecheck: credits: frames {frames[0] if frames else '-'}-{frames[-1] if frames else '-'}: "
+      f"{sum(1 for t in lines if '1' in t)} of {len(bits)} LEDs lit at some frame, "
+      f"{len(set(t for t in lines if '1' in t))} different on-off timelines; changes an LED: {flips[0]}, "
+      f"{flips[len(flips) // 2]}, {flips[-1]} (fewest, median, most); {len(set(sh[k] for k in frames))} different "
+      f"lit sets; lit a frame: {count[0]}, {count[len(count) // 2]}, {count[-1]}")
+still, a = (0, 0, 0), frames[0] if frames else 0
+for p, k in zip(frames, frames[1:]):
+    if sh[k] != sh[p]:
+        if ms[p] - ms[a] > still[0]:
+            still = (ms[p] - ms[a], a, p)
+        a = k
+if frames and ms[frames[-1]] - ms[a] > still[0]:
+    still = (ms[frames[-1]] - ms[a], a, frames[-1])
+print(f"finalecheck: credits: the longest with no LED changing: {still[0]} ms, frames {still[1]}-{still[2]}")

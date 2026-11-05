@@ -1140,12 +1140,12 @@ during the credits. The signals: research-scratch `kn7000-aw-reference/fingerpri
 `../finalecheck.py` reads the LED log, the variables and the 60 Hz log (`AW_LEDFINE_THREAD=10`: thread 10's pc).
 Build `0366e360...` (program 893), session `2026-11-04-3e87-krtd-finale` (frames = the part's ticks + 300):
 
-| part           | frames   | check                                                                                                                                   |
-|----------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| the left wing  | 468-472  | 2 columns at each step, at the 60 Hz line thread 10's pc changes: 0 (0600), 2 (060F), 4 (0614), 6 (0619), 8 (0622), from the centre out |
-| the right wing | 480-484  | the left held at 8; 2 (063B), 4 (0640), 6 and 8 (0649); both held through the take-off                                                  |
-| the flight     | 501-646  | each wing's extent the zoom's share of 8 (var 0x03 / 64) 146/146 frames; 54 different row patterns on a wing (the wave)                 |
-| the credits    | 647-1928 | the bass's bottom rows lit in 585 frames (408 changes), the drums' greens 593 (402), the chords' top rows 560 and 562; nothing else lit |
+| part                           | frames   | check                                                                                                                                   |
+|--------------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| the left wing                  | 468-472  | 2 columns at each step, at the 60 Hz line thread 10's pc changes: 0 (0600), 2 (060F), 4 (0614), 6 (0619), 8 (0622), from the centre out |
+| the right wing                 | 480-484  | the left held at 8; 2 (063B), 4 (0640), 6 and 8 (0649); both held through the take-off                                                  |
+| the flight                     | 501-646  | each wing's extent the zoom's share of 8 (var 0x03 / 64) 146/146 frames; 54 different row patterns on a wing (the wave)                 |
+| the credits (until 2026-11-05) | 647-1928 | the bass's bottom rows lit in 585 frames (408 changes), the drums' greens 593 (402), the chords' top rows 560 and 562; nothing else lit |
 
     T=~/compartilhado/tmp/aw-finale-led; S=probes/sessions
     AW_LEDFINE=$T/fin2.fine AW_LEDFINE_THREAD=10 AW_LEDLOG=$T/fin2.led probes/cnv/run_inplog.sh $T/fin2 replay \
@@ -1165,3 +1165,34 @@ K3 (N1 on the build before, whose random seed was the fixed 0x1234; it is now th
 
     probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-wheel2
     python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-wheel2/p2/phase2.bin
+
+## The credits' light show; the code wheel asking again (2026-11-05)
+
+Felipe: the credits' LEDs blinked as groups; they should blink individually, in varied patterns, as an amusement
+park's lights. `src/leds.s` fin_party now lights each of the panel's 101 LEDs by its place (`../ledcells.py`: from the
+MAME layout's "Full Unit" view, the screen block squeezed, a column 0-63 and a row 0-15 each) in six patterns that step
+with the music's notes. The music ends about 11 s before the credits do, its drums a few seconds earlier; one second
+after the bass's or drums' last note the show keeps its own beat. `../finalecheck.py`'s credits line now counts each
+LED's on-off timeline over the credits and the longest stretch with no LED changing. Build `7c2d2c06...`, session
+`2026-11-04-3e87-krtd-finale`, frames 647-1928:
+
+| check                                   | before (four sets, `c8ef493`; run `aw-finale-led/fin2`) | now                                                                                                                                                   |
+|-----------------------------------------|---------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| LEDs lit at some frame                  | 59 of 101                                               | 101 of 101                                                                                                                                            |
+| different on-off timelines              | 4                                                       | 101                                                                                                                                                   |
+| changes an LED (fewest, median, most)   | 0, 392, 408                                             | 94, 164, 178                                                                                                                                          |
+| different lit sets                      | 11                                                      | 175                                                                                                                                                   |
+| LEDs lit a frame (fewest, median, most) | 0, 8, 59                                                | 0, 28, 100                                                                                                                                            |
+| longest with no LED changing            | 10078 ms (frames 1702-1928: dark after the music)       | 976 ms (4.1 s and 4.0 s on the two builds between: a pattern stepping on a silent channel, then on a count's parity when bass and drums hit together) |
+
+The wings and the flight are unchanged (146/146 flight frames). On a wrong answer to the code wheel (part 0x3E80 at
+0x0D4F: the ERROR page, var 0xC9 = 1), the port starts the part again 3 s later with a new random seed
+(`src/interp.s` WheelRetry). `awcnv_prefs.lua`'s second run sends thread 20 to the answer's check (0x0C2A, through
+its requested pc, as a setvec) with no symbol given, twice ("retry"): ERROR, held there, the question again 3.20 and
+3.18 s later (build `7c2d2c06...`; the second asked for K14; `p2/wrong1.bin`, `retry1.bin`, `retry2.bin`).
+
+    T=~/compartilhado/tmp/aw-party
+    AW_LEDLOG=$T/fin.led probes/cnv/run_inplog.sh $T/fin replay probes/sessions/2026-11-04-3e87-krtd-finale.awr
+    python3 -I probes/finalecheck.py $T/fin.led $T/fin/vars.bin
+    probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-wheel3
+    python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-wheel3/p2/wrong1.bin ~/compartilhado/tmp/aw-wheel3/p2/retry1.bin
