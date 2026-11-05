@@ -94,6 +94,7 @@
 .equ PREFS_AT,        0x44170000    # prefs.s: the settings (not kept: this build writes no file), 0x60 bytes
 .equ VM_PERF_BASE,    0x44160000    # vm.inc: the speed measurement and the blit's tables, 0x1000 bytes
 .equ AW_FONT,         0x44480000    # anotherworld_chargen.rom, 768 bytes (8x8, chars 0x20+)
+.equ LoadFont,        AW_FONT       # the loading screen's font (lcd8.s LoadShow): here MAME loads AW_FONT before the start
 .equ AW_STRIDX,       0x44490000    # str_index.rom, 2048 bytes (LE u16 offset per string id)
 .equ AW_STRDAT,       0x444A0000    # str_data.rom, 4096 bytes (NUL-terminated strings)
 .equ TRACE_BUF,       0x44800000    # main.s TraceInsn: 8 bytes/entry
