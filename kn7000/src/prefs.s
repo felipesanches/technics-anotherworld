@@ -182,8 +182,8 @@ PrefsStep:
 # PrefsApply(d0 = row): make the setting so now. The resolution: the display mode (display.s ModeSwitch: the pages
 # converted, the border drawn for the new window); the ambilight and its scatter: the border's entries again, from
 # the game's picture and palette (lcd8.s AmbiUpdate); the keybed sound: audio.s KeysSync tells the instrument at its
-# next poll; the LED effects: read where they are made; the code wheel: at the game's next start (interp.s GameReset:
-# "Continue Next?" YES, or the program menu).
+# next poll; the LED effects: read where they are made; the code wheel: when the help screen closes (PrefsWheelNow),
+# while the game has not gone past its intro, else at its next start.
 PrefsApply:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -203,6 +203,57 @@ pap_ambi:
 pap_keys:
     call    PrefsKeys, 0, 0
 pap_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# PrefsWheelLive -> d0 = 1 while a code wheel change applies at once: the game still in the protection part (the
+# question, its ERROR page, the splash after it) or the intro, before any play; 0 from then on (it waits for the next
+# start). Leaf.
+PrefsWheelLive:
+    movhu   (CURRENT_PART_ID), d1
+    clr     d0
+    cmp     PART_PROTECTION, d1
+    beq     pwl_yes
+    cmp     0x3E81, d1
+    bne     pwl_ret
+pwl_yes:
+    mov     1, d0
+pwl_ret:
+    rets
+
+# PrefsWheelNow: the help screen closes (help.s). When the code wheel setting differs from the one the game started with
+# and the game has not gone past its intro (PrefsWheelLive), the game starts again as the setting asks (interp.s
+# GameStart, at this frame's end: RESTART_REQ): on, the question, its seed from the clock now; off, the splash, but only
+# while the question is still unanswered (var 0xBC without 0x10): after a right answer, or in the intro, off needs
+# nothing.
+PrefsWheelNow:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    movbu   (PR_WHEEL), d2
+    mov     (GAME_WHEEL), d0
+    cmp     d0, d2
+    beq     pwn_ret
+    call    PrefsWheelLive, 0, 0
+    cmp     0, d0
+    beq     pwn_ret                 # in play: at the next start (the settings page says so)
+    cmp     0, d2
+    bne     pwn_restart             # on: the question
+    movhu   (CURRENT_PART_ID), d0   # off: from the question to the splash
+    cmp     PART_PROTECTION, d0
+    bne     pwn_quiet
+    movhu   (VM_VARIABLES + 2 * 0xBC), d0
+    btst    0x10, d0
+    beq     pwn_restart
+pwn_quiet:
+    mov     d2, (GAME_WHEEL)        # (answered already, or the intro: the game goes on as an "off" one)
+    bra     pwn_ret
+pwn_restart:
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d0
+    and     0xFFFF, d0              # (var 0x3C is 16 bits: so the log's record holds all of it)
+    mov     d0, (START_SEED)
+    mov     1, d0
+    mov     d0, (RESTART_REQ)
+pwn_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # PrefsPageBuild: the settings page's items (help.s format) into PF_ITEMS: the titles, each row's name and value (the
@@ -287,6 +338,23 @@ pb_vcol:
     add     d1, a0
     add     d0, a0
     mov     (a0), a0
+    cmp     PR_ROW_WHEEL, d2        # the code wheel, changed in play: ", next start"
+    bne     pb_vset
+    movbu   (PR_WHEEL), d0
+    mov     (GAME_WHEEL), d1
+    cmp     d1, d0
+    beq     pb_vset
+    mov     a0, (0x0C, sp)
+    call    PrefsWheelLive, 0, 0
+    mov     (0x0C, sp), a0
+    cmp     0, d0
+    bne     pb_vset
+    mov     prv_off_next, a0
+    movbu   (PR_WHEEL), d0
+    cmp     0, d0
+    beq     pb_vset
+    mov     prv_on_next, a0
+pb_vset:
     mov     a0, (8, a2)
     add     12, a2
     inc     d2
@@ -342,6 +410,8 @@ prn_wheel:  .asciz  "CODE WHEEL"
 prv_hi:     .asciz  "384x240"
 prv_lo:     .asciz  "320x200"
 prv_on:     .asciz  "ON"
+prv_on_next:  .asciz "ON, next start"
+prv_off_next: .asciz "OFF, next start"
 prv_off:    .asciz  "OFF"
 prv_short:  .asciz  "SHORT"
 prv_med:    .asciz  "MEDIUM"

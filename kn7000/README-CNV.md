@@ -246,14 +246,14 @@ chosen and changed on the keybed, with the game's own direction keys: **UP** (Aâ
 choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
 resolution redraws the page first and the ambilight's border after it):
 
-| setting       | values                         | default | what it does                                                           |
-|---------------|--------------------------------|---------|------------------------------------------------------------------------|
-| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch) |
-| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides    |
-| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                              |
-| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
-| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
-| code wheel    | off, on                        | off     | the original game's copy protection, from the next start (below)       |
+| setting       | values                         | default | what it does                                                                   |
+|---------------|--------------------------------|---------|--------------------------------------------------------------------------------|
+| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch)         |
+| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides            |
+| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                                      |
+| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)          |
+| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                         |
+| code wheel    | off, on                        | off     | the original game's copy protection: at once before play, else the next start |
 
 The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
 a setting in the order above, the code wheel's at byte 10, then zeros; `src/prefs.s`: byte 9 was the bitmap filter's
@@ -271,9 +271,21 @@ Answered right, the game's code sets those variables itself and goes on to the l
 always has; answered wrong, its code (0x0D4F) stops every thread but its display loop and shows its ERROR page, where
 the DOS game stays. Here, 3 s later, the part starts again from its beginning with a new random seed, so the question
 comes back, for another position (`src/interp.s` WheelRetry). EXIT held leaves. The answer is on the code wheel
-that came with the game. The setting is read when the game starts: switched on during a game, it asks at the next
-start ("Continue Next?" YES, or the program menu). The level-code screen (OTHER PART & FR) cannot be reached from the
-protection, as in DOS.
+that came with the game, and on the help screen's fifth page ("The code wheel page", below). The level-code screen
+(OTHER PART & FR) cannot be reached from the protection, as in DOS.
+
+**A change of the code wheel setting applies when the help screen closes**, while the game has not gone past its
+intro (since 2026-11-06; until then only at the next start). In part 0x3E80 (the question, its ERROR page and the wait
+after it, or the splash) or in the intro, switched on, the game starts again at the question, with a new seed from the
+clock; switched off at the question, it starts again at the splash, the protection's variables set (`src/prefs.s`
+PrefsWheelNow; both are the game's own start, `src/interp.s` GameStart, done at the end of that frame). Switched off
+after a right answer, or in the intro, nothing needs to change. Once play has begun (any part after the intro, or one a
+level code started), the game is not thrown away: the change waits for the next start ("Continue Next?" YES, or the
+program menu), and the settings page says so, the row reading "ON, next start" or "OFF, next start". A start made this
+way is a `G` record in the input log (the setting and the seed), which a replay sets again at the same frame
+("Replaying a session"). Checked in MAME by `probes/cnv/run_wheelnow.sh` (`awcnv_wheelnow.lua`, then the session's log
+replayed): on at the splash, the question; off at the question, the splash; on in the intro, the question; off, then
+play; on in play: "ON, next start" and no restart; the replay gives the same I, P and G records.
 
 ## The panel's LEDs
 
@@ -347,6 +359,7 @@ seed), so the log holds:
 | `I`      | the input ReadInput applied, from that frame on: the mask it wrote to var 0xFE, and its mode (in the intro only var 0xFA and 0xFE are written; elsewhere the six hero variables, which all follow from the mask) |
 | `M`      | a sync mark of the music (var 0xF4), and the first thread that saw it: the module player writes them on the kernel's clock, between two threads or in the yield at a frame's end, and the intro waits for them   |
 | `R`      | the part the panel asked for (OTHER PART & FR, the code screen)                                                                                                                                                  |
+| `G`      | the game started again at that frame's end, as the code wheel setting changed on the help screen before play asked ("Settings"): the setting and the seed of its question (var 0x3C)                             |
 | `P`      | a part switch (to check that a replay keeps step)                                                                                                                                                                |
 | `H`, `E` | each file's header (the session, the file's number); the end (records lost for want of room)                                                                                                                     |
 

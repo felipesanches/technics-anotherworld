@@ -1196,3 +1196,23 @@ its requested pc, as a setvec) with no symbol given, twice ("retry"): ERROR, hel
     python3 -I probes/finalecheck.py $T/fin.led $T/fin/vars.bin
     probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-wheel3
     python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-wheel3/p2/wrong1.bin ~/compartilhado/tmp/aw-wheel3/p2/retry1.bin
+
+## The code wheel setting at once (2026-11-06)
+
+Felipe: switching CODE WHEEL took effect only after leaving the game and starting it again; it should take effect at
+once. Before play begins (part 0x3E80 or the intro), closing the help screen with the setting changed starts the game
+again as the setting asks (`src/prefs.s` PrefsWheelNow, `src/interp.s` GameStart at that frame's end), logged as a `G`
+record; in play the row reads "ON, next start" or "OFF, next start" and nothing restarts. `run_wheelnow.sh` runs
+`awcnv_wheelnow.lua` (a card without AWPREFS.CFG, program 893) and then replays the session's log with
+`run_inplog.sh` (the replay here run on its own, `CARDFILES` the same build). Build `8420568b...`: 5 of 5 checks.
+
+| check           | result                                                                                                              |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| on at splash    | thread 20 asking (pc 0x0BB5), var 0xBC 0x0000, var 0x3C = the seed 0x70C3, GAME_WHEEL 1                             |
+| off at question | the splash (thread 0 at 0x009F, thread 20 inactive), var 0xBC 0x0010, var 0x3C 0x1234                               |
+| on in intro     | from part 0x3E81 back to the question (var 0x3C 0x036F)                                                             |
+| off again       | the splash, then C4 in the intro: part 0x3E82                                                                       |
+| in play         | the row's item is "ON, next start"; part 0x3E82 kept, GAME_WHEEL 0, no request, frames 795 -> 827                   |
+| replay          | 4 G records (frames 76, 101, 409, 432); the replay's I, P and G records the same (18); var 0x3C after each the seed |
+
+    probes/cnv/run_wheelnow.sh ~/compartilhado/tmp/aw-codewheel/wheelnow1

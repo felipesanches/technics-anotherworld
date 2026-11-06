@@ -5,6 +5,7 @@
 InpLogInput:
 InpLogRequest:
 InpLogPart:
+InpLogRestart:
 InpLogMark:
 InpLogYield:
     rets

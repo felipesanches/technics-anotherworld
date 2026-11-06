@@ -14,6 +14,8 @@
 #   I frame mode mask   from this frame on, ReadInput applied the mask (var 0xFE; hex); mode intro: only var 0xFA
 #                       (1 when the mask has 0x80) and var 0xFE written; mode play: the six hero variables
 #   M frame thread v    the music's sync mark v (var 0xF4) appeared before that thread of that frame ran
+#   G frame wheel seed  the game started again at that frame's end (the code wheel setting changed on the help screen
+#                       before play began): wheel 1 the question, seed (hex) its var 0x3C; 0 the splash
 #   E frame dropped     the end; records lost for want of room (0: none)
 import glob
 import os
@@ -85,6 +87,8 @@ def main(args):
                 lines.append(f'P {frame} 0x{b:04X}')
             elif k == 'R':
                 lines.append(f'R {frame} 0x{b:04X}')
+            elif k == 'G':
+                lines.append(f'G {frame} {a} 0x{b:04X}')
             elif k == 'M':
                 lines.append(f'M {frame} {a} {b - 0x10000 if b >= 0x8000 else b}')
             elif k == 'E':
@@ -103,7 +107,8 @@ def main(args):
         sys.stdout.write(text)
     parts = [l.split()[2] for l in lines if l.startswith('P ')]
     print(f'aw_inplog: {len(halves)} files, {sum(counts.values())} records, frames 0-{last}, parts {" ".join(parts)}; '
-          f'{counts.get("I", 0)} input changes, {counts.get("M", 0)} sync marks, {counts.get("R", 0)} part requests; '
+          f'{counts.get("I", 0)} input changes, {counts.get("M", 0)} sync marks, {counts.get("R", 0)} part requests, '
+          f'{counts.get("G", 0)} restarts; '
           + (f'{dropped} records lost' if dropped else ('none lost' if ended else 'no end record')), file=sys.stderr)
 
 

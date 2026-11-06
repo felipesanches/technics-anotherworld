@@ -123,6 +123,7 @@
 .equ PR_KEYPREV,      PREFS_AT + 0x24   # u32: the page's keys held at the last look (bits: up, down, left, right)
 .equ PR_BUF,          PREFS_AT + 0x40   # 32 bytes: the file as read (17 asked for: a longer one is not ours)
 .equ PR_ROWS,         6
+.equ PR_ROW_WHEEL,    5              # the code wheel's row
 .equ PR_ROW_Y0,       58
 .equ PR_ROW_DY,       14
 
@@ -369,6 +370,12 @@
 .equ END_HELD,        VM_MISC_BASE + 0x0248     # u32: a key was held at the last look
 .equ HELP_CODES,      VM_MISC_BASE + 0x024C     # u32: OTHER PART & FR pressed on the help screen: the code screen next
 .equ WHEEL_FAIL_MS,   VM_MISC_BASE + 0x0250     # u32: the kernel ms the code wheel's answer was found wrong (| 1), 0 not
+# The code wheel setting, applied at once (prefs.s PrefsWheelNow; interp.s GameStart): while the game is still in the
+# protection part or the intro, closing the help screen with the setting changed asks for the game's start again
+# (RESTART_REQ, done at the frame's end, logged as a 'G' record: inplog.s).
+.equ START_SEED,      VM_MISC_BASE + 0x0254     # u32: the random seed (var 0x3C) GameStart gives the code wheel's question
+.equ RESTART_REQ,     VM_MISC_BASE + 0x0258     # u32: 1: GameStart at this frame's end
+.equ GAME_WHEEL,      VM_MISC_BASE + 0x025C     # u32: the code wheel setting the running game started with (GameStart)
 .equ END_PART,        0x3E87
 .equ END_STRING,      0x265
 .equ END_SCROLL,      100            # ticks from the words to the still picture

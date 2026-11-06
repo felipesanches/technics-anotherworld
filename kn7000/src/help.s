@@ -137,6 +137,7 @@ hs_exit:                            # wait until every control is released
     mov     d3, d0
     call    PerfPhase, 0, 0
     call    AudioResume, 0, 0
+    call    PrefsWheelNow, 0, 0     # a code wheel change: at once, before play began (prefs.s)
     ret     [d2,d3,a2,a3], 0x20
 
 # hs_copy_pal(a0 = from, a1 = to): copy a 16-entry RGB565 palette (32 bytes). Leaf.
