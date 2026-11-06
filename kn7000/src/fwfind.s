@@ -32,6 +32,8 @@
 #             below MIDI OUT 1                                                   -> FWV_MIDIIN1, FWV_MIDIOUT1
 #   6, 7 dsp  the effects DSP's host-port routines, one signature a step (dsp.s DspFindStep, DSPTONE's
 #             search): the game goes on without the DSP when they are not all found -> DV_FOUND, DV_D*
+#   8 pring   the panel's receive ring, where the TEMPO/PROGRAM wheel's frames come (the code wheel page):
+#             PanelFrameDecode's indexes, checked against the bitmaps; never fails -> WH_RXRD (0: none)
 # Calling convention as the rest of the port; every routine that calls makes a frame first.
 
 .equ FL_LO,         0x48400000      # the program flash, as the dumper scans it
@@ -66,7 +68,60 @@ FwStep:
     beq     fw_dsp
     cmp     7, d0
     beq     fw_dsp
+    cmp     8, d0
+    beq     fw_pring
     bra     fw_no
+
+# ---- 8: the panel's receive ring (the code wheel page's TEMPO wheel: wheel.s): never fails ------------
+# PanelFrameDecode's "movhu (WR), d1; movhu (RD), d0; mov 0x5c, d2; add d1, d2; mov d2, d3; sub d0, d3; cmp d0, d1":
+# one hit, WR = RD + 2, RD = the switch bitmaps (FWV_PANEL) - 0xA0, and the decoder's "mov RING, a3" (fc df) within
+# 0x30 bytes before it naming RD + 4 (tools/aw_find_fw.py: the same in 893, 935, 941 and 942) -> WH_RXRD, else 0.
+fw_pring:
+    clr     d0
+    mov     d0, (WH_RXRD)
+    mov     sig_pring, a0
+    call    CountFlash, 0, 0
+    cmp     1, d0
+    bne     fw_yes
+    mov     (FS_LASTHIT), a2
+    mov     a2, a0
+    add     2, a0
+    call    Read32U, 0, 0
+    mov     d0, d3                  # WR
+    mov     a2, a0
+    add     8, a0
+    call    Read32U, 0, 0
+    mov     d0, d2                  # RD
+    add     2, d0
+    cmp     d3, d0
+    bne     fw_yes
+    mov     (FWV_PANEL), d0
+    add     -0xA0, d0
+    cmp     d2, d0
+    bne     fw_yes
+    mov     a2, a3                  # the "mov RING, a3" before it
+    add     -0x30, a3
+fpr_scan:
+    movbu   (a3), d0
+    cmp     0xFC, d0
+    bne     fpr_next
+    movbu   (1, a3), d0
+    cmp     0xDF, d0
+    bne     fpr_next
+    mov     a3, a0
+    add     2, a0
+    call    Read32U, 0, 0
+    mov     d2, d1
+    add     4, d1
+    cmp     d1, d0
+    bne     fpr_next
+    mov     d2, (WH_RXRD)
+    bra     fw_yes
+fpr_next:
+    inc     a3
+    cmp     a2, a3
+    bcs     fpr_scan
+    bra     fw_yes
 
 # ---- 6, 7: the effects DSP's host-port routines (dsp.s DspFindStep): never fails -----------------
 fw_dsp:
@@ -573,6 +628,9 @@ sig_cresta:     # mov X, a0; call cre_tsk, 0, 0; mov N, d0; clr d1; call sta_tsk
 sig_exd:        # movbu d0, (X); call exd_tsk, 0, 0; ret (941 0x48472381)
     .word   0xfc, 0x82, 0x100, 0x100, 0x100, 0x100, 0xdd, 0x100, 0x100, 0x100, 0x100, 0x00, 0x00
     .word   0xdf, 0xFFFF
+sig_pring:      # PanelFrameDecode: movhu (WR), d1; movhu (RD), d0; mov 0x5c, d2; add d1, d2; mov d2, d3; sub d0, d3; cmp d0, d1 (941 0x484AD13A)
+    .word   0xfc, 0xad, 0x100, 0x100, 0x100, 0x100, 0xfc, 0xac, 0x100, 0x100, 0x100, 0x100
+    .word   0x8a, 0x5c, 0xe6, 0x8b, 0xf1, 0x03, 0xa1, 0xFFFF
 sig_rings:      # the end of one wrapper, then MIDI IN 1's and MIDI OUT 1's enqueue wrappers (941 0x487DD987)
     .word   0x2c, 0xff, 0x03, 0xfc, 0x83, 0x100, 0x100, 0x100, 0x100, 0xde, 0x00, 0x00
     .word   0xf8, 0xfe, 0xf0, 0xfc, 0xdc, 0x100, 0x100, 0x100, 0x100, 0x14, 0xcd, 0x100, 0x100

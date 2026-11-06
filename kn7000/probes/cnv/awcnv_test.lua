@@ -60,6 +60,7 @@
 --                (an SD read the game asked for, LD_IN_READ = 1, into the current record's destination),
 --                "bankread" (counted with them: the sample bank's AWSBn.AW, LD_IN_READ = 2, into PART_AREA),
 --                "prefread" (counted with them too: AWPREFS.CFG, LD_IN_READ = 3, into PR_BUF),
+--                "wheelread" (counted with them too: the code wheel's AWWHn.AW, LD_IN_READ = 4, into WB_SCRATCH),
 --                and "foreign": anything else during the game. "AWAREA verdict: CLEAN" when there is no
 --                foreign write
 --   loader.txt   every write into the loader's resident area (0x502B8000-0x502B9FFF and its 0x90 view),
@@ -97,6 +98,7 @@ local SV_FOUND, SV_OPEN = SVC + 0x64, SVC + 0x10
 local LD_REC = CV + 0x4C                             -- the record being loaded: +4 destination, +8 bytes
 local PART_AREA, BANK_FILE_MAX = 0x502EE400, 0x10000   -- platformcnv.inc, dsp.inc: where BankRead reads AWSBn.AW
 local PR_BUF, PR_BUF_LEN = 0x502DF940, 0x20             -- vm.inc: where PrefsRead reads AWPREFS.CFG (PREFS_AT + 0x40)
+local WB_SCRATCH, WB_SCRATCH_MAX = 0x5034D000 + 0x24000, 0x9000  -- wheel.s: where WheelReadPiece reads AWWHn.AW
 local AW_LO, AW_HI, MB_LO, MB_HI = 0x502BA000, 0x5037A000, 0x5031B000, 0x5031C000
 
 local RES_DIR = os.getenv("AWT_RES")
@@ -182,6 +184,8 @@ local function area_tap(base)
       kind = "bankread"; T.area_fileread = T.area_fileread + 1  -- dsp.s BankRead: an AWSBn.AW into PART_AREA
     elseif sp:read_u32(LD_IN_READ) == 3 and a >= PR_BUF and a < PR_BUF + PR_BUF_LEN then
       kind = "prefread"; T.area_fileread = T.area_fileread + 1  -- cnv_main.s PrefsRead: AWPREFS.CFG into PR_BUF
+    elseif sp:read_u32(LD_IN_READ) == 4 and a >= WB_SCRATCH and a < WB_SCRATCH + WB_SCRATCH_MAX then
+      kind = "wheelread"; T.area_fileread = T.area_fileread + 1 -- wheel.s WheelReadPiece: an AWWHn.AW into the borrowed pages
     else kind = "foreign"; T.area_foreign = T.area_foreign + 1 end
     bump(T.area, string.format("%-8s pc=%08X page=%08X", kind, p, a & 0xFFFFF000))
   end)

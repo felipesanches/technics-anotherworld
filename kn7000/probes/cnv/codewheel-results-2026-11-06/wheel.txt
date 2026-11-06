@@ -1,0 +1,19 @@
+drawing: ../../AnotherWorld_VMTools/aw_codewheel.svg sha1 91064646088faeb8c2d2ac925f7173ed67dd4c86
+lower disk centre (tick marks' convergence): (342.337, 336.893) units
+lower disk's pin hole in the scan (its dark pixels): (343.594, 337.966) units
+upper disk centre (outline fit): (342.831, 334.746), radius 315.820 units
+tick marks (deg clockwise from up): 14.12 32.34 50.66 68.71 87.06 105.26 122.91 140.42 158.35 176.15 194.19 212.43 230.45 248.42 266.66 284.84 302.56 320.46 338.13 355.95
+spacing between ticks (deg): 18.23 18.31 18.06 18.35 18.19 17.65 17.51 17.93 17.79 18.05 18.24 18.02 17.96 18.25 18.18 17.71 17.90 17.67 17.82 18.17
+numbers 1-20 (deg): 347.04 5.03 23.23 41.50 59.68 77.89 96.16 114.08 131.66 149.39 167.25 185.17 203.31 221.44 239.43 257.54 275.75 293.70 311.51 329.29
+arrow (deg, where its axis meets the numbers' circle): 59.373 (5284 px at 4x)
+rest angles of the upper disk (1/65536 turn): 52368 55644 58957 62282 57 3370 6697 9960 13160 16387 19638 22901 26203 29504 32779 36075 39391 42658 45900 49138
+rest angles (deg): 287.67 305.66 323.86 342.13 0.31 18.51 36.79 54.71 72.29 90.02 107.87 125.80 143.94 162.07 180.06 198.17 216.38 234.33 252.14 269.92
+rotating radius: 112.59 px; shadow opacity max 0.525
+pixels drawn a picture (the spans): 40800, LCD stores (32 bits) 10200; the whole page: FB8 cleared (38400 stores), the lower disk (15360)
+colours (4-bit) in the pictures: 581, as 240 entries
+blob: 146432 bytes
+AWWH0.AW: blob 0x00000, 32768 bytes, packed 6244
+AWWH1.AW: blob 0x08000, 32768 bytes, packed 6632
+AWWH2.AW: blob 0x10000, 32768 bytes, packed 14532
+AWWH3.AW: blob 0x18000, 32768 bytes, packed 16724
+AWWH4.AW: blob 0x20000, 15360 bytes, packed 11492

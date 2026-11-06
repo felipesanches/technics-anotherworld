@@ -279,7 +279,8 @@
 # shown through their own 4-colour palette; the game's palette is saved and put back.
 .equ HELP_PAGE_NO,    VM_MISC_BASE + 0x005C     # u32: the help page shown (0..HELP_PAGES-1)
 .equ HELP_PAL_SAVE,   VM_MISC_BASE + 0x0100     # 32 bytes: the game's palette while the help is up
-.equ HELP_PAGES,      4              # the fourth: the speed figures (perf.s)
+.equ HELP_PAGES,      5              # the fourth: the settings (prefs.s); the fifth: the code wheel (wheel.s)
+.equ WHEEL_PAGE,      4
 .equ HELP_TICK,       VM_MISC_BASE + 0x0120     # u32: help polls since the page was last shown
 .equ HELP_REFRESH,    16             # re-show the page every 16 polls (~0.5 s)
 .equ HELP_SNDSTATE,  VM_MISC_BASE + 0x0124     # u32: the sound mode, keybed sound and DSP failure the page shows

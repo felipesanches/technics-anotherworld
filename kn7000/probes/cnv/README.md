@@ -1216,3 +1216,40 @@ record; in play the row reads "ON, next start" or "OFF, next start" and nothing 
 | replay          | 4 G records (frames 76, 101, 409, 432); the replay's I, P and G records the same (18); var 0x3C after each the seed |
 
     probes/cnv/run_wheelnow.sh ~/compartilhado/tmp/aw-codewheel/wheelnow1
+
+## The code wheel page (2026-11-06)
+
+Felipe: HELP at the code wheel's question should open a code wheel simulator, made from his drawing
+(`AnotherWorld_VMTools/aw_codewheel.svg`), its upper disk turned by the TEMPO/PROGRAM wheel a number a click, with
+pictures in between, always coming to rest on a number; a help page like the others (README-CNV.md, "The code wheel
+page"). `run_wheel.sh` runs `awcnv_wheel.lua` on a card with the code wheel on (program 893), then
+`codewheel_check.py`, which compares every picture taken from the LCD with `tools/codewheel_render.py`'s `render()`
+(the device's arithmetic, entry for entry). The TEMPO/PROGRAM wheel is MAME's `TEMPO_KNOB` adjuster: each step of it
+sends one detent frame `[0x17, +-1]` (kn7000_mame `kn_cpanel.cpp`). Build `2887b170...`: 11 of 11 checks, 13 of 13
+pictures exactly `render()`'s (8 at rest, bilinear, each at a number's angle; 5 in mid-turn, nearest, a quarter of the
+way or more). Results, pictures and screenshots: `codewheel-results-2026-11-06/` (`run_wheel.txt`).
+
+| check     | result                                                                                                         |
+|-----------|----------------------------------------------------------------------------------------------------------------|
+| open      | HELP at the question: page 5, the five files read once (1061 ms), the arrow at number 1, at rest               |
+| turn p1   | +1: number 2; 7 turning pictures, every one onwards, the last the end's own; then the one at rest              |
+| turn p3   | +3, 50 ms apart (they pile up): number 5; 16 turning pictures                                                  |
+| turn m5   | -5: number 20 (through 1); 38 turning pictures                                                                 |
+| turn m1   | -1: number 19; 6 turning pictures                                                                              |
+| turn p2   | +2, 50 ms apart: number 1 (through 20); 9 turning pictures                                                     |
+| pages     | PAGE UP: the settings (the border's pattern back); pages 4 3 2 1 2 3 4 5; the wheel again at number 1, no read |
+| close     | EXIT: pages 2 and 3 put back byte for byte as saved; 0 LCD pixels different from before HELP; still asking     |
+| again     | HELP: the page again from display memory (reads 1, borrows 2)                                                  |
+| elsewhere | CODE WHEEL off (the splash at once): HELP opens page 1; PAGE DOWN x4: the code wheel                           |
+| 320x200   | in the 320x200 mode the page, then the border's pattern for 320 after EXIT                                     |
+
+The tempo: 12 wheel frames taken, 4 of them decoded by the firmware first and undone with a frame the other way.
+Times in MAME and the unit estimate (`codewheel_estimate.py codewheel-results-2026-11-06`, `estimate.txt`): turning
+pictures 24.4-68.9 ms, median 45.5, median 4,593 LCD stores; at rest about 364 ms; on the unit, by its own benchmark's
+LCD store times (2,543 and 3,610 ns: `unit_benchmark.txt`, from AWPERF files of 2026-10-26), 47.2 and 51.5 ms at the
+median. `d32_scan.py` finds no register + displacement operand with a top byte other than 0 in the new code (1747
+instructions), the form that restarts the unit.
+
+    probes/cnv/run_wheel.sh ~/compartilhado/tmp/aw-codewheel/wheel5
+    python3 -I probes/cnv/codewheel_estimate.py probes/cnv/codewheel-results-2026-11-06
+    python3 -I probes/cnv/d32_scan.py build/kn7app.bin build/kn7app.map ~/compartilhado/mame-sony-video/unidasm

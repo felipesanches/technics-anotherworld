@@ -1,0 +1,6 @@
+# /home/fsanches/compartilhado/sdcard-stage/from-card/20261026-082710/AWPERF0.TXT (the owner's KN7000)
+benchmark, ns x 10: ALU LCDw16 LCDw32 LCDr16 RAMw8 RAMw32 RAMr8 RAMr32 UNCr32
+    25.5  1083.4  3610.1  2670.8   121.8   417.5    75.1   262.2   251.4
+# /home/fsanches/compartilhado/sdcard-stage/from-card/20261026-082710/AWPERF1.TXT (the owner's KN7000)
+benchmark, ns x 10: ALU LCDw16 LCDw32 LCDr16 RAMw8 RAMw32 RAMr8 RAMr32 UNCr32
+    23.5   973.8  2543.1  1589.4   121.5   482.9    95.1   371.6   287.8

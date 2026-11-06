@@ -44,7 +44,7 @@ $(RES_OUT)/awres.inc: tools/aw_extract.py $(AW_DATA)/MEMLIST.BIN
 # The SP7001 build lives in CS1 (IC23) and the TPAD pool: tools/ic23_guard.py must FIND that (were it
 # ever to call this build clean, the check itself would be broken), and the build goes on only with
 # MAME_ONLY=1.
-build/another.bin: src/main.s src/display.s src/platform.inc src/vm.s src/vm.inc src/interp.s src/help.s src/perf_stub.s src/inplog_stub.s src/audio_stub.s src/lcd8.s src/prefs.s src/leds.s $(RES_OUT)/awres.inc $(DISASM_REPO)/tools/xapasm.py tools/ic23_guard.py
+build/another.bin: src/main.s src/display.s src/platform.inc src/vm.s src/vm.inc src/interp.s src/help.s src/perf_stub.s src/inplog_stub.s src/wheel_stub.s src/audio_stub.s src/lcd8.s src/prefs.s src/leds.s $(RES_OUT)/awres.inc $(DISASM_REPO)/tools/xapasm.py tools/ic23_guard.py
 	@mkdir -p build
 	@if $(PYTHON) -I tools/ic23_guard.py $(DISASM_REPO)/tools src/main.s -I src -I $(RES_OUT) > build/another.guard; then \
 	  echo "ic23_guard calls the SP7001 build clean, which it is not: the guard is broken"; exit 1; fi
@@ -99,7 +99,7 @@ FLOPPY_SHA1   := b7a67de602694fd2257d59ce4509ca154b0b3064
 # The published overlay build (program 941 is its default KN7000 BIOS; -bios v13 is program 893, the owner's).
 MAME941     ?= ../../kn7000-emulator/run.sh
 SD941       ?= ../../kn7000-emulator/sdcard_from_real_kn7000.img
-APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s src/prefs.s src/leds.s src/chain.s
+APP_SRC     := src/cnv_main.s src/fwfind.s src/display.s src/vm.s src/interp.s src/help.s src/perf.s src/inplog.s src/audio.s src/dsp.s src/fwdraw.s src/lcd8.s src/prefs.s src/leds.s src/chain.s src/wheel.s
 # MAME's disassembler, which checks every word of the effects DSP's mixer (tools/dsp_mixer.py --check): the
 # build stops when it is not there (make UNIDASM=/path/to/unidasm).
 UNIDASM     ?= $(HOME)/compartilhado/mame-sony-video/unidasm
@@ -164,9 +164,16 @@ build/KN7APP.BIN: $(APP_SRC) src/platformcnv.inc src/inplog.inc src/vm.inc $(RES
 	$(PYTHON) -I $(LOADER_DIR)/mkapp.py build/kn7app.bin $@.tmp
 	mv -f $@.tmp $@
 
+# The code wheel help page's pictures and tables (src/wheel.s), from the owner's drawing of the original's code wheel
+# (AnotherWorld_VMTools, beside this repository): AWWH0.AW .. AWWH4.AW (tools/codewheel_render.py; librsvg's Python
+# binding, numpy).
+WHEEL_SVG   ?= ../../AnotherWorld_VMTools/aw_codewheel.svg
+build/wheel/sdfiles.lst: tools/codewheel_render.py tools/aw_hires.py tools/aw_extract.py $(WHEEL_SVG)
+	$(PYTHON) -I tools/codewheel_render.py $(WHEEL_SVG) build/wheel > /dev/null
+
 # Everything for the SD card's root folder, and nothing else: build/sdcard/ (list: build/sdcard.txt).
-build/sdcard/KN7APP.BIN: build/KN7APP.BIN tools/make_sdcard.py $(RES_OUT)/awpart.inc
-	$(PYTHON) -I tools/make_sdcard.py build/sdcard build/KN7APP.BIN $(RES_OUT)
+build/sdcard/KN7APP.BIN: build/KN7APP.BIN tools/make_sdcard.py $(RES_OUT)/awpart.inc build/wheel/sdfiles.lst
+	$(PYTHON) -I tools/make_sdcard.py build/sdcard build/KN7APP.BIN $(RES_OUT) build/wheel
 
 # Boot the stock KN7000 with the owner's loader floppy and a copy of the real KN7000's SD card with
 # build/sdcard/ added to its root; then DISK MENU, STYLE CONVERT, OK. BIOS=v13 (the default) runs program

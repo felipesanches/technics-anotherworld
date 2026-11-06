@@ -187,6 +187,9 @@ PrefsStep:
 PrefsApply:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    mov     d0, d2
+    call    WheelRestore, 0, 0      # pages 2 and 3 back first, if the code wheel's page borrowed them (wheel.s): a
+    mov     d2, d0                  # new resolution converts all four pages, the ambilight reads the game's picture
     cmp     0, d0
     bne     pap_ambi
     movbu   (PR_RES), d0
@@ -421,5 +424,5 @@ pr_mark:    .asciz  ">"
 prn_hint1:  .asciz  "Ab5 or Bb5 / A5: choose a row"
 prn_hint2:  .asciz  "F5 / C6: change it"
 prn_hint3:  .asciz  "kept on the SD card"
-prn_page:   .asciz  "Page 4/4"
+prn_page:   .asciz  "Page 4/5"
     .align  4

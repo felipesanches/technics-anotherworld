@@ -27,6 +27,10 @@
 #             two bitmaps, CPL = CPR + 0x30, in work RAM
 #   rings     the library's per-port MIDI ring wrappers: one hit; MIDI IN 1 receive and MIDI OUT 1
 #             transmit ring headers, in work RAM, IN below OUT
+#   pring     the panel's receive ring (the TEMPO/PROGRAM wheel's frames, src/wheel.s): PanelFrameDecode's
+#             "movhu (WR), d1; movhu (RD), d0; mov 0x5c, d2; ...": one hit, WR = RD + 2, RD = CPR - 0xA0, and the
+#             decoder's "mov RING, a3" (fc df) within 0x30 bytes before it naming RD + 4; optional (the
+#             code wheel page then turns with no wheel)
 #
 #   python3 -I tools/aw_find_fw.py [--roms DIR] [--real-lib893 FILE]
 # DIR: the overlay emulator's roms/kn7000 (its v1.3 images are the owner's own dumps). FILE: the
@@ -70,6 +74,7 @@ SIG = {
     "panel2": sig("fc dc X f8 ef c0 c8 08 fc dc X f8 b8 10 85 0f f2 0d f1 64"),
     "rings": sig("2c ff 03 fc 83 X de 00 00 f8 fe f0 fc dc X 14 cd ?? ?? 30 08 df 00 10"
                  " f8 fe f0 fc dc X 14 cd ?? ?? 30 08 df 00 10"),
+    "pring": sig("fc ad X fc ac X 8a 5c e6 8b f1 03 a1"),
 }
 STUB = bytes.fromhex("f8fefc4600")          # a kernel entry stub: add -4, sp; mov d1, (0, sp)
 
@@ -181,6 +186,16 @@ def search(mem):
             r["midiin1_rxq"], r["midiout1_txq"] = rx, tx
     if not r.get("midiin1_rxq"):
         fail.append("rings")
+    # --- the panel's receive ring (optional for the game: only the code wheel page reads it) ---
+    pr = mem.find("pring", FL, FH)
+    if len(pr) == 1 and r.get("panel_cpr"):
+        wr, rd = mem.u32(pr[0] + 2), mem.u32(pr[0] + 8)
+        ring = [a for a in range(pr[0] - 0x30, pr[0]) if mem.u8(a) == 0xFC and mem.u8(a + 1) == 0xDF
+                and mem.u32(a + 2) == rd + 4]
+        if wr == rd + 2 and rd == r["panel_cpr"] - 0xA0 and ring:
+            r["panel_rxrd"] = rd
+    if not r.get("panel_rxrd"):
+        fail.append("pring")
     return r, fail
 
 
@@ -196,13 +211,13 @@ KNOWN = {
     "941 (v1.6)": dict(cre_tsk=0x4C03D0C8,
                        sta_tsk=0x4C03D8AB, dly_tsk=0x4C03DD6F, exd_tsk=0x4C03D5A1, kernel_ms=0x500D3C58,
                        panel_cpr=0x5006BE50, panel_cpl=0x5006BE80, midiin1_rxq=0x5001F050,
-                       midiout1_txq=0x5001F864),
+                       midiout1_txq=0x5001F864, panel_rxrd=0x5006BDB0),
     "942 (SP7001)": dict(sta_tsk=0x4C03DCD3, dly_tsk=0x4C03E295, exd_tsk=0x4C03D944, cre_tsk=0x4C03D46B,
                          kernel_ms=0x500D3C68, panel_cpr=0x5006BE60, panel_cpl=0x5006BE90,
                          midiin1_rxq=0x5001F060, midiout1_txq=0x5001F874),
 }
 KEYS = ["cre_tsk", "sta_tsk", "dly_tsk", "exd_tsk", "kernel_ms",
-        "panel_cpr", "panel_cpl", "midiin1_rxq", "midiout1_txq"]
+        "panel_cpr", "panel_cpl", "midiin1_rxq", "midiout1_txq", "panel_rxrd"]
 
 
 def main():

@@ -88,6 +88,7 @@ regions = [  # name, start, end, what
     ("LED_VARS", L["LED_VARS"], L["LED_VARS"] + 0x200, "leds.s: the LED effects' state"),
     ("LCD8_VARS", L["LCD8_VARS"], L["LCD8_VARS"] + 0x300, "lcd8.s: the LCD's and the ambilight's state"),
     ("PREFS_AT", L["PREFS_AT"], L["PREFS_AT"] + 0x60, "prefs.s: the settings (AWPREFS.CFG) and the settings page"),
+    ("WHEEL_VARS", L["WHEEL_VARS"], L["WHEEL_VARS"] + 0x100, "wheel.s: the code wheel page, the TEMPO wheel's frames"),
     ("VM_POLY_BASE", L["VM_POLY_BASE"], L["VM_POLY_BASE"] + BLOCKS["VM_POLY_BASE"], "rasterizer scratch"),
     ("FWDRAW_AT", L["FWDRAW_AT"], L["FWDRAW_AT"] + L["FWDRAW_LEN"], "fwdraw.s: the firmware's view records, ours"),
     ("VM_INTERP_BASE", L["VM_INTERP_BASE"], L["VM_INTERP_BASE"] + BLOCKS["VM_INTERP_BASE"],
