@@ -166,8 +166,11 @@ def read_events(tl, path):
             tl.pause[int(a[1])] = int(a[3])
         elif a[0] == 'M':
             seen.append((int(a[4]), int(a[1])))
+            tl.last_mark = (int(a[4]), float(a[5]))
         elif a[0] == 'P':
             tick, res, delay = int(a[1]), int(a[2], 16), int(a[3])
+            if res == 0 and delay == 0 and tl.start_tick is not None and not hasattr(tl, 'stop'):
+                tl.stop = (tick, float(a[5]))
             if res == INTRO_MODULE and tl.start_tick is None:
                 tl.start_tick = tick
             elif res == 0 and delay == DELAYS[1] and tl.start_tick is not None and tl.retime_row is None:
@@ -176,7 +179,7 @@ def read_events(tl, path):
 
 
 def load_sim(name, path, marks):
-    tl = Timeline(name, name.split()[-1])
+    tl = Timeline(name, name.split()[1])           # 'sim MODEL [...]'
     want = {r for r, _ in marks}
     for r, t in read_events(tl, path):
         if r in want:
@@ -274,6 +277,19 @@ def report(data, sims, units, mames):
             for r, v in marks]
     p(table(rows, ['row', 'mark'] + [f'{m} s' for m in eng]))
     p()
+    d = resource(data, INTRO_MODULE)
+    nord = struct.unpack('>H', d[0x3E:0x40])[0]
+    rows = []
+    for oi, pat in enumerate(d[0x40:0x40 + nord]):
+        if oi < 11:
+            continue
+        notes = lambda r: [struct.unpack_from('>H', d, 0xC0 + pat * 1024 + r * 16 + c * 4)[0] for c in range(3)]
+        same = sum(1 for r in range(56) if notes(r) == notes(r + 8))
+        rows.append((oi, pat, f'{oi * 64}-{oi * 64 + 63}', f'{same} / 56'))
+    p('The last orders: how many rows repeat the notes (channels 0-2) of the row 8 before them.')
+    p()
+    p(table(rows, ('order', 'pattern', 'rows', 'rows equal to 8 rows later')))
+    p()
     tls = [load_sim(n, f, marks) for n, f in sims] + [load_unit(n, a, v, e, marks) for n, a, v, e in units] + \
           [load_mame(n, f, marks) for n, f in mames]
     p('## 3. Where the picture is when the music reaches its countdown')
@@ -307,6 +323,12 @@ def report(data, sims, units, mames):
       'full count, no mark arrived in time.')
     p()
     for tl in tls:
+        if tl.name.startswith('sim') and hasattr(tl, 'stop') and hasattr(tl, 'last_mark'):
+            r, ms = tl.last_mark
+            row = r + (tl.stop[1] - ms) / row_ms(tl.model, DELAYS[1])
+            p(f'{tl.name}: the music stopped (PLAY_MUSIC 0, 0) at tick {tl.stop[0]}, module row {row:.1f}.')
+    p()
+    for tl in tls:
         if tl.note:
             p(f'{tl.name}: {tl.note}.')
             p()
@@ -331,17 +353,32 @@ def report(data, sims, units, mames):
             if tl.frame_ms:
                 mf = f'{sum(tl.frame_ms.get(t + 1, 0) for t in range(t0, t1)) / 1000:.2f}'
             rows.append((f'{r0}-{r1}', t1 - t0, f'{asked / 1000:.2f}', f'{took / 1000:.2f}', f'{took / asked:.3f}',
-                         f'{lag / 1000:+.2f}') + ((mf,) if tl.frame_ms else ()))
+                         f'{lag / 1000:+.2f}', f'{asked / (t1 - t0):.1f}', f'{took / (t1 - t0):.1f}') +
+                        ((mf,) if tl.frame_ms else ()))
+        if 831 in tl.mark_tick:                     # the whole way to the music's countdown
+            t0, t1 = tl.start_tick, tl.mark_tick[831]
+            asked = sum(tl.pause.get(t, 0) * 20 for t in range(t0, t1))
+            took = tl.music_ms(831) - tl.music_ms(0)
+            rows.append(('0-831', t1 - t0, f'{asked / 1000:.2f}', f'{took / 1000:.2f}', f'{took / asked:.3f}', '',
+                         f'{asked / (t1 - t0):.1f}', f'{took / (t1 - t0):.1f}') +
+                        ((f'{sum(tl.frame_ms.get(t + 1, 0) for t in range(t0, t1)) / 1000:.2f}',) if tl.frame_ms else ()))
         p(f'### {tl.name}')
         p()
         if tl.retime_row is not None:
             p(f'Retimed to 0x3E1C at tick {tl.retime_tick} (row {tl.retime_row:.1f}).')
             p()
-        head = ('rows', 'frames', 'asked s', 'took s', 'took / asked', 'lag so far s')
+        head = ('rows', 'frames', 'asked s', 'took s', 'took / asked', 'lag so far s', 'asked ms a frame',
+                'took ms a frame')
         p(table(rows, head + (('frames\' own sum s',) if tl.frame_ms else ())))
         p()
     for tl in tls:
         if tl.krec:
+            base = tl.starts[0][2]
+            due = {k[2] - base - 1: k[3] for k in tl.krec}
+            per = [f'rows {a}-{b} {(due[b] - due[a]) / (b - a):.3f} ms a row' for a, b in ((64, 320), (767, 948))
+                   if a in due and b in due]
+            p(f'{tl.name}: the module player\'s schedule (AU_NEXT at each mark): {", ".join(per)}.')
+            p()
             late = [k[1] - k[3] for k in tl.krec]
             p(f'{tl.name}: {len(tl.krec)} marks written by the module player, each {min(late)} to {max(late)} ms after '
               f'its row was due (AU_NEXT); module starts (tick, kernel ms): '
