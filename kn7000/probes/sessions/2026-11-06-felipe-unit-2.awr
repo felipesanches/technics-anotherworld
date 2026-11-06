@@ -1,0 +1,93 @@
+# Another World input log (kn7000 src/inplog.s, version 1): session stamp 56088 ms, 1 files (AWIN00.BIN)
+# 91 records: E 1, I 57, M 25, P 6, R 2; frames 0-5309; ended at quit
+P 0 0x3E80
+I 1 play 0x00
+P 285 0x3E81
+I 286 intro 0x00
+M 406 61 1
+M 531 61 4
+M 1023 61 8
+M 1122 61 12
+M 1126 0 1
+M 1276 4 16
+M 1875 61 20
+M 1979 0 33
+M 1980 3 33
+M 1991 0 34
+M 2004 61 35
+M 2016 0 36
+M 2026 2 37
+M 2037 0 40
+M 2045 61 41
+M 2055 61 42
+M 2062 0 43
+M 2062 61 43
+M 2070 61 44
+M 2081 0 45
+M 2091 61 46
+M 2102 0 47
+M 2112 0 48
+M 2131 61 49
+P 2833 0x3E82
+I 2834 play 0x00
+I 2877 play 0x08
+I 2886 play 0x88
+I 2940 play 0x09
+I 2941 play 0x01
+I 2953 play 0x81
+I 2983 play 0x89
+I 2985 play 0x81
+I 3017 play 0x89
+I 3018 play 0x81
+I 3023 play 0x89
+I 3025 play 0x81
+I 3041 play 0x80
+I 3042 play 0x00
+R 3387 0x3E88
+P 3387 0x3E88
+I 3413 play 0x04
+I 3415 play 0x00
+I 3426 play 0x02
+I 3427 play 0x00
+I 3431 play 0x02
+I 3434 play 0x00
+I 3450 play 0x80
+I 3452 play 0x00
+I 3465 play 0x01
+I 3466 play 0x00
+I 3469 play 0x01
+I 3471 play 0x00
+I 3476 play 0x80
+I 3478 play 0x00
+I 3483 play 0x01
+I 3484 play 0x00
+I 3489 play 0x80
+I 3491 play 0x00
+I 3494 play 0x08
+I 3496 play 0x00
+I 3499 play 0x04
+I 3500 play 0x00
+I 3502 play 0x02
+I 3504 play 0x00
+I 3509 play 0x02
+I 3511 play 0x00
+I 3514 play 0x08
+I 3516 play 0x00
+I 3522 play 0x80
+I 3523 play 0x00
+I 3528 play 0x01
+I 3529 play 0x00
+I 3531 play 0x01
+I 3532 play 0x00
+I 3535 play 0x01
+I 3536 play 0x00
+I 3540 play 0x01
+I 3541 play 0x00
+I 3553 play 0x80
+I 3554 play 0x00
+P 3554 0x3E87
+R 5171 0x3E81
+P 5171 0x3E81
+I 5172 intro 0x00
+M 5291 61 1
+E 5309 0
