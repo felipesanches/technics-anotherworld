@@ -9,11 +9,12 @@
 -- the controller is at 8 bits a pixel; the screen MAME draws at about 0, 30, 60, 85 and 95 % to AWPR_OUT/load_PP.bin.
 -- Then, the game running: HELP, PAGE DOWN three times (page 4, the settings); A5 (down), C6 (right): the ambilight
 -- off; Ab5 (up), C6: the resolution 320x200; A5 twice, C6: the light scatter one more (long to very long); A5, C6: the keybed sound off;
--- A5, C6: the LED effects off; A5, C6: the code wheel on (byte 10: the next start); each checked in RAM (PREFS_AT)
--- and in effect (PG_W, AMB_LUT all black, AU_KEYWANT; the code wheel: the game still running, no part change);
+-- A5, C6: the LED effects off; each checked in RAM (PREFS_AT) and in effect (PG_W, AMB_LUT all black, AU_KEYWANT);
 -- at the resolution's change, the order: the window redrawn before the ambilight's border ("order");
 -- the page dumped (settings.bin). EXIT: back to the game; 3 s; AWPREFS.CFG written (PR_WROTE, PR_DIRTY); then EXIT
--- held... first HELP and OTHER PART & FR: the code screen must come ("codes"); then EXIT held: the quit.
+-- held... first HELP and OTHER PART & FR: the code screen must come ("codes"); then, on the code screen (play has
+-- begun), the settings page again, A5, C6: the code wheel on, which waits for the next start (no restart; written to
+-- the card: "wheel later", since 2026-11-06, when a change before play takes effect at once); then EXIT held: the quit.
 -- run_perf.sh brings AWPREFS.CFG back.
 -- AWPR_PHASE=2 (the card with that AWPREFS.CFG): the settings read (PR_STATUS 1) and in effect from the start; with
 -- the code wheel on, the game in part 0x3E80 from its start: thread 20 asking for the symbols (pc 0x02CE-0x0D7F),
@@ -142,13 +143,10 @@ local co = coroutine.create(function()
     local keys = sp:read_u8(PREFS + 7) == 0 and sp:read_u32(AU_KEYWANT) == 1
     key("A5"); key("C6")              -- row 4: the LED effects off
     local leds = sp:read_u8(PREFS + 8) == 0
-    local part0 = sp:read_u16(0x502E1000 + 0x102A)
-    key("A5"); key("C6")              -- row 5: the code wheel on (from the next start)
-    local wheel = sp:read_u8(PREFS + 10) == 1 and sp:read_u16(0x502E1000 + 0x102A) == part0
     wait(1); dump("settings.bin")
-    result("page", pg == 3 and sp:read_u32(PR_SEL) == 5, string.format("help page %d, row %d", pg, sp:read_u32(PR_SEL)))
-    result("apply", ambi_off and res and scat and keys and leds and wheel, string.format("ambilight off and black %s, 320x200 %s, scatter %s, keybed off %s, LEDs off %s, code wheel on (part unchanged) %s",
-      tostring(ambi_off), tostring(res), tostring(scat), tostring(keys), tostring(leds), tostring(wheel)))
+    result("page", pg == 3 and sp:read_u32(PR_SEL) == 4, string.format("help page %d, row %d", pg, sp:read_u32(PR_SEL)))
+    result("apply", ambi_off and res and scat and keys and leds, string.format("ambilight off and black %s, 320x200 %s, scatter %s, keybed off %s, LEDs off %s",
+      tostring(ambi_off), tostring(res), tostring(scat), tostring(keys), tostring(leds)))
     press("CPC_SEG11", 0x80); wait(3) -- EXIT: the game again; the main task saves
     local f0 = sp:read_u32(FRAME_NO) & 0xffff
     wait(2)
@@ -163,6 +161,18 @@ local co = coroutine.create(function()
     local codes = wait_until(function() return sp:read_u16(PART_ID) == 0x3E88 end, 8)
     result("codes", codes, string.format("OTHER PART & FR on the help screen: part %04X -> %04X", before, sp:read_u16(PART_ID)))
     wait(2)
+    -- the code wheel on, from the code screen (a level code may be entered: play has begun): it waits for the next
+    -- start (src/prefs.s PrefsWheelNow), and the card keeps it for the second run
+    local wrote0 = sp:read_u32(PR_WROTE)
+    press("CPC_SEG5", 0x02); wait(2)  -- HELP: page 1 here
+    for _ = 1, 3 do press("CPC_SEG11", 0x20); wait(1.2) end
+    key("A5"); key("C6")              -- row 5: the code wheel on
+    local part1 = sp:read_u16(PART_ID)
+    local on = sp:read_u8(PREFS + 10) == 1 and sp:read_u32(PR_SEL) == 5
+    press("CPC_SEG11", 0x80); wait(4) -- EXIT
+    result("wheel later", on and sp:read_u16(PART_ID) == part1 and sp:read_u32(0x502E3000 + 0x258) == 0
+      and sp:read_u32(PR_WROTE) > wrote0, string.format("code wheel on in part %04X: still part %04X, no restart asked, written %d -> %d; %s",
+        part1, sp:read_u16(PART_ID), wrote0, sp:read_u32(PR_WROTE), prefs()))
   else
     local ok = sp:read_u32(PR_STATUS) == 1 and sp:read_u8(PREFS + 4) == 1 and sp:read_u8(PREFS + 5) == 0
       and sp:read_u8(PREFS + 6) == 3 and sp:read_u8(PREFS + 7) == 0 and sp:read_u8(PREFS + 8) == 0

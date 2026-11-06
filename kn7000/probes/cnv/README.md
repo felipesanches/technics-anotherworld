@@ -1253,3 +1253,18 @@ instructions), the form that restarts the unit.
     probes/cnv/run_wheel.sh ~/compartilhado/tmp/aw-codewheel/wheel5
     python3 -I probes/cnv/codewheel_estimate.py probes/cnv/codewheel-results-2026-11-06
     python3 -I probes/cnv/d32_scan.py build/kn7app.bin build/kn7app.map ~/compartilhado/mame-sony-video/unidasm
+
+Regressions on the same build (`codewheel-results-2026-11-06/regression.txt`; the base is `7c2d2c06`, technics-anotherworld
+5f348df, replayed with its own `run_inplog.sh` and map, as `awcnv_inplog.lua` finds ReadInput by the map):
+
+| run                                        | result                                                                                                                   |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `run_wheelnow.sh`                          | 5 of 5; the replay's I, P and G records the recorded ones (4 G records)                                                  |
+| `run_prefs.sh`                             | 8 of 8 and 5 of 5 (`awcnv_prefs.lua` now switches the code wheel on from the code screen: "wheel later")                 |
+| the owner's unit session 2 (5,309 frames)  | base and new: 5309/5309 pages and every variable at every frame identical; I, P records the replayed ones (63)           |
+| the finale (`2026-11-04-3e87-krtd-finale`) | flight 146/146 in both; frames 0-1926 identical (pages, variables); the restart after the end at 1927 against 1929       |
+
+The finale's restart into the intro comes 3 s of the kernel's clock after the still picture (interp.s EndCheck), and the
+credits' light show keeps its own time after the music: both follow the emulated clock, not the VM, and that moved by two
+frames here (credits: changes an LED 94, 160, 178 against 94, 164, 178; lit sets 179 against 175; the longest still
+960 ms against 976). Every frame the VM computed before that is identical.

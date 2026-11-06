@@ -250,13 +250,13 @@ chosen and changed on the keybed, with the game's own direction keys: **UP** (Aâ
 choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
 resolution redraws the page first and the ambilight's border after it):
 
-| setting       | values                         | default | what it does                                                                   |
-|---------------|--------------------------------|---------|--------------------------------------------------------------------------------|
-| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch)         |
-| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides            |
-| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                                      |
-| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)          |
-| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                         |
+| setting       | values                         | default | what it does                                                                  |
+|---------------|--------------------------------|---------|-------------------------------------------------------------------------------|
+| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch)        |
+| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides           |
+| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                                     |
+| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)         |
+| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                        |
 | code wheel    | off, on                        | off     | the original game's copy protection: at once before play, else the next start |
 
 The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
@@ -300,12 +300,12 @@ number a click. While the game asks the code wheel's question (part 0x3E80, befo
 page; anywhere else HELP opens page 1 as before and the code wheel is page 5 (PAGE DOWN four times). PAGE UP / PAGE
 DOWN reach the other pages from it; EXIT, HELP or any key of the keybed goes back to the game, as on the other pages.
 
-| what              | how                                                                                                    |
-|-------------------|--------------------------------------------------------------------------------------------------------|
+| what              | how                                                                                                   |
+|-------------------|-------------------------------------------------------------------------------------------------------|
 | turn the disk     | TEMPO/PROGRAM: clockwise, the arrow to the next number; anticlockwise, the one before (20 after 1)    |
-| several clicks    | they add up while the disk is still turning; it turns on to the last number asked for                  |
-| where it stops    | always on a number; "ARROW AT n" beside the wheel names it; the next showing starts where it was left  |
-| how long it takes | drawn in: turning / at rest, the last picture's time in ms (for the unit's figures: "Speed" below)     |
+| several clicks    | they add up while the disk is still turning; it turns on to the last number asked for                 |
+| where it stops    | always on a number; "ARROW AT n" beside the wheel names it; the next showing starts where it was left |
+| how long it takes | drawn in: turning / at rest, the last picture's time in ms (the unit's figures: "How fast", below)    |
 
 The page takes the whole LCD: the wheel 240 pixels across (the LCD's height) in its middle, the text either side. The
 LCD shows only 4 bits a channel through its look-up table, so the drawing is reduced to 240 colours (the 581 4-bit
