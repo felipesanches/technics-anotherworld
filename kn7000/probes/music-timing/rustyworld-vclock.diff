@@ -1,0 +1,154 @@
+--- a/src/vm.rs
++++ b/src/vm.rs
+@@ -66,7 +66,102 @@
+ 
+ /// KN7000 port: a session from the game's input log (run_awr): the first part; the input changes (frame, intro
+ /// mode, mask); the panel's part requests by frame; the sync marks (frame, first thread, value).
++// ---- AW_VMODEL: a virtual clock for the music and the picture (technics-anotherworld kn7000/probes/musictiming.py) ----
++// The picture takes no CPU time: each BLIT_FRAMEBUFFER (AW_VPACE=blit, the original engines') or each tick's end
++// (AW_VPACE=tick, the KN7000 port's) advances the clock by var[0xFF] slices of the model's slice; the module player
++// plays its rows on the same clock, at the model's row period, and writes the sync marks into var 0xF4 before the next
++// thread runs (as an interrupt-driven player would, with an infinitely fast CPU). AW_VMARKS="res:nrows:row=v,row=v..;"
++// lists each module's marks (musictiming.py makes it from the module). AW_VOUT: "M tick chan value row ms" per mark
++// written, "T tick ms pause blits" per tick.
++pub mod vclock {
++    use std::cell::RefCell;
++    use std::io::Write;
++    pub struct VClock {
++        pub model: String, pub per_blit: bool, pub now: f64, pub slice: f64,
++        pub playing: bool, pub next: f64, pub row: usize, pub period: f64, pub res: u16,
++        pub mods: Vec<(u16, usize, Vec<(usize, i16)>)>, pub out: Option<std::fs::File>, pub blits: u32,
++    }
++    thread_local! { pub static VC: RefCell<Option<VClock>> = RefCell::new(None); }
++    pub fn row_ms(model: &str, delay: u16) -> f64 {
++        let d = delay as f64;
++        match model {
++            "amiga_pal" => 6.0 * d / 709379.0 * 1000.0,           // CIA-A timer A latch = delay, a row every 6th underflow
++            "amiga_ntsc" => 6.0 * d / 715909.0 * 1000.0,
++            "dos" => { let t = (delay as u32 * 600 / 7050 + 1) as f64; t / (1193182.0 / 119.0) * 1000.0 }
++            "rawgl" => { let ms = delay as u32 * 60 * 1000 / 7159092; (44100 * ms / 1000) as f64 / 44100.0 * 1000.0 }
++            "sanglard" | "rustyworld" => (delay as u32 * 60 / 7050) as f64,
++            "ours" => (delay as u32 * 2146 / 1000) as f64 / 256.0,
++            "ours_pal" => ((delay as u32 * 35476) >> 14) as f64 / 256.0,   // the port since music-timing: Amiga PAL
++            _ => panic!("AW_VMODEL {}", model),
++        }
++    }
++    pub fn slice_ms(model: &str) -> f64 {
++        if let Ok(s) = std::env::var("AW_VSLICE") { return s.parse().expect("AW_VSLICE"); }
++        match model { "dos" => 200.0 / (1193182.0 / 119.0) * 1000.0, _ => 20.0 }
++    }
++    pub fn init() {
++        let model = match std::env::var("AW_VMODEL") { Ok(m) => m, Err(_) => return };
++        let mut mods = vec![];
++        for m in std::env::var("AW_VMARKS").unwrap_or_default().split(';').filter(|x| !x.is_empty()) {
++            let mut it = m.split(':');
++            let res = u16::from_str_radix(it.next().unwrap(), 16).unwrap();
++            let nrows: usize = it.next().unwrap().parse().unwrap();
++            let marks = it.next().unwrap_or("").split(',').filter(|x| !x.is_empty()).map(|kv| {
++                let (r, v) = kv.split_once('=').unwrap(); (r.parse().unwrap(), v.parse().unwrap()) }).collect();
++            mods.push((res, nrows, marks));
++        }
++        let per_blit = std::env::var("AW_VPACE").map(|v| v != "tick").unwrap_or(true);
++        let out = std::env::var("AW_VOUT").ok().map(|p| std::fs::File::create(p).unwrap());
++        let slice = slice_ms(&model);
++        VC.with(|v| *v.borrow_mut() = Some(VClock { model, per_blit, now: 0.0, slice, playing: false, next: 0.0, row: 0,
++            period: 0.0, res: 0, mods, out, blits: 0 }));
++    }
++    pub fn on() -> bool { VC.with(|v| v.borrow().is_some()) }
++    pub fn play(res: u16, delay: u16, pos: u8) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            let (tick, now) = (crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed), c.now);
++            if let Some(f) = c.out.as_mut() { writeln!(f, "P {} {:#06x} {} {} {:.3}", tick, res, delay, pos, now).unwrap(); }
++            if res != 0 {
++                if let Some(m) = c.mods.iter().find(|m| m.0 == res) { let _ = m;
++                    c.playing = true; c.res = res; c.row = pos as usize * 64;
++                    c.period = row_ms(&c.model, delay);
++                    // the DOS player's ISR plays the first row a period after the start; the others at once
++                    c.next = c.now + if c.model == "dos" { c.period } else { 0.0 };
++                } else { c.playing = false; }
++            } else if delay != 0 { c.period = row_ms(&c.model, delay); }
++            else { c.playing = false; }
++        })
++    }
++    pub fn stop() { VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() { c.playing = false; }) }
++    pub fn blit(pause: i16) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() { c.blits += 1; if c.per_blit { c.now += pause as f64 * c.slice; } })
++    }
++    pub fn tick_end(tick: u32, pause: i16) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            if !c.per_blit { c.now += pause as f64 * c.slice; }
++            let (now, b) = (c.now, c.blits); c.blits = 0;
++            if let Some(f) = c.out.as_mut() { writeln!(f, "T {} {:.3} {} {}", tick, now, pause, b).unwrap(); }
++        })
++    }
++    // the rows due by now; the marks among them into var 0xF4
++    pub fn apply(tick: u32, chan: usize, vars: &mut [i16; 256]) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            while c.playing && c.now >= c.next {
++                let (nrows, mark) = { let m = c.mods.iter().find(|m| m.0 == c.res).unwrap();
++                    (m.1, m.2.iter().find(|x| x.0 == c.row).map(|x| x.1)) };
++                if let Some(val) = mark {
++                    vars[0xF4] = val;
++                    let (row, t) = (c.row, c.next);
++                    if let Some(f) = c.out.as_mut() { writeln!(f, "M {} {} {} {} {:.3}", tick, chan, val, row, t).unwrap(); }
++                }
++                c.row += 1; c.next += c.period;
++                if c.row >= nrows { c.playing = false; }
++            }
++        })
++    }
++}
+ #[derive(Debug, Default)]
++
+ pub struct AwrLog {
+     pub start_part: u16,
+     pub inputs: Vec<(u32, bool, u16)>,
+@@ -374,6 +469,7 @@
+     }
+ 
+     fn setup_part(&mut self, part_id: u16) {
++        vclock::stop(); // rawgl restartAt: the module player stops at a part switch
+         self.peripherals.music.stop();
+         self.peripherals.audio.stop();
+         self.state.vars[0xE4] = 0x14;
+@@ -618,6 +714,7 @@
+             (t, it.map(|kv| { let (k, v) = kv.split_once('=').expect("AW_POKE var=value");
+                 (usize::from_str_radix(k, 16).expect("var"), v.parse().expect("value")) }).collect())
+         }).collect()).unwrap_or_default();
++        vclock::init();
+         let (mut tick, mut ii, mut mi): (u32, usize, usize) = (0, 0, 0);
+         loop {
+             crate::dbg::CUR_TICK.store(tick as i64, std::sync::atomic::Ordering::Relaxed);
+@@ -639,6 +736,7 @@
+             }
+             let mut chan_reqs = vec![];
+             for (chan_id, chan) in self.chans.iter_mut().enumerate() {
++                vclock::apply(tick, chan_id, &mut self.state.vars);
+                 while mi < log.marks.len() && (log.marks[mi].0 < tick || (log.marks[mi].0 == tick && log.marks[mi].1 as usize <= chan_id)) {
+                     self.state.vars[VM_VAR_MUS_MARK] = log.marks[mi].2;
+                     mi += 1;
+@@ -653,6 +751,8 @@
+                 self.state.vars[VM_VAR_MUS_MARK] = log.marks[mi].2;
+                 mi += 1;
+             }
++            vclock::tick_end(tick, self.state.vars[VM_VAR_PAUSE_SLICES]);
++            vclock::apply(tick, 64, &mut self.state.vars);
+             let keep_going = tick_cb(tick, &self.state.vars);
+             tick += 1;
+             let mut next_part: Option<u16> = None;
+@@ -765,6 +865,7 @@
+                         std::thread::sleep((expected_delay - elapsed).min(Duration::from_millis(5)));
+                     }
+ 
++                    vclock::blit(state.vars[VM_VAR_PAUSE_SLICES]);
+                     state.last_ts += expected_delay;
+                     state.vars[0xF7] = 0; // identify what this is used for
+                     peripherals.video.update_display(src)
+@@ -813,6 +914,7 @@
+                     }
+                 }
+                 Instr::PlayMusic { id, delay, pos } => {
++                    vclock::play(id, delay, pos);
+                     if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("MUS {:#06x} delay={} pos={}", id, delay, pos)); }
+                     if id != 0 {
+                         peripherals.music.start(id, if delay != 0 { Some(delay) } else { None }, pos);
