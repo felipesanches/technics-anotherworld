@@ -629,7 +629,9 @@ the firmware plays its notes by its normal path, the one an external sequencer o
   analysis (length, noise or tone, pitch), loaded at the start from the card file `AWSND.AW`. The
   frequency index moves the note by semitones, the volume is the velocity, the note lasts as long as the
   sample would at that rate (held while a looping sample plays); volume 0 stops the channel.
-- **The music** (opcode 0x1A PLAY_MUSIC): rawgl's module player, on the kernel's millisecond counter.
+- **The music** (opcode 0x1A PLAY_MUSIC): rawgl's module player, on the kernel's millisecond counter, at
+  the Amiga original's tempo: a row lasts 6 x delay / 709,379 s, its CIA timer's (132.8 ms at the intro's
+  0x3D54). Until 2026-11-06 it was rawgl's 131.6 ms, 0.9% fast against the picture (`probes/MUSIC-TIMING.md`).
   Each row, each of the four channels may start a note (an Amiga period, played as the nearest
   semitone, on the instrument's program), stop, change the volume, or set the **sync mark var 0xF4**.
   The marks are written as the original does, whether the sound is on or off: the intro reads them to

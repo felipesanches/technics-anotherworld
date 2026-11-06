@@ -198,8 +198,44 @@ AWIL_FRAME = sp:install_write_tap(FRAME_NO, FRAME_NO + 3, "awil_frame", function
   idxf:write(string.format("%d %08X\n", tick, front))
   captured = captured + 1
 end)
+-- AW_TIMELOG (optional): the timing of the picture and of the music (probes/musictiming.py reads it), a line each:
+--   F tick kms pause blits us   a VM frame ended (FRAME_NO written, before its pacing yield): the kernel's ms counter,
+--                               var 0xFF, the BLIT_FRAMEBUFFERs it ran (each writes CUR_PAGE_2), MAME's time in us
+--   K tick kms row due value us the module player wrote a sync mark (AU_MARK): its module row (AU_ROWS, rows played
+--                               so far, this one included), the kernel ms the row was due (AU_NEXT), the mark
+--   S tick kms rows per us      a module started (AU_MOD written non-zero): AU_ROWS before its first row, AU_PER
+--   P tick kms per us          AU_PER written (a module's start, or PLAY_MUSIC retiming the one playing)
+-- AU_ROWS, AU_NEXT, AU_PER, AU_MOD: src/audio.s (AUDIO_VARS 0x502DA000 + 0x30, 0x1C, 0x24, 0x14).
+local timef = os.getenv("AW_TIMELOG") and os.getenv("AW_TIMELOG") ~= "" and io.open(os.getenv("AW_TIMELOG"), "w")
+if timef then
+  local AU = 0x502DA000
+  local blits = 0
+  local function kms() return sp:read_u32(sp:read_u32(MISC + 0x200)) end
+  local function us() return math.floor(M.time:as_double() * 1e6) end
+  AWIL_TBLIT = sp:install_write_tap(CUR_PAGE_2, CUR_PAGE_2 + 3, "awil_tblit", function(offset, data, mask)
+    if offset == CUR_PAGE_2 then blits = blits + 1 end
+  end)
+  AWIL_TFRAME = sp:install_write_tap(FRAME_NO & ~3, (FRAME_NO & ~3) + 3, "awil_tframe", function(offset, data, mask)
+    if (FRAME_NO & 3) == 0 and (mask & 0xffff) == 0 then return end
+    if (FRAME_NO & 3) == 2 and (mask & 0xffff0000) == 0 then return end
+    timef:write(string.format("F %d %d %d %d %d\n", frame(), kms(), sp:read_u16(VAR(0xFF)), blits, us()))
+    blits = 0
+  end)
+  AWIL_TMARK = sp:install_write_tap(AU + 0x38, AU + 0x3B, "awil_tmark", function(offset, data, mask)
+    timef:write(string.format("K %d %d %d %d %d %d\n", frame(), kms(), sp:read_u32(AU + 0x30), sp:read_u32(AU + 0x1C),
+      data & 0xffff, us()))
+  end)
+  AWIL_TPER = sp:install_write_tap(AU + 0x24, AU + 0x27, "awil_tper", function(offset, data, mask)
+    timef:write(string.format("P %d %d %d %d\n", frame(), kms(), data, us()))
+  end)
+  AWIL_TMOD = sp:install_write_tap(AU + 0x14, AU + 0x17, "awil_tmod", function(offset, data, mask)
+    if data ~= 0 then
+      timef:write(string.format("S %d %d %d %d %d\n", frame(), kms(), sp:read_u32(AU + 0x30), sp:read_u32(AU + 0x24), us()))
+    end
+  end)
+end
 local function stop_capture()
-  if capturing then capturing = false; if txf then txf:close() end; binf:close(); idxf:close(); if varf then varf:close() end; if ledf then ledf:close() end; log(string.format("captured %d frames", captured)) end
+  if capturing then capturing = false; if txf then txf:close() end; binf:close(); idxf:close(); if varf then varf:close() end; if ledf then ledf:close() end; if timef then timef:close(); timef = nil end; log(string.format("captured %d frames", captured)) end
 end
 
 -- ---- inputs --------------------------------------------------------------------------------------------------
