@@ -1,0 +1,2 @@
+benchmark, ns x 10: ALU LCDw16 LCDw32 LCDr16 RAMw8 RAMw32 RAMr8 RAMr32 UNCr32
+    25.0   737.4  1968.4  1310.1   210.2   515.2   128.2   233.5   220.6

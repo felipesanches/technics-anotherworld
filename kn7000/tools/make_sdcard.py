@@ -12,7 +12,8 @@
 # must be an 8.3 name, as the firmware's FAT library opens them (the loader opens C:\KN7APP.BIN the
 # same way). The folder is emptied first: only build products live there.
 #
-# usage: python3 -I tools/make_sdcard.py OUT KN7APP.BIN FILES_DIR
+# usage: python3 -I tools/make_sdcard.py OUT KN7APP.BIN FILES_DIR [MORE_DIR...]
+# (each MORE_DIR: another sdfiles.lst and sdfiles/, e.g. build/wheel from tools/codewheel_render.py)
 import hashlib
 import os
 import re
@@ -21,7 +22,8 @@ import sys
 
 out, app, fdir = sys.argv[1:4]
 files = [("KN7APP.BIN", app)]
-files += [(n, os.path.join(fdir, "sdfiles", n)) for n in open(os.path.join(fdir, "sdfiles.lst")).read().split()]
+for d in [fdir] + sys.argv[4:]:
+    files += [(n, os.path.join(d, "sdfiles", n)) for n in open(os.path.join(d, "sdfiles.lst")).read().split()]
 for name, _ in files:
     if not re.fullmatch(r"[A-Z0-9_]{1,8}(\.[A-Z0-9_]{1,3})?", name):
         sys.exit(f"make_sdcard: {name} is not an 8.3 name")

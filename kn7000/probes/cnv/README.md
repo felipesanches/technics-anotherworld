@@ -1196,3 +1196,75 @@ its requested pc, as a setvec) with no symbol given, twice ("retry"): ERROR, hel
     python3 -I probes/finalecheck.py $T/fin.led $T/fin/vars.bin
     probes/cnv/run_prefs.sh ~/compartilhado/tmp/aw-wheel3
     python3 -I probes/screen2png.py ~/compartilhado/tmp/aw-wheel3/p2/wrong1.bin ~/compartilhado/tmp/aw-wheel3/p2/retry1.bin
+
+## The code wheel setting at once (2026-11-06)
+
+Felipe: switching CODE WHEEL took effect only after leaving the game and starting it again; it should take effect at
+once. Before play begins (part 0x3E80 or the intro), closing the help screen with the setting changed starts the game
+again as the setting asks (`src/prefs.s` PrefsWheelNow, `src/interp.s` GameStart at that frame's end), logged as a `G`
+record; in play the row reads "ON, next start" or "OFF, next start" and nothing restarts. `run_wheelnow.sh` runs
+`awcnv_wheelnow.lua` (a card without AWPREFS.CFG, program 893) and then replays the session's log with
+`run_inplog.sh` (the replay here run on its own, `CARDFILES` the same build). Build `8420568b...`: 5 of 5 checks.
+
+| check           | result                                                                                                              |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| on at splash    | thread 20 asking (pc 0x0BB5), var 0xBC 0x0000, var 0x3C = the seed 0x70C3, GAME_WHEEL 1                             |
+| off at question | the splash (thread 0 at 0x009F, thread 20 inactive), var 0xBC 0x0010, var 0x3C 0x1234                               |
+| on in intro     | from part 0x3E81 back to the question (var 0x3C 0x036F)                                                             |
+| off again       | the splash, then C4 in the intro: part 0x3E82                                                                       |
+| in play         | the row's item is "ON, next start"; part 0x3E82 kept, GAME_WHEEL 0, no request, frames 795 -> 827                   |
+| replay          | 4 G records (frames 76, 101, 409, 432); the replay's I, P and G records the same (18); var 0x3C after each the seed |
+
+    probes/cnv/run_wheelnow.sh ~/compartilhado/tmp/aw-codewheel/wheelnow1
+
+## The code wheel page (2026-11-06)
+
+Felipe: HELP at the code wheel's question should open a code wheel simulator, made from his drawing
+(`AnotherWorld_VMTools/aw_codewheel.svg`), its upper disk turned by the TEMPO/PROGRAM wheel a number a click, with
+pictures in between, always coming to rest on a number; a help page like the others (README-CNV.md, "The code wheel
+page"). `run_wheel.sh` runs `awcnv_wheel.lua` on a card with the code wheel on (program 893), then
+`codewheel_check.py`, which compares every picture taken from the LCD with `tools/codewheel_render.py`'s `render()`
+(the device's arithmetic, entry for entry). The TEMPO/PROGRAM wheel is MAME's `TEMPO_KNOB` adjuster: each step of it
+sends one detent frame `[0x17, +-1]` (kn7000_mame `kn_cpanel.cpp`). Build `2887b170...`: 11 of 11 checks, 13 of 13
+pictures exactly `render()`'s (8 at rest, bilinear, each at a number's angle; 5 in mid-turn, nearest, a quarter of the
+way or more). Results, pictures and screenshots: `codewheel-results-2026-11-06/` (`run_wheel.txt`).
+
+| check     | result                                                                                                         |
+|-----------|----------------------------------------------------------------------------------------------------------------|
+| open      | HELP at the question: page 5, the five files read once (1061 ms), the arrow at number 1, at rest               |
+| turn p1   | +1: number 2; 7 turning pictures, every one onwards, the last the end's own; then the one at rest              |
+| turn p3   | +3, 50 ms apart (they pile up): number 5; 16 turning pictures                                                  |
+| turn m5   | -5: number 20 (through 1); 38 turning pictures                                                                 |
+| turn m1   | -1: number 19; 6 turning pictures                                                                              |
+| turn p2   | +2, 50 ms apart: number 1 (through 20); 9 turning pictures                                                     |
+| pages     | PAGE UP: the settings (the border's pattern back); pages 4 3 2 1 2 3 4 5; the wheel again at number 1, no read |
+| close     | EXIT: pages 2 and 3 put back byte for byte as saved; 0 LCD pixels different from before HELP; still asking     |
+| again     | HELP: the page again from display memory (reads 1, borrows 2)                                                  |
+| elsewhere | CODE WHEEL off (the splash at once): HELP opens page 1; PAGE DOWN x4: the code wheel                           |
+| 320x200   | in the 320x200 mode the page, then the border's pattern for 320 after EXIT                                     |
+
+The tempo: 12 wheel frames taken, 4 of them decoded by the firmware first and undone with a frame the other way.
+Times in MAME and the unit estimate (`codewheel_estimate.py codewheel-results-2026-11-06`, `estimate.txt`): turning
+pictures 24.4-68.9 ms, median 45.5, median 4,593 LCD stores; at rest about 364 ms; on the unit, by its own benchmark's
+LCD store times (2,543 and 3,610 ns: `unit_benchmark.txt`, from AWPERF files of 2026-10-26), 47.2 and 51.5 ms at the
+median. `d32_scan.py` finds no register + displacement operand with a top byte other than 0 in the new code (1747
+instructions), the form that restarts the unit.
+
+    probes/cnv/run_wheel.sh ~/compartilhado/tmp/aw-codewheel/wheel5
+    python3 -I probes/cnv/codewheel_estimate.py probes/cnv/codewheel-results-2026-11-06
+    python3 -I probes/cnv/d32_scan.py build/kn7app.bin build/kn7app.map ~/compartilhado/mame-sony-video/unidasm
+
+Regressions on the same build (`codewheel-results-2026-11-06/regression.txt`; the base is `7c2d2c06`, technics-anotherworld
+5f348df, replayed with its own `run_inplog.sh` and map, as `awcnv_inplog.lua` finds ReadInput by the map):
+
+| run                                        | result                                                                                                                   |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `run_wheelnow.sh`                          | 5 of 5; the replay's I, P and G records the recorded ones (4 G records)                                                  |
+| `run_prefs.sh`                             | 8 of 8 and 5 of 5 (`awcnv_prefs.lua` now switches the code wheel on from the code screen: "wheel later")                 |
+| the owner's unit session 2 (5,309 frames)  | base and new: 5309/5309 pages and every variable at every frame identical; I, P records the replayed ones (63)           |
+| the finale (`2026-11-04-3e87-krtd-finale`) | flight 146/146 in both; frames 0-1926 identical (pages, variables); the restart after the end at 1927 against 1929       |
+
+The finale's restart into the intro comes 3 s of the kernel's clock after the still picture (interp.s EndCheck), and the
+credits' light show keeps its own time after the music: both follow the emulated clock, not the VM, and that moved by two
+frames here (credits: changes an LED 94, 160, 178 against 94, 164, 178; lit sets 179 against 175; the longest still
+960 ms against 976). Every frame the VM computed before that is identical.

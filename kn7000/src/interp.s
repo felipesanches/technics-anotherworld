@@ -288,8 +288,8 @@ ifp_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # ================================================================================
-# GameReset: zero VM vars, set up threads, apply the copy-protection bypass vars,
-# and start on the intro part.
+# GameReset: a new game: the guards, the trace, the frame count, the note trackers, the sound, the video; then
+# GameStart (below).
 GameReset:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
@@ -309,6 +309,24 @@ GameReset:
     call    NotesInit, 0, 0         # start tracking keybed + MIDI notes afresh
     call    AudioInit, 0, 0         # sound on, nothing playing (audio.s)
     call    VideoStart, 0, 0
+    mov     (FWV_KERNEL_MS), a0     # the code wheel's question: its seed from the clock, as the DOS game's (GameStart)
+    mov     (a0), d0
+    mov     d0, (START_SEED)
+    call    GameStart, 0, 0
+    ret     [d2,d3,a2,a3], 0x20
+
+# GameStart: the VM's start: every variable zero, the threads as a new part has them, and the start the code wheel
+# setting asks for: on, part 0x3E80 from its pc 0, the question (seed START_SEED); off, the bypass variables and the
+# splash. GameReset at a new game; NextThread at a frame's end when RESTART_REQ asks (the setting changed on the help
+# screen before play began: prefs.s PrefsWheelNow).
+GameStart:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    clr     d0
+    mov     d0, (WHEEL_FAIL_MS)
+    mov     d0, (RESTART_REQ)
+    movbu   (PR_WHEEL), d0          # the setting this game starts with (prefs.s: the settings page tells when a
+    mov     d0, (GAME_WHEEL)        # change waits for the next start)
     # zero 256 vars (512 bytes)
     mov     VM_VARIABLES, a2
     mov     256, d2
@@ -366,9 +384,8 @@ gr_threads:
     mov     NO_SPLASH_MAGIC, d1
     cmp     d1, d0
     beq     gr_bypass
-    mov     (FWV_KERNEL_MS), a0     # the random seed from the clock, as the DOS game's: the position asked for
-    mov     (a0), d1                # changes from start to start (var 0x3C; 0x1234 otherwise, for the replays)
-    mov     0x3C, d0
+    mov     (START_SEED), d1        # the random seed from the clock, as the DOS game's: the position asked for
+    mov     0x3C, d0                # changes from start to start (var 0x3C; 0x1234 otherwise, for the replays)
     call    WriteVar, 0, 0
     clr     d0
     movhu   d0, (REQ_NEXT_PART)
@@ -1244,6 +1261,14 @@ nt_maxok:
     movhu   d1, (a2)                # clear the request
     call    InitForPart, 0, 0       # d0 = partId: re-point resources + reset threads
 nt_noswitch:
+    mov     (RESTART_REQ), d0       # the code wheel setting changed before play began (prefs.s PrefsWheelNow):
+    cmp     0, d0                   # the game's start again, as the setting has it; into the input log first
+    beq     nt_norestart
+    movbu   (PR_WHEEL), d0
+    mov     (START_SEED), d1
+    call    InpLogRestart, 0, 0
+    call    GameStart, 0, 0
+nt_norestart:
     clr     d2
 nt_not_eof:
     # frozen?

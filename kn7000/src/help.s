@@ -1,8 +1,10 @@
 # (c) 2026 Felipe Correa da Silva Sanches <juca@members.fsf.org>
 # Licensed under the terms of the GNU General Public License v3 or later
 #
-# The help screens (HELP button), after the KN5000 port's HELP_SCREEN: the game pauses and four
-# pages show the controls, sixteen level codes (in the order the game reaches them: their checkpoints, var 0x00) and the speed figures (perf.s PerfPageBuild). PAGE UP / PAGE DOWN turn the pages; EXIT,
+# The help screens (HELP button), after the KN5000 port's HELP_SCREEN: the game pauses and five
+# pages show the controls, sixteen level codes (in the order the game reaches them: their checkpoints, var 0x00), the
+# settings (prefs.s) and the code wheel (wheel.s: its upper disk turned by the TEMPO/PROGRAM wheel; the first page shown
+# while the game asks the code wheel's question, page 1 otherwise). PAGE UP / PAGE DOWN turn the pages; EXIT,
 # HELP again, or any keybed / MIDI key returns to the game once everything is released. PART SELECT RIGHT 2 (the
 # sound mode) and RIGHT 1 (the keybed's own sound) work here too (audio.s AudioPoll, from every HelpSleep), and the
 # first page shows the change at once.
@@ -24,8 +26,13 @@ HelpScreen:
     mov     help_palette, a0
     mov     palette, a1
     call    hs_copy_pal, 0, 0
-    clr     d0
+    call    WheelAtQuestion, 0, 0   # at the code wheel's question: the code wheel's page first (wheel.s)
+    cmp     0, d0
+    beq     hs_page0
+    mov     WHEEL_PAGE, d0
+hs_page0:
     mov     d0, (HELP_PAGE_NO)
+    clr     d0
     mov     d0, (HELP_TICK)
     mov     d0, (HELP_CODES)
 hs_wait_help:                       # let go of HELP first
@@ -62,6 +69,10 @@ hs_keys_exit:
     call    HelpGameInput, 0, 0
     cmp     0, d0
     bne     hs_exit
+    mov     (HELP_PAGE_NO), d0      # the code wheel's page: the TEMPO wheel's detents, a turn's next picture
+    cmp     WHEEL_PAGE, d0
+    bne     hs_snd_chk
+    call    WheelPoll, 0, 0
 hs_snd_chk:
     call    HelpSoundState, 0, 0    # PART SELECT RIGHT 2 / RIGHT 1 pressed here (audio.s AudioPoll runs in
     mov     (HELP_SNDSTATE), d1     # every HelpSleep): the first page's status lines again, at once
@@ -104,6 +115,9 @@ hs_page_wait:                       # wait for PAGE UP / DOWN to be released
     call    HelpReshow, 0, 0        # the firmware may have repainted the screen for the button press
     bra     hs_poll
 hs_idle:                            # nothing pressed: re-show the page every HELP_REFRESH
+    mov     (HELP_PAGE_NO), d0      # (not the code wheel's: drawn into the LCD, not SHADOW; WheelPoll checks the LCD)
+    cmp     WHEEL_PAGE, d0
+    beq     hs_poll
     mov     (HELP_TICK), d0         # polls, in case the firmware repainted the screen (the blit
     inc     d0                      # writes only what the sentinels find changed)
     mov     d0, (HELP_TICK)
@@ -126,6 +140,7 @@ hs_exit:                            # wait until every control is released
     call    HelpGameInput, 0, 0
     cmp     0, d0
     bne     hs_exit
+    call    WheelRestore, 0, 0      # the code wheel's page gone, pages 2 and 3 back (wheel.s)
     mov     HELP_PAL_SAVE, a0       # the game's palette and picture back
     mov     palette, a1
     call    hs_copy_pal, 0, 0
@@ -137,6 +152,7 @@ hs_exit:                            # wait until every control is released
     mov     d3, d0
     call    PerfPhase, 0, 0
     call    AudioResume, 0, 0
+    call    PrefsWheelNow, 0, 0     # a code wheel change: at once, before play began (prefs.s)
     ret     [d2,d3,a2,a3], 0x20
 
 # hs_copy_pal(a0 = from, a1 = to): copy a 16-entry RGB565 palette (32 bytes). Leaf.
@@ -151,10 +167,14 @@ hs_cp_loop:
     bne     hs_cp_loop
     rets
 
-# HelpReshow: the page again, all of it, if a sentinel finds the LCD not as shown (perf.s PerfSentinels).
+# HelpReshow: the page again, all of it, if a sentinel finds the LCD not as shown (perf.s PerfSentinels); not the code
+# wheel's page, which is not in SHADOW.
 HelpReshow:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    mov     (HELP_PAGE_NO), d0
+    cmp     WHEEL_PAGE, d0
+    beq     hr_ret
     call    PerfSentinels, 0, 0
     mov     (PF_DAMAGE), d0
     cmp     0, d0
@@ -163,11 +183,12 @@ HelpReshow:
 hr_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# HelpSleep: wait 30 ms, keeping the keybed/MIDI note trackers up to date.
+# HelpSleep: wait 30 ms (2 while the code wheel turns: wheel.s WheelSleepMs), keeping the keybed/MIDI note trackers up
+# to date.
 HelpSleep:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
-    mov     30, d0
+    call    WheelSleepMs, 0, 0
     mov     DLY_TSK, a1
     calls   (a1)
     call    NotePoll, 0, 0
@@ -187,6 +208,13 @@ HelpGameInput:
 HelpDrawPage:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    mov     (HELP_PAGE_NO), d0      # the code wheel's page: its own (wheel.s)
+    cmp     WHEEL_PAGE, d0
+    bne     hd_other
+    call    WheelShow, 0, 0
+    bra     hd_ret
+hd_other:
+    call    WheelHide, 0, 0         # (from the code wheel's page: the LCD's colours and border back)
     call    ShadowClear, 0, 0
     call    HelpSoundState, 0, 0
     mov     d0, (HELP_SNDSTATE)
@@ -217,6 +245,7 @@ hd_item:
     bra     hd_item
 hd_done:
     call    ShadowOut, 0, 0
+hd_ret:
     ret     [d2,d3,a2,a3], 0x20
 
 # HelpText(a3 = NUL-terminated text, d0 = x, d1 = y, d2 = colour): into SHADOW, 8x8 glyphs from AW_FONT, but '.'
@@ -318,7 +347,9 @@ help_palette:
     .word   0x0000, 0xFFFF, 0x055F, 0xFFE0
     .word   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 help_pages:
-    .long   help_page0, help_page1, help_page2, PF_ITEMS
+    .long   help_page0, help_page1, help_page2, PF_ITEMS, help_page_wheel
+help_page_wheel:                    # (drawn by wheel.s WheelShow)
+    .word   0xFFFF, 0
 
 help_page0:                         # the status lines (DV_*TXT) are dsp.s DspModeText's, made before every page
     .word   108, 8, 2, 0
@@ -504,9 +535,9 @@ hs_keys_lbl:     .asciz "KEYS"
 hs_keys_btn:     .asciz "PART SEL RIGHT 1: their sound"
 hs_screen:       .asciz "SCREEN"
 hs_screen_btn:   .asciz "PAGE UP: large, DOWN: original"
-hs_page_1:       .asciz "Page 1/4"
-hs_page_2:       .asciz "Page 2/4"
-hs_page_3:       .asciz "Page 3/4"
+hs_page_1:       .asciz "Page 1/5"
+hs_page_2:       .asciz "Page 2/5"
+hs_page_3:       .asciz "Page 3/5"
 hs_level_codes:  .asciz "LEVEL CODES:"
 hs_level_codes2: .asciz "LEVEL CODES (cont.):"
 hs_c1:           .asciz "LDKD"

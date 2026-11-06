@@ -98,6 +98,8 @@
 .equ AW_PATHNAME,     AW_PATHS+0x30 #   the name AppPath was given
 .equ AW_PATHS_LEN,    0x40
 .equ PREFS_AT,        0x502DF900    # prefs.s: the settings (AWPREFS.CFG's 16 bytes) and the settings page's state, 0x60
+.equ WHEEL_VARS,      0x502DFA00    # wheel.s: the code wheel page's state, 0x100
+.equ WH_RXRD,         WHEEL_VARS    # the panel's receive ring's read index (fwfind.s step 8; 0: none), wheel.s
 .equ VM_POLY_BASE,    0x502E0000    # vm.inc: rasterizer scratch, 0x200 bytes
 .equ FWDRAW_AT,       0x502E0400    # fwdraw.s: its variables, then the copy of program 893's view records
 .equ FD_HOOKED,       FWDRAW_AT + 0x00  # u32: the class table points at FD_COPY
@@ -149,7 +151,7 @@
 .equ QUIT_HOLD_MS,    1500          # hold EXIT this long to leave the game
 
 # ---- what fwfind.s finds (FwStep), in FW_VARS ----------------------------------------
-.equ FW_STEPS,        8             # 0-5 must find what they look for; 6-7 (the effects DSP) may not
+.equ FW_STEPS,        9             # 0-5 must find what they look for; 6-7 (the effects DSP) and 8 (the panel's ring) may not
 # FW_OPEN .. FW_CLOSE and FW_SETEXT, FW_RESETEXT are the SD file routines the loader found and put in
 # its service table (SV_OPEN, SV_READ, SV_CLOSE, SV_SETEXT, SV_RESETEXT), copied by step 2 after it
 # has checked the table: either the SD backends themselves (FOUND_TABLES; the drive switch is then the

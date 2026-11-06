@@ -37,19 +37,21 @@ settle](#what-mame-cannot-settle) · [Limits](#limits) · [History](#history-the
 write-protect tab at PROTECTED. Every MAME test below runs this very image.
 
 **The SD card: everything in `build/sdcard/`, copied to the card's root folder.** `make sdcard`
-writes exactly these 62 files there and nothing else (their sizes and SHA-1s: `build/sdcard.txt`):
+writes exactly these 79 files there and nothing else (their sizes and SHA-1s: `build/sdcard.txt`):
 
-| file(s)                              | bytes   | what                                                                                                                  |
-|--------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 41,948  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs |
-| `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                      |
-| `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                 |
-| `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)          |
-| `AWBANK.AW`                          | 2,952   | where each sound of the DSP's sample bank is in its SDRAM, the bank's id and checksum ("Sound"; `aw_extract.py`)      |
-| `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                           |
-| `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)           |
+| file(s)                              | bytes   | what                                                                                                                                   |
+|--------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `KN7APP.BIN`                         | 51,768  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs, code wheel page |
+| `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                                       |
+| `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                                  |
+| `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)                           |
+| `AWBANK.AW`                          | 2,952   | where each sound of the DSP's sample bank is in its SDRAM, the bank's id and checksum ("Sound"; `aw_extract.py`)                       |
+| `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                                            |
+| `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)                            |
+| `AWH12.AW` ... `AWH91.AW` (12 files) | 118,256 | the twelve bitmaps at 384x240, ByteKiller-packed, for the high-resolution mode ("The screen"; `tools/aw_hires.py`)                     |
+| `AWWH0.AW` ... `AWWH4.AW` (5 files)  | 55,624  | the code wheel page's pictures and tables, ByteKiller-packed ("The code wheel page"; `tools/codewheel_render.py`)                      |
 
-1,044,172 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,234,764 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -61,8 +63,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`964e245addd985700168433cc461e6c56aa0c193` (the LCD at 8 bits a pixel through its look-up table, the ambilight
-around the window: "The screen"; `build/sdcard.txt` lists it with the rest). Before it: `ccf024e4...` (384x240 pages
+`2887b170827986b5308d3568b49ade478619c365` (the code wheel page, "The code wheel page"; `build/sdcard.txt` lists it
+with the rest). Before it: `7c2d2c06...` (the build the owner played on 2026-11-06), `964e245a...` (the LCD at 8 bits a
+pixel through its look-up table, the ambilight around the window: "The screen"), `ccf024e4...` (384x240 pages
 drawn at that resolution by default, PAGE DOWN 320x200, PAGE UP 384x240), `9a2f2db4...` (the 320x200
 picture enlarged to 384x240 by repeating pixels; the overlay and the old blit gone), `cddfe76b...` (the screen
 black while a part loads, the firmware's drawing off: "The firmware's screen"), `7b07e0f1...` (SHR shifts logically, found
@@ -74,7 +77,7 @@ then UP moved to A♭5 or B♭5). The builds before those that ran on Felipe's K
 **With the program menu (2026-10-20): the game in a folder of its own, `AW\`.** The card's root
 `KN7APP.BIN` can be the program menu (technics-roms-disasm `kn7000/tools/kn7menu`), which lists the
 programs in the card's folders and starts the one picked as the loader would have. Its `make card`
-puts this game in `AW\` (all 47 files of `build/sdcard/`, with a `MANIFEST.TXT` and an `ICON.BMP`)
+puts this game in `AW\` (all the files of `build/sdcard/`, with a `MANIFEST.TXT` and an `ICON.BMP`)
 beside the ROM dumper's passes 5 to 9, each in its folder, so nothing has to be swapped on the card any
 more: copy the whole of kn7menu's `build/card/` to the card's root once. "Continue Next?" YES then
 brings the menu back instead of a new game.
@@ -180,15 +183,16 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
    The panel's buttons are the port's own controls:
 
-| what         | panel                                                                                                |
-|--------------|------------------------------------------------------------------------------------------------------|
-| codes        | OTHER PART & FR: the level code screen                                                               |
-| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns; OTHER PART & FR the code screen |
-| settings     | HELP, then PAGE DOWN three times ("Settings", below)                                                 |
-| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too)                              |
-| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off                               |
-| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200                                  |
-| quit         | hold EXIT for 1.5 s                                                                                  |
+| what         | panel                                                                                                                 |
+|--------------|-----------------------------------------------------------------------------------------------------------------------|
+| codes        | OTHER PART & FR: the level code screen                                                                                |
+| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns; OTHER PART & FR the code screen                  |
+| settings     | HELP, then PAGE DOWN three times ("Settings", below)                                                                  |
+| code wheel   | HELP at the code wheel's question, else HELP and PAGE DOWN four times; TEMPO/PROGRAM turns it ("The code wheel page") |
+| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too)                                               |
+| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off                                                |
+| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200                                                   |
+| quit         | hold EXIT for 1.5 s                                                                                                   |
 
    **The screen.** The game starts in its high-resolution mode: it draws at 384x240, the LCD's whole height,
    centred with black strips at the sides, in the original's proportions (6/5 of 320x200 both ways). The
@@ -241,19 +245,19 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
 ## Settings
 
-The help screen's fourth page (HELP, then PAGE DOWN three times; "SETTINGS 4/4") holds six settings. They are
+The help screen's fourth page (HELP, then PAGE DOWN three times; "Page 4/5") holds six settings. They are
 chosen and changed on the keybed, with the game's own direction keys: **UP** (A♭5 or B♭5) and **DOWN** (A5)
 choose a row, **LEFT** (F5) and **RIGHT** (C6) change it. A change applies at once, behind the page (a new
 resolution redraws the page first and the ambilight's border after it):
 
-| setting       | values                         | default | what it does                                                           |
-|---------------|--------------------------------|---------|------------------------------------------------------------------------|
-| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch) |
-| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides    |
-| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                              |
-| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)  |
-| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                 |
-| code wheel    | off, on                        | off     | the original game's copy protection, from the next start (below)       |
+| setting       | values                         | default | what it does                                                                  |
+|---------------|--------------------------------|---------|-------------------------------------------------------------------------------|
+| resolution    | 384x240, 320x200               | 384x240 | the display mode the game starts in (PAGE UP / PAGE DOWN still switch)        |
+| ambilight     | on, off                        | on      | the glow the picture casts into the black strips at the LCD's sides           |
+| light scatter | short, medium, long, very long | long    | how far that glow reaches into the strips                                     |
+| keybed sound  | on, off                        | on      | the instrument's own notes for the keys that steer the game (RIGHT 1)         |
+| LED effects   | on, off                        | on      | the panel LEDs following the game ("The panel's LEDs")                        |
+| code wheel    | off, on                        | off     | the original game's copy protection: at once before play, else the next start |
 
 The KN7APP.BIN build keeps them on the SD card, in `AWPREFS.CFG` in its root (16 bytes: "AWP1", then one byte
 a setting in the order above, the code wheel's at byte 10, then zeros; `src/prefs.s`: byte 9 was the bitmap filter's
@@ -271,9 +275,92 @@ Answered right, the game's code sets those variables itself and goes on to the l
 always has; answered wrong, its code (0x0D4F) stops every thread but its display loop and shows its ERROR page, where
 the DOS game stays. Here, 3 s later, the part starts again from its beginning with a new random seed, so the question
 comes back, for another position (`src/interp.s` WheelRetry). EXIT held leaves. The answer is on the code wheel
-that came with the game. The setting is read when the game starts: switched on during a game, it asks at the next
-start ("Continue Next?" YES, or the program menu). The level-code screen (OTHER PART & FR) cannot be reached from the
-protection, as in DOS.
+that came with the game, and on the help screen's fifth page ("The code wheel page", below). The level-code screen
+(OTHER PART & FR) cannot be reached from the protection, as in DOS.
+
+**A change of the code wheel setting applies when the help screen closes**, while the game has not gone past its
+intro (since 2026-11-06; until then only at the next start). In part 0x3E80 (the question, its ERROR page and the wait
+after it, or the splash) or in the intro, switched on, the game starts again at the question, with a new seed from the
+clock; switched off at the question, it starts again at the splash, the protection's variables set (`src/prefs.s`
+PrefsWheelNow; both are the game's own start, `src/interp.s` GameStart, done at the end of that frame). Switched off
+after a right answer, or in the intro, nothing needs to change. Once play has begun (any part after the intro, or one a
+level code started), the game is not thrown away: the change waits for the next start ("Continue Next?" YES, or the
+program menu), and the settings page says so, the row reading "ON, next start" or "OFF, next start". A start made this
+way is a `G` record in the input log (the setting and the seed), which a replay sets again at the same frame
+("Replaying a session"). Checked in MAME by `probes/cnv/run_wheelnow.sh` (`awcnv_wheelnow.lua`, then the session's log
+replayed): on at the splash, the question; off at the question, the splash; on in the intro, the question; off, then
+play; on in play: "ON, next start" and no restart; the replay gives the same I, P and G records.
+
+## The code wheel page
+
+The help screen's fifth page is the original game's code wheel (since 2026-11-06; Felipe asked for it after playing
+build `7c2d2c06` on the unit): its two disks as the owner's drawing has them (`AnotherWorld_VMTools/aw_codewheel.svg`,
+scans of the real wheel), the upper one, with the windows and the arrow, turned by the **TEMPO/PROGRAM** wheel, a
+number a click. While the game asks the code wheel's question (part 0x3E80, before a right answer), HELP opens this
+page; anywhere else HELP opens page 1 as before and the code wheel is page 5 (PAGE DOWN four times). PAGE UP / PAGE
+DOWN reach the other pages from it; EXIT, HELP or any key of the keybed goes back to the game, as on the other pages.
+
+| what              | how                                                                                                   |
+|-------------------|-------------------------------------------------------------------------------------------------------|
+| turn the disk     | TEMPO/PROGRAM: clockwise, the arrow to the next number; anticlockwise, the one before (20 after 1)    |
+| several clicks    | they add up while the disk is still turning; it turns on to the last number asked for                 |
+| where it stops    | always on a number; "ARROW AT n" beside the wheel names it; the next showing starts where it was left |
+| how long it takes | drawn in: turning / at rest, the last picture's time in ms (the unit's figures: "How fast", below)    |
+
+The page takes the whole LCD: the wheel 240 pixels across (the LCD's height) in its middle, the text either side. The
+LCD shows only 4 bits a channel through its look-up table, so the drawing is reduced to 240 colours (the 581 4-bit
+colours it has, by a weighted k-means) in entries 16-255, the ambilight's while the game runs; the page puts the
+ambilight's colours, the border's pattern and the window back when it is left. The tempo itself does not move: the
+wheel's clicks are taken from the panel's receive ring before the firmware decodes them, and the few it decodes
+first are undone with a click the other way.
+
+**How it is drawn** (`tools/codewheel_render.py`, `src/wheel.s`). The pictures are made at build time with librsvg,
+at 240/679.13 pixels a unit of the drawing: the lower disk alone (256 x 240) and the upper one alone, unturned, with
+the shadow the drawing gives it (256 x 256, its own centre at the middle). From the drawing the script measures (its
+`wheel.txt`): the lower disk's centre, where its 20 tick marks converge (342.34, 336.89 units; the pin hole in the
+scan is 1.6 units off, at 343.59, 337.97); the upper disk's, from its outline (342.83, 334.75); the numbers, half way
+between ticks (their spacing goes from 17.51 to 18.35 degrees: a hand-made wheel); the arrow, where its axis meets
+the numbers' circle (59.37 degrees in the drawing as it is, number 5's place being 59.68). The upper disk turns about
+the lower one's centre, and comes to rest at each number's own measured angle.
+
+The upper disk is turned at run time, every picture, from its one picture: each pixel of the 40,800 it can cover is
+the upper disk's texel at that pixel's place turned back, or, in a window, the lower disk's pixel under the texel's
+shadow level (15 levels). **While it turns**, nearest texel, the two texture coordinates packed in one word so that
+a pixel costs one add; **at rest**, bilinear, in RGB, and back to the nearest of the 240 colours through a 4096-entry
+table, made 24 rows at a time between looks at the wheel (a click meanwhile stops it). Only the 32-bit words of the
+LCD that change are stored (a copy of what it holds is kept in RAM). The shadow outside the disk's edge is the same
+all round, so it is drawn into the lower disk once. Real time was chosen over frames made in advance: 20 numbers
+with several pictures between each, 40,800 bytes each, would be megabytes to read from a card that gave 385 KB in
+3.05 s on the unit (kn7000_mame `notes/sd-card-emulation-plan.md`); turned at run time, the files are 55,624 bytes,
+read once a game.
+
+**Files and memory.** The tables and pictures (146,432 bytes: `codewheel_render.py`'s layout, `src/wheel.s` WB_*)
+are `AWWH0.AW` ... `AWWH4.AW` on the card, 32 KB each ByteKiller-packed, 55,624 bytes in all. The first time the page
+shows in a game they are read, a file a converter call ("Loading the wheel" while they come: 1.04 s in MAME, whose
+card reads are about 1.7 times as fast as the unit's: kn7000_mame `notes/sd-card-emulation-plan.md`), then kept in the
+LCD's display memory, which nothing shows, for the next times.
+While the page shows, the RAM they are used in is the VM's pages 2 and 3 (the game is paused): those are copied to
+display memory first and back when the help screen closes (or before a setting that changes the pages applies). The
+display memory used, past FB8 (which ends at `0x757FF`) and within what Pinball Fantasies uses on the owner's unit:
+
+| display memory | what                                                                                   |
+|----------------|----------------------------------------------------------------------------------------|
+| `0x90000`      | the VM's pages 2 and 3 while the page shows (184,320 bytes)                            |
+| `0xC0000`      | the wheel's tables and pictures once read (146,432 bytes)                              |
+| `0xE4000`      | FB8 as it was before the page (153,600 bytes: the border's dither pattern exactly)     |
+
+**How fast** (MAME, program 893, `probes/cnv/run_wheel.sh`; the figures, the pictures and the screenshots in
+`probes/cnv/codewheel-results-2026-11-06/`). A turning picture took 24.4 to 68.9 ms of MAME's time, 45.5 at the
+median, over 76 of them, storing a median 4,593 of the 10,200 words (none at all when nothing changed); one at rest,
+356.7 to 365.3 ms, made 24 rows a look so that a click is never kept waiting by it; the five files' first read, 1.06 s.
+A one-number turn lasts 280 ms and showed 6 or 7 pictures, a three-click one 16. On the unit the game's own benchmark
+found the ALU and work RAM as fast as in MAME and the LCD's 32-bit stores slower (2,543 and 3,610 ns against MAME's
+1,968; `codewheel_estimate.py`): that puts a turning picture at about 47 to 52 ms at the median, about 20 a second,
+and a picture at rest at about 366 ms. The page itself shows the last of each it drew ("drawn in"), on the unit as in
+MAME: those are the figures to send.
+
+![The code wheel page at rest, number 1 (MAME)](probes/cnv/codewheel-results-2026-11-06/codewheel_rest.png)
+![Turning from 1 to 2 (MAME)](probes/cnv/codewheel-results-2026-11-06/codewheel_turning.png)
 
 ## The panel's LEDs
 
@@ -347,6 +434,7 @@ seed), so the log holds:
 | `I`      | the input ReadInput applied, from that frame on: the mask it wrote to var 0xFE, and its mode (in the intro only var 0xFA and 0xFE are written; elsewhere the six hero variables, which all follow from the mask) |
 | `M`      | a sync mark of the music (var 0xF4), and the first thread that saw it: the module player writes them on the kernel's clock, between two threads or in the yield at a frame's end, and the intro waits for them   |
 | `R`      | the part the panel asked for (OTHER PART & FR, the code screen)                                                                                                                                                  |
+| `G`      | the game started again at that frame's end, as the code wheel setting changed on the help screen before play asked ("Settings"): the setting and the seed of its question (var 0x3C)                             |
 | `P`      | a part switch (to check that a replay keeps step)                                                                                                                                                                |
 | `H`, `E` | each file's header (the session, the file's number); the end (records lost for want of room)                                                                                                                     |
 

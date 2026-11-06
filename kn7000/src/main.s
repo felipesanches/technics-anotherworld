@@ -408,5 +408,6 @@ aw_mode:
 .include "help.s"
 .include "perf_stub.s"              # no speed measurement in this build (perf.s is KN7APP.BIN's)
 .include "inplog_stub.s"            # no input log in this build (inplog.s is KN7APP.BIN's)
+.include "wheel_stub.s"             # no code wheel page in this build (wheel.s is KN7APP.BIN's)
 .include "audio_stub.s"             # no sound in this build (audio.s is KN7APP.BIN's)
 .include "awres_tab.s"              # generated: ResAddr, ResSize, ResType

@@ -1,0 +1,30 @@
+awwl: the question: true (part 3E80); the panel's ring 5006BDAC
+awwl: open       PASS  page 5, shown true, read from the card 1 time(s) in 1061 ms, number 1, angle 52368 (number 1's 52368), bilinear true, failure 00
+awwl: turn p1    PASS  number 1 -> 2 (1 detents): at rest true, angle 55644 (number's 55644), bilinear true; pictures: 7 turning (6 between, then the end's own true), then at rest; last turning picture 44.9 ms, 0 stores; at rest 356.7 ms, 2818 stores (MAME time)
+awwl: turn p3    PASS  number 2 -> 5 (3 detents): at rest true, angle 57 (number's 57), bilinear true; pictures: 16 turning (14 between, then the end's own true), then at rest; last turning picture 25.6 ms, 0 stores; at rest 353.8 ms, 1992 stores (MAME time)
+awwl: turn m5    PASS  number 5 -> 20 (-5 detents): at rest true, angle 49138 (number's 49138), bilinear true; pictures: 38 turning (37 between, then the end's own true), then at rest; last turning picture 49.1 ms, 0 stores; at rest 365.2 ms, 745 stores (MAME time)
+awwl: turn m1    PASS  number 20 -> 19 (-1 detents): at rest true, angle 45900 (number's 45900), bilinear true; pictures: 6 turning (5 between, then the end's own true), then at rest; last turning picture 51.0 ms, 2296 stores; at rest 364.0 ms, 3167 stores (MAME time)
+awwl: turn p2    PASS  number 19 -> 1 (2 detents): at rest true, angle 52368 (number's 52368), bilinear true; pictures: 9 turning (8 between, then the end's own true), then at rest; last turning picture 50.3 ms, 2376 stores; at rest 365.3 ms, 3112 stores (MAME time)
+awwl: pages      PASS  PAGE UP from the wheel: settings shown, wheel page off, border pattern for 384 true; pages 4 3 2 1 2 3 4 5; the wheel again at number 1, angle 52368, loads 1
+awwl: close      PASS  pages 2 and 3 put back as they were saved: true (1 saved, 1 put back); LCD pixels differing from before HELP: 0; the question still asked: true
+awwl: again      PASS  shown true, loads 1, borrows 2, angle 52368
+awwl: tempo: wheel frames taken 12, decoded by the firmware first and undone 4 (frames put back 4); detents counted 0
+awwl: times (MAME): each turn's last turning picture 44.9 25.6 49.1 51.0 50.3 ms (0 0 0 2296 2376 stores into the LCD), longest 124.6 ms; each picture at rest 356.7 353.8 365.2 364.0 365.3 ms (2818 1992 745 3167 3112 stores); pictures turning 79, at rest 8
+awwl: elsewhere  PASS  the splash after the setting went off true; HELP opened page 1; PAGE DOWN x4: the wheel true
+awwl: 320x200    PASS  PG_W 320, the wheel shown true, after EXIT the border's pattern for 320
+awwl: 11 checks, all pass
+open       angle 52368 (287.67 deg, number 1), bilinear: 0 of 61440 entries differ from render()  ok
+p1_mid     angle 53856 (295.84 deg, between numbers), nearest : 0 of 61440 entries differ from render()  ok
+p1         angle 55644 (305.66 deg, number 2), bilinear: 0 of 61440 entries differ from render()  ok
+p3_mid     angle 58564 (321.70 deg, between numbers), nearest : 0 of 61440 entries differ from render()  ok
+p3         angle    57 (  0.31 deg, number 5), bilinear: 0 of 61440 entries differ from render()  ok
+m5_mid     angle 61216 (336.27 deg, between numbers), nearest : 0 of 61440 entries differ from render()  ok
+m5         angle 49138 (269.92 deg, number 20), bilinear: 0 of 61440 entries differ from render()  ok
+m1_mid     angle 47710 (262.08 deg, between numbers), nearest : 0 of 61440 entries differ from render()  ok
+m1         angle 45900 (252.14 deg, number 19), bilinear: 0 of 61440 entries differ from render()  ok
+p2_mid     angle 48316 (265.41 deg, between numbers), nearest : 0 of 61440 entries differ from render()  ok
+p2         angle 52368 (287.67 deg, number 1), bilinear: 0 of 61440 entries differ from render()  ok
+back       angle 52368 (287.67 deg, number 1), bilinear: 0 of 61440 entries differ from render()  ok
+again      angle 52368 (287.67 deg, number 1), bilinear: 0 of 61440 entries differ from render()  ok
+codewheel_check: 13 pictures, 13 exactly render()'s, 0 not
+run_perf: KN7APP.BIN 2887b170827986b5, bios v13, emulator md5 8b9865bd, awcnv_wheel.lua

@@ -231,6 +231,7 @@ ce_run:
     call    DspInitMode, 0, 0
     call    StartTask, 0, 0
 ce_load:                            # a part the game task waits for: one of its files per call
+    call    WheelService, 0, 0      # the code wheel page: a file it asked for, the TEMPO wheel's frames (wheel.s)
     mov     (LD_REC), d0
     cmp     0, d0
     bne     ce_load_step
@@ -1461,6 +1462,7 @@ msg_fw_n:
 .include "chain.s"                  # back to the program menu at the quit
 .include "lcd8.s"                   # the LCD at 8 bits a pixel, the ambilight
 .include "prefs.s"                  # the player's settings
+.include "wheel.s"                  # the code wheel help page
 .include "leds.s"                   # the LED effects
 .include "awpart_tab.s"             # generated: PartLists, GlobalList, ResPacked, ResType, file names
 cnv_image_end:                      # tools/cnv_layout.py: must lie below IMAGE_END_MAX

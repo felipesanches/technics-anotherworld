@@ -1,0 +1,7 @@
+ns per access        ALU  LCDw16  LCDw32  LCDr16   RAMw8  RAMw32   RAMr8  RAMr32  UNCr32
+MAME                25.0   737.4  1968.4  1310.1   210.2   515.2   128.2   233.5   220.6
+unit                25.5  1083.4  3610.1  2670.8   121.8   417.5    75.1   262.2   251.4
+unit                23.5   973.8  2543.1  1589.4   121.5   482.9    95.1   371.6   287.8
+MAME: 76 turning pictures, ms median 45.5 (min 24.4, max 68.9), LCD stores median 4593 (max 7769); at rest median 364.0 ms
+unit, LCD w32 3610 ns: turning median 51.5 ms (max 79.8), 19.4 pictures a second; at rest median 366.4 ms
+unit, LCD w32 2543 ns: turning median 47.2 ms (max 72.7), 21.2 pictures a second; at rest median 365.6 ms

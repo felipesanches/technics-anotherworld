@@ -19,6 +19,8 @@
 #        either changes, at the frame ReadInput ran in
 #   'P'  b = the part now running (InitForPart, which a switch runs after that frame's ReadInput)
 #   'R'  b = the part ReadInput asked for (REQ_NEXT_PART)
+#   'G'  a = the code wheel setting, b = the seed (var 0x3C): the game started again at this frame's end, as the
+#        setting asks (the setting changed on the help screen before play began: interp.s GameStart)
 #   'M'  a = the first thread to see it (0-64), b = the mark
 #   'E'  frame = the last frame; b = the records that found no room (0: none lost)
 # The game task appends to one half of the buffer; when the half is full the other takes over, and the main task
@@ -212,6 +214,23 @@ InpLogRequest:
     mov     d2, d1
     asl     16, d1
     or      0x52, d1                # 'R'
+    call    IlPut, 0, 0
+    ret     [d2,d3,a2,a3], 0x20
+
+# InpLogRestart(d0 = the code wheel setting, d1 = START_SEED): NextThread starts the game again (GameStart), as the
+# setting asks: 'G', a = the setting, b = the seed's low 16 bits (var 0x3C: the code wheel's question).
+InpLogRestart:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     d0, d2
+    mov     d1, d3
+    call    IlFrame, 0, 0
+    mov     d3, d1
+    asl     16, d1
+    and     1, d2
+    asl     8, d2
+    or      d2, d1
+    or      0x47, d1                # 'G'
     call    IlPut, 0, 0
     ret     [d2,d3,a2,a3], 0x20
 

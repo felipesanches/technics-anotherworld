@@ -1,0 +1,115 @@
+# regression runs on build 2887b170 (codewheel-sim b9897f2), program 893, emulator md5 8b9865bd; base = 7c2d2c06 (5f348df), replayed with its own runner and map
+# research-scratch sessions/2026-11-06_aw-codew regress.sh (batch 1); batches 2 and 3 as listed
+== wheelnow
+awwn: on in intro      PASS  intro reached true; then part 3E80, thread 0 at FFFF, thread 20 at 0BB5, var 0xBC 0000, var 0x3C FC58, seed FC58, setting 1, game 1, request 0
+awwn: off again        PASS  part 3E82, thread 0 at FFFF, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed 1837, setting 0, game 0, request 0
+awwn: in play          PASS  the row reads "ON, next start" true; part 3E82, thread 0 at FFFF, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed 1837, setting 1, game 0, request 0; frames 794 -> 828
+awwn: 5 checks, all pass
+aw_inplog: 1 files, 19 records, frames 0-847, parts 0x3E80 0x3E80 0x3E80 0x3E81 0x3E80 0x3E80 0x3E81 0x3E82; 6 input changes, 0 sync marks, 0 part requests, 4 restarts; none lost
+G 76 1 0x7443
+G 100 0 0x8EC6
+G 408 1 0xFC58
+G 432 0 0x1837
+aw_inplog: 1 files, 19 records, frames 0-866, parts 0x3E80 0x3E80 0x3E80 0x3E81 0x3E80 0x3E80 0x3E81 0x3E82; 6 input changes, 0 sync marks, 0 part requests, 4 restarts; none lost
+awcnv_inplog: replaying /home/fsanches/compartilhado/tmp/aw-codewheel/reg/wheelnow/rec/session.awr: 6 input changes, 0 marks, end at frame 847
+input: the replay's I, P and G records are the replayed ones (18 records)
+== prefs
+awpr: loading    PASS  LCD taken 9.4 s after OK, 8 bits a pixel throughout true; 57 percentages shown, 0 going back: 0 1 2 3 4 5 10 15 20 25 30 35 38 40 41 43 44 46 47 50 52 53 56 58 60 61 63 65 66 68 69 71 72 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 93 95 96 97 99 100
+awpr: at the start: res 0 ambi 1 scatter 2 keys 1 leds 1 wheel 0; read 2
+awpr: defaults   PASS  res 0 ambi 1 scatter 2 keys 1 leds 1 wheel 0
+awpr: order      PASS  after the key: the window first changed at MAME frame 8, the border at 10 (12 snapshots)
+awpr: page       PASS  help page 3, row 5
+awpr: apply      PASS  ambilight off and black true, 320x200 true, scatter true, keybed off true, LEDs off true, code wheel on (part unchanged) true
+awpr: saved      PASS  written 6, failed 0, dirty 0; the game running true; res 1 ambi 0 scatter 3 keys 0 leds 0 wheel 1
+awpr: codes      FAIL  OTHER PART & FR on the help screen: part 3E80 -> 3E80
+awpr: phase 1: 7 checks, SOME FAIL
+awpr: read       PASS  status 1; res 1 ambi 0 scatter 3 keys 0 leds 0 wheel 1
+awpr: wheel      PASS  part 3E80, thread 20 at 0BB5, var 0xBC 0000, var 0xDC 0021
+awpr: effect     PASS  PG_W 320, ambilight black true, keybed muted 1
+awpr: retry      PASS  wrong answer 1: ERROR true, held there true, asked again true after 3.18 s, part 3E80, seed 25BF -> 5916
+awpr: retry      PASS  wrong answer 2: ERROR true, held there true, asked again true after 3.18 s, part 3E80, seed 5916 -> 6BD6
+awpr: phase 2: 5 checks, all pass
+== finale
+awcnv_inplog: log closed: files written 1, failed 0, records 12, dropped 0
+pages: 2301 frames
+aw_inplog: 1 files, 12 records, frames 0-2348, parts 0x3E80 0x3E81 0x3E87 0x3E81; 4 input changes, 2 sync marks, 1 part requests, 0 restarts; none lost
+input: DIFFERENT (diff /home/fsanches/compartilhado/tmp/aw-codewheel/reg/fin/input.want /home/fsanches/compartilhado/tmp/aw-codewheel/reg/fin/input.got)
+finalecheck:   484 ######## / ########
+finalecheck:   485 ######## / ########
+finalecheck:   486 ######## / ########
+finalecheck:   487 ######## / ########
+finalecheck:   488 ######## / ########
+finalecheck:   489 ######## / ########
+finalecheck:   490 ######## / ########
+finalecheck:   491 ######## / ########
+finalecheck:   492 ######## / ########
+finalecheck:   493 ######## / ########
+finalecheck:   494 ######## / ########
+finalecheck:   495 ######## / ########
+finalecheck:   496 ######## / ########
+finalecheck:   497 ######## / ########
+finalecheck:   498 ######## / ########
+finalecheck:   499 ######## / ########
+finalecheck:   500 ######## / ########
+finalecheck: flight: 146/146 frames with the wings' extent the zoom's share of 8 (within one column); 54 row patterns on the left wing
+finalecheck: credits: frames 647-1928: 101 of 101 LEDs lit at some frame, 101 different on-off timelines; changes an LED: 94, 160, 178 (fewest, median, most); 179 different lit sets; lit a frame: 0, 27, 100
+finalecheck: credits: the longest with no LED changing: 960 ms, frames 1634-1651
+== unit2 new
+pages: 5309 frames
+aw_inplog: 1 files, 81 records, frames 0-5334, parts 0x3E80 0x3E81 0x3E82 0x3E88 0x3E87 0x3E81; 57 input changes, 17 sync marks, 0 part requests, 0 restarts; none lost
+input: the replay's I, P and G records are the replayed ones (63 records)
+== unit2 base (batch 1: the base build replayed with the new build's map: superseded by batch 3)
+pages: 5309 frames
+aw_inplog: 1 files, 81 records, frames 0-5335, parts 0x3E80 0x3E81 0x3E82 0x3E88 0x3E87 0x3E81; 57 input changes, 17 sync marks, 0 part requests, 0 restarts; none lost
+input: the replay's I, P and G records are the replayed ones (63 records)
+== compare
+ours=5309 frames, ref=5309 frames, common ticks 0..5308 (5309)
+  match:  5309/5309  (100.00%)
+  differ: 0
+  ALL COMMON FRAMES IDENTICAL.
+== vars
+vars.bin identical (2718208 bytes)
+== done
+== (batch 2: prefs with awcnv_prefs.lua adapted; the base finale with the new map was invalid and is not listed)
+== prefs2
+awpr: loading    PASS  LCD taken 9.4 s after OK, 8 bits a pixel throughout true; 57 percentages shown, 0 going back: 0 1 2 3 4 5 10 15 20 25 30 35 38 40 41 43 44 46 47 50 52 53 56 58 60 61 63 65 66 68 69 71 72 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 93 95 96 97 99 100
+awpr: at the start: res 0 ambi 1 scatter 2 keys 1 leds 1 wheel 0; read 2
+awpr: defaults   PASS  res 0 ambi 1 scatter 2 keys 1 leds 1 wheel 0
+awpr: order      PASS  after the key: the window first changed at MAME frame 8, the border at 10 (12 snapshots)
+awpr: page       PASS  help page 3, row 4
+awpr: apply      PASS  ambilight off and black true, 320x200 true, scatter true, keybed off true, LEDs off true
+awpr: saved      PASS  written 5, failed 0, dirty 0; the game running true; res 1 ambi 0 scatter 3 keys 0 leds 0 wheel 0
+awpr: codes      PASS  OTHER PART & FR on the help screen: part 3E81 -> 3E88
+awpr: wheel later PASS  code wheel on in part 3E88: still part 3E88, no restart asked, written 5 -> 6; res 1 ambi 0 scatter 3 keys 0 leds 0 wheel 1
+awpr: phase 1: 8 checks, all pass
+awpr: read       PASS  status 1; res 1 ambi 0 scatter 3 keys 0 leds 0 wheel 1
+awpr: wheel      PASS  part 3E80, thread 20 at 0BB5, var 0xBC 0000, var 0xDC 0021
+awpr: effect     PASS  PG_W 320, ambilight black true, keybed muted 1
+awpr: retry      PASS  wrong answer 1: ERROR true, held there true, asked again true after 3.18 s, part 3E80, seed 25BF -> 5916
+awpr: retry      PASS  wrong answer 2: ERROR true, held there true, asked again true after 3.18 s, part 3E80, seed 5916 -> 6BD6
+awpr: phase 2: 5 checks, all pass
+== done2
+== (batch 3)
+== finale base (own map)
+aw_inplog: 1 files, 12 records, frames 0-2349, parts 0x3E80 0x3E81 0x3E87 0x3E81; 4 input changes, 2 sync marks, 1 part requests; none lost
+input: DIFFERENT (diff /home/fsanches/compartilhado/tmp/aw-codewheel/reg/finbase2/input.want /home/fsanches/compartilhado/tmp/aw-codewheel/reg/finbase2/input.got)
+finalecheck: flight: 146/146 frames with the wings' extent the zoom's share of 8 (within one column); 54 row patterns on the left wing
+finalecheck: credits: frames 647-1928: 101 of 101 LEDs lit at some frame, 101 different on-off timelines; changes an LED: 94, 164, 178 (fewest, median, most); 175 different lit sets; lit a frame: 0, 28, 100
+finalecheck: credits: the longest with no LED changing: 976 ms, frames 1638-1656
+== finale pages base vs new
+    2142..2151  (10 frames)
+    2176..2177  (2 frames)
+    2180..2181  (2 frames)
+    2183..2300  (118 frames)
+/home/fsanches/compartilhado/tmp/aw-codewheel/reg/finbase2/vars.bin /home/fsanches/compartilhado/tmp/aw-codewheel/reg/fin/vars.bin differ: byte 986627, line 50
+/home/fsanches/compartilhado/tmp/aw-codewheel/reg/finbase2.led /home/fsanches/compartilhado/tmp/aw-codewheel/reg/fin.led differ: byte 98, line 1
+== unit2 base (own map)
+aw_inplog: 1 files, 81 records, frames 0-5335, parts 0x3E80 0x3E81 0x3E82 0x3E88 0x3E87 0x3E81; 57 input changes, 17 sync marks, 0 part requests; none lost
+input: the replay's I and P records are the replayed ones (63 records)
+== unit2 compare
+ours=5309 frames, ref=5309 frames, common ticks 0..5308 (5309)
+  match:  5309/5309  (100.00%)
+  differ: 0
+  ALL COMMON FRAMES IDENTICAL.
+unit2 vars.bin identical (2718208 bytes)
+== done3

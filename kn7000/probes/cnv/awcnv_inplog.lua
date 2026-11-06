@@ -16,7 +16,8 @@
 -- screen sets var 0x00 before it asks for a part: for sessions that start a part at a checkpoint):
 --   * the input: at ReadInput's last write (var 0xFE, recognised by the return address in MDR: WriteVar calls
 --     nothing), the mask of the log's last I record up to this frame is written, and the variables its mode writes
---     (intro: var 0xFA; play: 0xFC, 0xE5, 0xFB, 0xFD, 0xFA); an R record at this frame sets REQ_NEXT_PART there;
+--     (intro: var 0xFA; play: 0xFC, 0xE5, 0xFB, 0xFD, 0xFA); an R record at this frame sets REQ_NEXT_PART there, a G
+--     record the code wheel setting, START_SEED and RESTART_REQ (the game's start again at the frame's end);
 --   * the music's sync marks: the module player's own (MusicEvent writes AU_MARK, then var 0xF4) are undone, and
 --     each M record is written to var 0xF4 when NextThread picks a thread at or after the record's in that frame
 --     (any write of CURRENT_THREAD: the ones that pick no thread can only find marks already written).
@@ -33,6 +34,7 @@ local CV, INTERP, MISC = 0x502DF000, 0x502E1000, 0x502E3000
 local CV_STATE, CV_QUIT, CV_DONE, CV_TASK, CV_ENDED, LD_CUR = CV, CV + 4, CV + 8, CV + 0x1C, CV + 0x30, CV + 0x44
 local PART, CUR_PAGE_2, REQ_NEXT_PART, CURRENT_THREAD = INTERP + 0x102A, INTERP + 0x100C, INTERP + 0x102C, INTERP + 0x1000
 local FRAME_NO, AU_MARK, IL_STATE = MISC + 0x7C, 0x502DA038, 0x5031C000  -- inplog.inc IL_STATE (INPLOG_AT)
+local START_SEED, RESTART_REQ, PR_WHEEL = MISC + 0x254, MISC + 0x258, 0x502DF900 + 10  -- vm.inc (a G record)
 local function VAR(i) return INTERP + 2 * i end
 local V_ACT, V_LR, V_UD, V_JMP, V_PMASK, V_AMASK, V_MARK = VAR(0xFA), VAR(0xFC), VAR(0xE5), VAR(0xFB), VAR(0xFD), VAR(0xFE), VAR(0xF4)
 
@@ -61,7 +63,7 @@ local function frame()
 end
 
 -- ---- the log to replay --------------------------------------------------------------------------------
-local INP, REQ, MARKS, END, VSET = {}, {}, {}, nil, {}
+local INP, REQ, MARKS, END, VSET, RESTART = {}, {}, {}, nil, {}, {}
 if REPLAY then
   for line in io.lines(REPLAY) do
     local k, rest = line:match("^(%a) (.*)$")
@@ -70,6 +72,8 @@ if REPLAY then
       INP[#INP + 1] = { tonumber(f), mode == "intro", tonumber(mask, 16) }
     elseif k == "R" then
       local f, p = rest:match("^(%d+) 0x(%x+)$"); REQ[tonumber(f)] = tonumber(p, 16)
+    elseif k == "G" then                                    -- "G frame wheel 0xSEED": the game started again there
+      local f, w, s = rest:match("^(%d+) (%d) 0x(%x+)$"); RESTART[tonumber(f)] = { tonumber(w), tonumber(s, 16) }
     elseif k == "M" then
       local f, t, v = rest:match("^(%d+) (%d+) (%-?%d+)$"); MARKS[#MARKS + 1] = { tonumber(f), tonumber(t), tonumber(v) }
     elseif k == "E" then
@@ -103,6 +107,10 @@ if REPLAY then
     end
     if VSET[f] then for _, w in ipairs(VSET[f]) do sp:write_u16(VAR(w[1]), s16(w[2])) end; VSET[f] = nil end
     if REQ[f] then sp:write_u16(REQ_NEXT_PART, REQ[f]); stats.reqs = stats.reqs + 1; REQ[f] = nil end
+    if RESTART[f] then                                       -- the setting and the seed it had; GameStart at the frame's end
+      sp:write_u8(PR_WHEEL, RESTART[f][1]); sp:write_u32(START_SEED, RESTART[f][2]); sp:write_u32(RESTART_REQ, 1)
+      stats.reqs = stats.reqs + 1; RESTART[f] = nil
+    end
     stats.inputs = stats.inputs + 1
     return (data & ~0xffff) | m                              -- the write in flight is var 0xFE's
   end)
