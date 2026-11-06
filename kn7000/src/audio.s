@@ -693,16 +693,18 @@ amu_delay:
 amu_ret:
     ret     [d2,d3,a2,a3], 0x20
 
-# MusicPeriod(d0 = delay): a row lasts delay * 60000 / 7159092 ms (rawgl SfxPlayer: the Paula
-# clock); AU_PER in 1/256 ms = delay * 2146 / 1000. Leaf.
+# MusicPeriod(d0 = delay): a row lasts 6 * delay / 709379 s, as the Amiga original plays it: the delay is
+# the latch of CIA-A timer A, which counts the PAL E clock (709,379 Hz), and its interrupt plays a row
+# at every 6th underflow (Another_World_Disk1.adf, the player at offsets 0x916A4, 0x917DC, 0x9186E). Against the
+# 20 ms pause slice that is the original's 6.64 slices a row at delay 0x3D54 (the MS-DOS release:
+# 6.69; rawgl's NTSC clock, used here until 2026-11-06, 6.58: the music 0.9% fast; probes/MUSIC-TIMING.md).
+# AU_PER in 1/256 ms = delay * 6 * 256000 / 709379 = delay * 35476 / 16384 (2.165283 for 2.165278;
+# 65535 * 35476 fits in 32 bits). Leaf.
 MusicPeriod:
     and     0xFFFF, d0
-    mov     2146, d1
+    mov     35476, d1
     mulu    d1, d0
-    clr     d1
-    mov     d1, mdr
-    mov     1000, d1
-    divu    d1, d0
+    lsr     14, d0
     mov     d0, (AU_PER)
     rets
 
