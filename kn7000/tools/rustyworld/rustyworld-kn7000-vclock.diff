@@ -1,0 +1,1205 @@
+diff --git a/src/bin/dumpres.rs b/src/bin/dumpres.rs
+new file mode 100644
+index 0000000..40ff1c3
+--- /dev/null
++++ b/src/bin/dumpres.rs
+@@ -0,0 +1,14 @@
++// Unpack every resource of the MSDOS data set (data/ in cwd) with the reference's own unpacker and
++// write dump_NN.bin, to compare against the port's extracted resources (tools/aw_extract.py).
++use rustyworld::FileResourceManager;
++use std::fs;
++fn main() {
++    let rm = FileResourceManager::new().expect("index");
++    for id in 0u8..rm.resources.len() as u8 {
++        match rm.read_resource(id) {
++            Ok(buf) => { fs::write(format!("dump_{:02X}.bin", id), &buf).unwrap();
++                         eprintln!("{:02X}: {} bytes", id, buf.len()); }
++            Err(e) => eprintln!("{:02X}: ERR {}", id, e),
++        }
++    }
++}
+diff --git a/src/bin/refcksum.rs b/src/bin/refcksum.rs
+new file mode 100644
+index 0000000..f81aac2
+--- /dev/null
++++ b/src/bin/refcksum.rs
+@@ -0,0 +1,138 @@
++// Reference per-frame checksum generator for the KN7000 Another World port.
++//
++// Drives rustyworld's faithful VM+renderer through the intro (part 0x3E81),
++// loading the ORIGINAL MSDOS data (data/ in cwd, byte-identical to the resources
++// our KN7000 port runs), and writes one line per VM tick:  "<tick> <crc32hex>"
++// where the crc32 (IEEE/zlib) is over the 64000-byte front-page palette-index
++// buffer. Audio/music/input are stubbed; var 0x3C seed is patched to 0x1234 in
++// the VM to match the port, so RNG-driven scenes are identical.
++//
++//   cargo run --no-default-features --bin refcksum -- <logpath> [max_ticks]
++// run from a dir containing data/MEMLIST.BIN + data/BANK0*.
++use std::cell::RefCell;
++use std::collections::HashSet;
++use std::io::Write;
++use std::rc::Rc;
++
++use rustyworld::audio::Audio;
++use rustyworld::input::{Input, InputDevice};
++use rustyworld::music::Music;
++use rustyworld::video::{DefaultVideo, VideoAdapter, TOT_PIXELS};
++use rustyworld::{FileResourceManager, Vm};
++
++/// Captures the latest presented front buffer so the run loop can checksum it
++/// at each tick boundary (even on ticks that did not present, the last frame
++/// persists — matching the KN7000's CUR_PAGE_2 read per FRAME_NO tick).
++struct Capture {
++    latest: Vec<u8>,
++}
++struct CksumAdapter {
++    cap: Rc<RefCell<Capture>>,
++}
++impl VideoAdapter for CksumAdapter {
++    fn update_display(&mut self, buffer: &[u8]) {
++        self.cap.borrow_mut().latest.copy_from_slice(buffer);
++    }
++    fn set_palette(&mut self, _palette: &[u32]) {}
++}
++
++struct StubAudio;
++impl Audio for StubAudio {
++    fn play_sound(&mut self, _: &[u8], _: u8, _: u8, _: u8) {}
++    fn stop(&mut self) {}
++}
++struct StubMusic;
++impl Music for StubMusic {
++    fn start(&mut self, _: u16, _: Option<u16>, _: u8) {}
++    fn delay(&mut self, _: u16) {}
++    fn stop(&mut self) {}
++    fn latest_mark(&mut self) -> Option<i16> {
++        None
++    }
++}
++struct StubInput;
++impl InputDevice for StubInput {
++    fn read_input(&self) -> HashSet<Input> {
++        let mut h = HashSet::new();
++        match std::env::var("AW_IN").as_deref() {
++            Ok("button") => { h.insert(Input::BUTTON); }
++            Ok("up")     => { h.insert(Input::UP); }
++            Ok("down")   => { h.insert(Input::DOWN); }
++            Ok("left")   => { h.insert(Input::LEFT); }
++            Ok("right")  => { h.insert(Input::RIGHT); }
++            _ => {}
++        }
++        h
++    }
++}
++
++/// Standard IEEE (zlib) CRC-32, matches Python zlib.crc32 on the KN7000 side.
++fn crc32(data: &[u8]) -> u32 {
++    let mut crc: u32 = 0xFFFF_FFFF;
++    for &b in data {
++        crc ^= b as u32;
++        for _ in 0..8 {
++            let m = (crc & 1).wrapping_neg(); // 0xFFFFFFFF if LSB set, else 0
++            crc = (crc >> 1) ^ (0xEDB8_8320 & m);
++        }
++    }
++    !crc
++}
++
++fn main() {
++    let args: Vec<String> = std::env::args().collect();
++    let logpath = args
++        .get(1)
++        .cloned()
++        .unwrap_or_else(|| "ref_checksums.log".to_string());
++    let max_ticks: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5000);
++    if let Ok(t) = std::env::var("DUMP_TICK") {
++        if let Ok(t) = t.parse::<i64>() {
++            rustyworld::dbg::DUMP_TICK.store(t, std::sync::atomic::Ordering::Relaxed);
++        }
++    }
++
++    let cap = Rc::new(RefCell::new(Capture {
++        latest: vec![0u8; TOT_PIXELS],
++    }));
++    let video = DefaultVideo::new(CksumAdapter { cap: cap.clone() });
++    let resman = Rc::new(FileResourceManager::new().expect("index resources (need data/ in cwd)"));
++    let mut vm = Vm::new(
++        1_000_000, // speed_up: effectively disables the real-time frame throttle
++        video,
++        resman,
++        StubInput,
++        Box::new(StubAudio),
++        Box::new(StubMusic),
++    );
++
++    let mut log = std::io::BufWriter::new(std::fs::File::create(&logpath).unwrap());
++    // Optional raw per-frame page dump (same layout as the KN7000 awcksum probe:
++    // a .bin of 64000-byte front pages + a .idx of "tick frontaddr"), so pixels
++    // can be diffed frame-for-frame. Enable with REF_BIN (and optional REF_IDX).
++    let mut pages = std::env::var("REF_BIN").ok().map(|p| {
++        let idx = std::env::var("REF_IDX").unwrap_or_else(|_| format!("{}.idx", p));
++        (
++            std::io::BufWriter::new(std::fs::File::create(&p).unwrap()),
++            std::io::BufWriter::new(std::fs::File::create(&idx).unwrap()),
++        )
++    });
++    let mut count = 0u32;
++    vm.run_headless(|tick| {
++        let c = cap.borrow();
++        let crc = crc32(&c.latest);
++        writeln!(log, "{} {:08x}", tick, crc).unwrap();
++        if let Some((ref mut binf, ref mut idxf)) = pages {
++            binf.write_all(&c.latest).unwrap();
++            writeln!(idxf, "{} 00000000", tick).unwrap();
++        }
++        count = tick + 1;
++        tick + 1 < max_ticks
++    });
++    log.flush().unwrap();
++    if let Some((ref mut binf, ref mut idxf)) = pages {
++        binf.flush().unwrap();
++        idxf.flush().unwrap();
++    }
++    eprintln!("refcksum: wrote {} ({} ticks)", logpath, count);
++}
+diff --git a/src/bin/replayawr.rs b/src/bin/replayawr.rs
+new file mode 100644
+index 0000000..82a01ee
+--- /dev/null
++++ b/src/bin/replayawr.rs
+@@ -0,0 +1,109 @@
++// replayawr: the reference VM replays a session from the KN7000 port's input log (kn7000 src/inplog.s, as
++// tools/aw_inplog.py writes it: SESSION.awr) and writes one "<tick> <crc32hex>" line per tick over the 64000-byte
++// front page: the format of the port's pages.log (probes/cnv/run_inplog.sh), so that probes/compare_frames.py diffs
++// the two frame for frame. Any divergence is the port's VM (or this reference's): the input is the same.
++//
++//   cargo build --release --no-default-features --bin replayawr
++//   replayawr SESSION.awr OUT.log [max_ticks]      (from a dir with data/MEMLIST.BIN + data/BANK0*)
++// Optional REF_BIN/REF_IDX dump the pages; REF_VARS the 256 variables after each tick (int16 LE); DUMP_TICK=<t> traces that tick's opcodes (Vm::execute);
++// AW_EVENTS=<file> logs sound/music/palette/string/memlist ops per tick+thread+pc, AW_EVENTS_POLY=1 adds polygon draws.
++use std::cell::RefCell;
++use std::collections::HashSet;
++use std::io::{BufRead, Write};
++use std::rc::Rc;
++
++use rustyworld::audio::Audio;
++use rustyworld::input::{Input, InputDevice};
++use rustyworld::music::Music;
++use rustyworld::video::{DefaultVideo, VideoAdapter, TOT_PIXELS};
++use rustyworld::vm::AwrLog;
++use rustyworld::{FileResourceManager, Vm};
++
++struct Capture { latest: Vec<u8> }
++struct CksumAdapter { cap: Rc<RefCell<Capture>> }
++impl VideoAdapter for CksumAdapter {
++    fn update_display(&mut self, buffer: &[u8]) { self.cap.borrow_mut().latest.copy_from_slice(buffer); }
++    fn set_palette(&mut self, _p: &[u32]) {}
++}
++struct StubAudio;
++impl Audio for StubAudio { fn play_sound(&mut self,_:&[u8],_:u8,_:u8,_:u8){} fn stop(&mut self){} }
++struct StubMusic;
++impl Music for StubMusic {
++    fn start(&mut self,_:u16,_:Option<u16>,_:u8){} fn delay(&mut self,_:u16){} fn stop(&mut self){}
++    fn latest_mark(&mut self)->Option<i16>{None}
++}
++struct StubInput;
++impl InputDevice for StubInput { fn read_input(&self)->HashSet<Input>{HashSet::new()} }
++
++fn crc32(data: &[u8]) -> u32 {
++    let mut crc: u32 = 0xFFFF_FFFF;
++    for &b in data {
++        crc ^= b as u32;
++        for _ in 0..8 { let m = (crc & 1).wrapping_neg(); crc = (crc >> 1) ^ (0xEDB8_8320 & m); }
++    }
++    !crc
++}
++
++fn hex(s: &str) -> u16 { u16::from_str_radix(s.trim_start_matches("0x"), 16).expect("hex") }
++
++fn load(path: &str) -> (AwrLog, Option<u32>) {
++    let f = std::fs::File::open(path).expect("open the .awr");
++    let mut log = AwrLog::default();
++    let (mut first, mut end) = (true, None);
++    for line in std::io::BufReader::new(f).lines().flatten() {
++        let c: Vec<&str> = line.split_whitespace().collect();
++        if c.is_empty() || c[0].starts_with('#') { continue; }
++        let frame: u32 = c[1].parse().expect("frame");
++        match c[0] {
++            "P" => if first { log.start_part = hex(c[2]); first = false; },
++            "I" => log.inputs.push((frame, c[2] == "intro", hex(c[3]))),
++            "R" => { log.reqs.insert(frame, hex(c[2])); }
++            "M" => log.marks.push((frame, c[2].parse().expect("thread"), c[3].parse().expect("mark"))),
++            "E" => end = Some(frame),
++            _ => panic!("unknown record {}", c[0]),
++        }
++    }
++    (log, end)
++}
++
++fn main() {
++    let args: Vec<String> = std::env::args().collect();
++    let awr = args.get(1).cloned().expect("replayawr SESSION.awr OUT.log [max_ticks]");
++    let logpath = args.get(2).cloned().unwrap_or_else(|| "replayawr.log".into());
++    let (session, end) = load(&awr);
++    let max_ticks: u32 = args.get(3).and_then(|s| s.parse().ok()).or(end).unwrap_or(6000);
++    eprintln!("replayawr: {}: first part {:#x}, {} input changes, {} marks, {} requests; up to tick {}",
++        awr, session.start_part, session.inputs.len(), session.marks.len(), session.reqs.len(), max_ticks);
++    if let Ok(t) = std::env::var("DUMP_TICK") {
++        if let Ok(t) = t.parse::<i64>() { rustyworld::dbg::DUMP_TICK.store(t, std::sync::atomic::Ordering::Relaxed); }
++    }
++    rustyworld::dbg::init_events();
++    let cap = Rc::new(RefCell::new(Capture { latest: vec![0u8; TOT_PIXELS] }));
++    let video = DefaultVideo::new(CksumAdapter { cap: cap.clone() });
++    let resman = Rc::new(FileResourceManager::new().expect("index resources (need data/ in cwd)"));
++    let mut vm = Vm::new(1_000_000, video, resman, StubInput, Box::new(StubAudio), Box::new(StubMusic));
++    let mut log = std::io::BufWriter::new(std::fs::File::create(&logpath).unwrap());
++    let mut pages = std::env::var("REF_BIN").ok().map(|p| {
++        let idx = std::env::var("REF_IDX").unwrap_or_else(|_| format!("{}.idx", p));
++        (std::io::BufWriter::new(std::fs::File::create(&p).unwrap()),
++         std::io::BufWriter::new(std::fs::File::create(&idx).unwrap()))
++    });
++    let mut vars_out = std::env::var("REF_VARS").ok().map(|p| std::io::BufWriter::new(std::fs::File::create(&p).unwrap()));
++    let mut count = 0u32;
++    vm.run_awr(&session, |tick, vars| {
++        if let Some(ref mut vf) = vars_out { for v in vars.iter() { vf.write_all(&v.to_le_bytes()).unwrap(); } }
++        let c = cap.borrow();
++        writeln!(log, "{} {:08x}", tick, crc32(&c.latest)).unwrap();
++        if let Some((ref mut binf, ref mut idxf)) = pages {
++            binf.write_all(&c.latest).unwrap();
++            writeln!(idxf, "{} 00000000", tick).unwrap();
++        }
++        count = tick + 1;
++        tick + 1 < max_ticks
++    });
++    log.flush().unwrap();
++    if let Some(ref mut vf) = vars_out { vf.flush().unwrap(); }
++    if let Some((ref mut binf, ref mut idxf)) = pages { binf.flush().unwrap(); idxf.flush().unwrap(); }
++    rustyworld::dbg::flush_events();
++    eprintln!("replayawr: wrote {} ({} ticks)", logpath, count);
++}
+diff --git a/src/bin/replaycksum.rs b/src/bin/replaycksum.rs
+new file mode 100644
+index 0000000..79a7f67
+--- /dev/null
++++ b/src/bin/replaycksum.rs
+@@ -0,0 +1,99 @@
++// Differential-REPLAY per-frame checksum generator. Feeds the reference rustyworld VM the
++// exact per-frame hero inputs recorded from a KN7000 play session (probes/awmonitor.lua ->
++// aw-inputs.csv) and writes one "<tick> <crc32hex>" line per VM tick over the 64000-byte
++// front page -- so it can be diffed, frame-for-frame, against the KN7000 port replayed on the
++// SAME inputs (probes/awreplay.lua + cksum_pages.py). Any divergence is pure VM-logic/render.
++//
++//   cargo run --no-default-features --bin replaycksum -- <aw-inputs.csv> <logpath> [max_ticks]
++// run from a dir with data/MEMLIST.BIN + data/BANK0*. Optional REF_BIN/REF_IDX dump the pages.
++use std::cell::RefCell;
++use std::collections::{HashMap, HashSet};
++use std::io::{BufRead, Write};
++use std::rc::Rc;
++
++use rustyworld::audio::Audio;
++use rustyworld::input::{Input, InputDevice};
++use rustyworld::music::Music;
++use rustyworld::video::{DefaultVideo, VideoAdapter, TOT_PIXELS};
++use rustyworld::{FileResourceManager, Vm};
++
++struct Capture { latest: Vec<u8> }
++struct CksumAdapter { cap: Rc<RefCell<Capture>> }
++impl VideoAdapter for CksumAdapter {
++    fn update_display(&mut self, buffer: &[u8]) { self.cap.borrow_mut().latest.copy_from_slice(buffer); }
++    fn set_palette(&mut self, _p: &[u32]) {}
++}
++struct StubAudio;
++impl Audio for StubAudio { fn play_sound(&mut self,_:&[u8],_:u8,_:u8,_:u8){} fn stop(&mut self){} }
++struct StubMusic;
++impl Music for StubMusic {
++    fn start(&mut self,_:u16,_:Option<u16>,_:u8){} fn delay(&mut self,_:u16){} fn stop(&mut self){}
++    fn latest_mark(&mut self)->Option<i16>{None}
++}
++struct StubInput;
++impl InputDevice for StubInput { fn read_input(&self)->HashSet<Input>{HashSet::new()} }
++
++fn crc32(data: &[u8]) -> u32 {
++    let mut crc: u32 = 0xFFFF_FFFF;
++    for &b in data {
++        crc ^= b as u32;
++        for _ in 0..8 { let m = (crc & 1).wrapping_neg(); crc = (crc >> 1) ^ (0xEDB8_8320 & m); }
++    }
++    !crc
++}
++
++fn load_inputs(path: &str) -> HashMap<u32,[i16;6]> {
++    let f = std::fs::File::open(path).expect("open aw-inputs.csv");
++    let mut m = HashMap::new();
++    for line in std::io::BufReader::new(f).lines().flatten() {
++        if line.starts_with('#') || line.starts_with("frame") || line.trim().is_empty() { continue; }
++        let c: Vec<&str> = line.split(',').collect();
++        if c.len() < 8 { continue; }
++        let frame: u32 = match c[0].trim().parse() { Ok(v)=>v, _=>continue };
++        if frame < 1 { continue; } // frame 0 = pre-first-frame (matches awcksum ignoring the zero-write)
++        // columns: frame,part,lr,ud,jump,posmask,action,actmask. Key by frame-1 so this VM's
++        // tick T (0-based, like refcksum) lines up with awcksum's tick = FRAME_NO-1.
++        let v = |i:usize| c[i].trim().parse::<i32>().unwrap_or(0) as i16;
++        m.insert(frame - 1, [v(2), v(3), v(4), v(5), v(6), v(7)]);
++    }
++    m
++}
++
++fn main() {
++    let args: Vec<String> = std::env::args().collect();
++    let csv = args.get(1).cloned().unwrap_or_else(|| "aw-inputs.csv".into());
++    let logpath = args.get(2).cloned().unwrap_or_else(|| "replay_checksums.log".into());
++    let max_ticks: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(6000);
++    let inputs = load_inputs(&csv);
++    eprintln!("replaycksum: loaded {} input rows from {}", inputs.len(), csv);
++    // DUMP_TICK=<t> enables the per-opcode PCT trace (in Vm::execute) for that tick.
++    if let Ok(t) = std::env::var("DUMP_TICK") {
++        if let Ok(t) = t.parse::<i64>() { rustyworld::dbg::DUMP_TICK.store(t, std::sync::atomic::Ordering::Relaxed); }
++    }
++
++    let cap = Rc::new(RefCell::new(Capture { latest: vec![0u8; TOT_PIXELS] }));
++    let video = DefaultVideo::new(CksumAdapter { cap: cap.clone() });
++    let resman = Rc::new(FileResourceManager::new().expect("index resources (need data/ in cwd)"));
++    let mut vm = Vm::new(1_000_000, video, resman, StubInput, Box::new(StubAudio), Box::new(StubMusic));
++
++    let mut log = std::io::BufWriter::new(std::fs::File::create(&logpath).unwrap());
++    let mut pages = std::env::var("REF_BIN").ok().map(|p| {
++        let idx = std::env::var("REF_IDX").unwrap_or_else(|_| format!("{}.idx", p));
++        (std::io::BufWriter::new(std::fs::File::create(&p).unwrap()),
++         std::io::BufWriter::new(std::fs::File::create(&idx).unwrap()))
++    });
++    let mut count = 0u32;
++    vm.run_replay(&inputs, |tick| {
++        let c = cap.borrow();
++        writeln!(log, "{} {:08x}", tick, crc32(&c.latest)).unwrap();
++        if let Some((ref mut binf, ref mut idxf)) = pages {
++            binf.write_all(&c.latest).unwrap();
++            writeln!(idxf, "{} 00000000", tick).unwrap();
++        }
++        count = tick + 1;
++        tick + 1 < max_ticks
++    });
++    log.flush().unwrap();
++    if let Some((ref mut binf, ref mut idxf)) = pages { binf.flush().unwrap(); idxf.flush().unwrap(); }
++    eprintln!("replaycksum: wrote {} ({} ticks)", logpath, count);
++}
+diff --git a/src/bin/replaywatch.rs b/src/bin/replaywatch.rs
+new file mode 100644
+index 0000000..88542ed
+--- /dev/null
++++ b/src/bin/replaywatch.rs
+@@ -0,0 +1,140 @@
++// Watch a recorded KN7000 play session in the reference VM, in a window, at authentic speed.
++//
++// Input: the RAW events file from probes/awmonitor.lua (aw-<session>-events.csv): every key
++// make/break (keybed or MIDI) and every ReadInput instant of the KN7000 run. For each VM tick T
++// this rebuilds the set of keys the player was physically holding at the KN7000's ReadInput for
++// tick T, maps notes to Another World inputs with the port's keyboard layout (C4 and below =
++// action, F5 left, A5 down, C6 right, Bb5/B5 up; plus the panel D-pad), and hands that set to
++// rustyworld's OWN input handling (Vm::process_input, the canonical AW rules) through an
++// InputDevice. Nothing in the VM is overridden: this is the stock Vm::run() game loop, so what
++// you see is how a correct AW engine responds to exactly the presses you made.
++//
++//   cargo build --release --bin replaywatch
++//   cd <dir with data/>; replaywatch <aw-session-events.csv> [aw-session-inputs.csv]
++// The optional inputs.csv (the KN7000's applied vars) is printed beside each input change so the
++// two can be compared. Env: AW_SPEED (default 1 = authentic 20 ms slices), AW_SCALE (default 3).
++// Close the window or press Esc to quit.
++use ::minifb::{Key, ScaleMode, Window, WindowOptions};
++use std::cell::{Cell, RefCell};
++use std::collections::{HashMap, HashSet};
++use std::io::BufRead;
++use std::rc::Rc;
++
++use rustyworld::audio::Audio;
++use rustyworld::input::{Input, InputDevice};
++use rustyworld::minifb::MiniVideoAdapter;
++use rustyworld::music::Music;
++use rustyworld::*;
++
++const B_RIGHT: u8 = 1; const B_LEFT: u8 = 2; const B_DOWN: u8 = 4; const B_UP: u8 = 8; const B_ACT: u8 = 0x80;
++
++fn note_bits(n: i32) -> u8 {
++    if n <= 0 { return 0; }
++    if n <= 60 { return B_ACT; }        // C4 and the whole bass range = action
++    match n { 77 => B_LEFT, 81 => B_DOWN, 84 => B_RIGHT, 82 | 83 => B_UP, _ => 0 }
++}
++fn fmt_bits(b: u8) -> String {
++    let mut v = vec![];
++    if b & B_LEFT != 0 { v.push("LEFT") } if b & B_RIGHT != 0 { v.push("RIGHT") }
++    if b & B_UP != 0 { v.push("UP") } if b & B_DOWN != 0 { v.push("DOWN") }
++    if b & B_ACT != 0 { v.push("ACTION") }
++    if v.is_empty() { "-".into() } else { v.join("+") }
++}
++
++/// tick -> input bits held at that tick's ReadInput (rebuilt from the raw make/break stream)
++fn load_events(path: &str) -> (HashMap<u32, u8>, u32) {
++    let f = std::fs::File::open(path).expect("open events csv");
++    let mut held: HashSet<i32> = HashSet::new();
++    let mut map = HashMap::new(); let mut last = 0u32;
++    for line in std::io::BufReader::new(f).lines().flatten() {
++        let c: Vec<&str> = line.split(',').collect();
++        match c.first().copied() {
++            Some("K") if c.len() >= 5 => {
++                let note: i32 = c[3].parse().unwrap_or(0);
++                if c[4] == "1" { held.insert(note); } else { held.remove(&note); }
++            }
++            Some("R") if c.len() >= 5 => {
++                let tick: u32 = c[2].parse().unwrap_or(0);
++                let panel: u8 = c[4].parse().unwrap_or(0);
++                let bits = held.iter().fold(panel, |a, n| a | note_bits(*n));
++                map.insert(tick, bits); last = last.max(tick);
++            }
++            _ => {}
++        }
++    }
++    (map, last)
++}
++
++/// tick -> (lr, ud, action) the KN7000 applied (row F of inputs.csv drives tick F-1)
++fn load_applied(path: &str) -> HashMap<u32, (i32, i32, i32)> {
++    let mut m = HashMap::new();
++    if let Ok(f) = std::fs::File::open(path) {
++        for line in std::io::BufReader::new(f).lines().flatten() {
++            let c: Vec<&str> = line.split(',').collect();
++            if c.len() < 8 { continue; }
++            if let Ok(fr) = c[0].parse::<u32>() {
++                if fr >= 1 { m.insert(fr - 1, (c[2].parse().unwrap_or(0), c[3].parse().unwrap_or(0), c[6].parse().unwrap_or(0))); }
++            }
++        }
++    }
++    m
++}
++
++struct ReplayInput {
++    window: Rc<RefCell<Window>>,
++    by_tick: HashMap<u32, u8>,
++    applied: HashMap<u32, (i32, i32, i32)>,
++    last_tick: u32,
++    tick: Cell<u32>,
++    prev: Cell<u8>,
++}
++impl InputDevice for ReplayInput {
++    fn read_input(&self) -> HashSet<Input> {
++        let t = self.tick.get(); self.tick.set(t + 1);
++        {
++            let w = self.window.borrow();
++            if !w.is_open() || w.is_key_down(Key::Escape) { std::process::exit(0); }
++        }
++        let bits = self.by_tick.get(&t).copied().unwrap_or(0);
++        if t == self.last_tick + 1 { println!("--- end of recording (tick {}); the game keeps running without input ---", t); }
++        if bits != self.prev.get() || t == 0 {
++            let kn = self.applied.get(&t).map(|(lr, ud, a)| format!("   | KN7000 applied: LR={:+} UD={:+} ACT={}", lr, ud, a)).unwrap_or_default();
++            println!("tick {:5}  you held: {:<22}{}", t, fmt_bits(bits), kn);
++            self.prev.set(bits);
++        }
++        self.window.borrow_mut().set_title(&format!("rustyworld replay  tick {}/{}  input: {}", t, self.last_tick, fmt_bits(bits)));
++        let mut h = HashSet::new();
++        if bits & B_RIGHT != 0 { h.insert(Input::RIGHT); } if bits & B_LEFT != 0 { h.insert(Input::LEFT); }
++        if bits & B_DOWN != 0 { h.insert(Input::DOWN); } if bits & B_UP != 0 { h.insert(Input::UP); }
++        if bits & B_ACT != 0 { h.insert(Input::BUTTON); }
++        h
++    }
++}
++
++struct StubAudio;
++impl Audio for StubAudio { fn play_sound(&mut self,_:&[u8],_:u8,_:u8,_:u8){} fn stop(&mut self){} }
++struct StubMusic;
++impl Music for StubMusic {
++    fn start(&mut self,_:u16,_:Option<u16>,_:u8){} fn delay(&mut self,_:u16){} fn stop(&mut self){}
++    fn latest_mark(&mut self)->Option<i16>{None}
++}
++
++fn main() {
++    let args: Vec<String> = std::env::args().collect();
++    let ev = args.get(1).expect("usage: replaywatch <aw-session-events.csv> [aw-session-inputs.csv]");
++    let (by_tick, last_tick) = load_events(ev);
++    let applied = args.get(2).map(|p| load_applied(p)).unwrap_or_default();
++    let speed: usize = std::env::var("AW_SPEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
++    let scale: usize = std::env::var("AW_SCALE").ok().and_then(|s| s.parse().ok()).unwrap_or(3);
++    println!("replaywatch: {} ticks of input from {}; speed x{}", last_tick + 1, ev, speed);
++
++    let window = Window::new("rustyworld replay", WIDTH as usize * scale, HEIGHT as usize * scale,
++        WindowOptions { resize: false, scale_mode: ScaleMode::AspectRatioStretch, ..WindowOptions::default() })
++        .expect("Unable to create window");
++    let window = Rc::new(RefCell::new(window));
++    let input = ReplayInput { window: window.clone(), by_tick, applied, last_tick, tick: Cell::new(0), prev: Cell::new(0) };
++    let resman = Rc::new(FileResourceManager::new().expect("index resources (need data/ in cwd)"));
++    let video = DefaultVideo::new(MiniVideoAdapter::sharing_window(window));
++    let mut vm = Vm::new(speed, video, resman, input, Box::new(StubAudio), Box::new(StubMusic));
++    vm.run();
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index 7ce7951..0028ba4 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,10 +1,10 @@
+-mod resources;
+-mod vm;
+-mod video;
+-mod audio;
+-mod strings;
+-mod music;
+-mod input;
++pub mod resources;
++pub mod vm;
++pub mod video;
++pub mod audio;
++pub mod strings;
++pub mod music;
++pub mod input;
+ 
+ #[cfg(feature = "minifb")]
+ pub mod minifb;
+@@ -14,4 +14,51 @@ pub mod rodio;
+ pub use crate::vm::Vm;
+ pub use crate::resources::FileResourceManager;
+ pub use crate::video::{DefaultVideo, WIDTH, HEIGHT};
+-pub use crate::music::DefaultMusic;
+\ No newline at end of file
++pub use crate::music::DefaultMusic;
++
++/// Debug hooks for frame-by-frame comparison against the KN7000 port: when
++/// CUR_TICK (set each tick by run_headless) equals DUMP_TICK (set from env),
++/// fill_polygon prints its inputs so the two VMs' polygon streams can be diffed.
++pub mod dbg {
++    use std::sync::atomic::AtomicI64;
++    pub static CUR_TICK: AtomicI64 = AtomicI64::new(-5);
++    pub static DUMP_TICK: AtomicI64 = AtomicI64::new(-9);
++    use std::sync::atomic::{AtomicBool, Ordering};
++    use std::io::Write;
++    /// AW_EVENTS=<file>: one line per PLAY_SOUND / PLAY_MUSIC / SET_PALETTE / DRAW_STRING / UPDATE_MEMLIST
++    /// ("tick ch pc OP args"); AW_EVENTS_POLY=1 adds every polygon draw. Off (no cost) unless set.
++    pub static EV_ON: AtomicBool = AtomicBool::new(false);
++    pub static EV_POLY: AtomicBool = AtomicBool::new(false);
++    pub static EVENTS: std::sync::Mutex<Option<std::io::BufWriter<std::fs::File>>> = std::sync::Mutex::new(None);
++    pub fn init_events() {
++        if let Ok(p) = std::env::var("AW_EVENTS") {
++            *EVENTS.lock().unwrap() = Some(std::io::BufWriter::new(std::fs::File::create(p).expect("AW_EVENTS")));
++            EV_ON.store(true, Ordering::Relaxed);
++            EV_POLY.store(std::env::var("AW_EVENTS_POLY").map(|v| !v.is_empty()).unwrap_or(false), Ordering::Relaxed);
++            init_ev_vars();
++        }
++    }
++    pub fn ev(ch: usize, pc: u16, a: std::fmt::Arguments) {
++        if let Some(w) = EVENTS.lock().unwrap().as_mut() {
++            writeln!(w, "{} ch={} pc={:04x} {}", CUR_TICK.load(Ordering::Relaxed), ch, pc, a).unwrap();
++        }
++    }
++    /// AW_EVENTS_VARS="88,06": also log MOVE/ADD results to these variables (hex ids) as "VAR vNN=value op".
++    pub static EV_VARS: std::sync::Mutex<[bool; 256]> = std::sync::Mutex::new([false; 256]);
++    pub fn init_ev_vars() {
++        if let Ok(v) = std::env::var("AW_EVENTS_VARS") {
++            let mut w = EV_VARS.lock().unwrap();
++            for k in v.split(',').filter(|x| !x.is_empty()) { w[usize::from_str_radix(k, 16).expect("AW_EVENTS_VARS")] = true; }
++        }
++        if let Ok(v) = std::env::var("AW_EVENTS_SNDVARS") {
++            *EV_SNDVARS.lock().unwrap() = v.split(',').filter(|x| !x.is_empty()).map(|k| usize::from_str_radix(k, 16).expect("AW_EVENTS_SNDVARS")).collect();
++        }
++    }
++    /// AW_EVENTS_SNDVARS="27,04": append these variables (hex ids) to every SND line as "vNN=value".
++    pub static EV_SNDVARS: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
++    pub fn snd_vars(vars: &[i16; 256]) -> String {
++        EV_SNDVARS.lock().unwrap().iter().map(|&r| format!(" v{:02x}={}", r, vars[r])).collect()
++    }
++    pub fn ev_var_on(r: usize) -> bool { EV_ON.load(Ordering::Relaxed) && EV_VARS.lock().unwrap()[r] }
++    pub fn flush_events() { if let Some(w) = EVENTS.lock().unwrap().as_mut() { w.flush().unwrap(); } }
++}
+diff --git a/src/video.rs b/src/video.rs
+index 40e3a7c..099dd8b 100644
+--- a/src/video.rs
++++ b/src/video.rs
+@@ -71,6 +71,7 @@ impl<A: VideoAdapter> DefaultVideo<A> {
+         p.x -= (current_segment.read_u8().unwrap() as i32 * zoom as i32 / 64) as i16;
+         p.y -= (current_segment.read_u8().unwrap() as i32 * zoom as i32 / 64) as i16;
+         let children = current_segment.read_u8().unwrap() + 1;
++        if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) { eprintln!("HIER children={}", children); }
+         for _ in 0..children {
+             let mut offset = current_segment.read_u16::<BigEndian>().unwrap();
+             let p = Point::new(
+@@ -140,6 +141,11 @@ impl<A: VideoAdapter> DefaultVideo<A> {
+     }
+ 
+     pub fn fill_polygon(&mut self, polygon: Polygon, p: Point, color: u8) {
++        if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) {
++            let pts: Vec<String> = polygon.points.iter().map(|q| format!("{},{}", q.x, q.y)).collect();
++            eprintln!("P2 color={} cx={} cy={} w={} h={} n={} pts={}", color, p.x, p.y, polygon.w, polygon.h, polygon.points.len(), pts.join(";"));
++        }
++        let raw_color = color;
+         let color = match color {
+             0x10 => Color::PaletteShift,
+             e if e < 0x10 => Color::Solid(color),
+@@ -151,7 +157,19 @@ impl<A: VideoAdapter> DefaultVideo<A> {
+             return;
+         }
+ 
++        let (dbg_px, dbg_py) = (p.x, p.y);
+         let bbox = polygon.to_bbox(p);
++        if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)
++            <= crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed)
++        {
++            let pts: Vec<String> = polygon.points.iter().map(|q| format!("{},{}", q.x, q.y)).collect();
++            eprintln!(
++                "POLY t={} color={} cx={} cy={} w={} h={} n={} pts={}",
++                crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed),
++                raw_color, dbg_px, dbg_py, polygon.w, polygon.h,
++                polygon.points.len(), pts.join(";")
++            );
++        }
+         if bbox.left >= WIDTH || bbox.right < 0 || bbox.top >= HEIGHT || bbox.bottom < 0 {
+             return;
+         }
+@@ -286,6 +304,7 @@ impl PageSelector {
+ 
+ impl<A: VideoAdapter> Video for DefaultVideo<A> {
+     fn load_bg(&mut self, src: &[u8]) {
++        eprintln!("LOAD_BG len={}", src.len());
+         let dst = &mut self.pages[0];
+         for (i, (a, b, c, d)) in izip!(
+             src[24000..].iter(),
+@@ -321,7 +340,11 @@ impl<A: VideoAdapter> Video for DefaultVideo<A> {
+             (&r[0], &mut l[dst_id])
+         };
+ 
+-        assert!(vscroll.abs() <= 199);
++        // KN7000 port: the original engine (raw/rawgl Video::copyPage) copies only for
++        // -199 <= vscroll <= 199 and skips otherwise; upstream asserted, which the final part hits.
++        if vscroll.abs() > 199 {
++            return;
++        }
+         let h = (HEIGHT - vscroll.abs()) as usize;
+ 
+         if vscroll < 0 {
+@@ -332,6 +355,7 @@ impl<A: VideoAdapter> Video for DefaultVideo<A> {
+     }
+ 
+     fn fill_page(&mut self, page: PageSelector, color: u8) {
++        if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) { eprintln!("FILLPAGE p={:?} color={}", page, color); }
+         let page = &mut self.pages[self.get_page(page)];
+         page.iter_mut().for_each(|e| *e = color);
+     }
+diff --git a/src/vm.rs b/src/vm.rs
+index 4212d68..65bd1ab 100644
+--- a/src/vm.rs
++++ b/src/vm.rs
+@@ -44,7 +44,7 @@ struct Chan {
+ impl Default for Chan {
+     fn default() -> Self {
+         Chan {
+-            status: ChanStatus::Paused(0),
++            status: ChanStatus::Stopped,
+             stack: vec![],
+         }
+     }
+@@ -59,7 +59,114 @@ type PcOffset = u16;
+ #[derive(PartialEq, Debug)]
+ enum ChanStatus {
+     Running(PcOffset),
+-    Paused(PcOffset)
++    Paused(PcOffset),
++    /// Killed / deleted / never started: PC=0xFFFF in the original -- a resume does NOT revive it.
++    Stopped
++}
++
++/// KN7000 port: a session from the game's input log (run_awr): the first part; the input changes (frame, intro
++/// mode, mask); the panel's part requests by frame; the sync marks (frame, first thread, value).
++// ---- AW_VMODEL: a virtual clock for the music and the picture (technics-anotherworld kn7000/probes/musictiming.py) ----
++// The picture takes no CPU time: each BLIT_FRAMEBUFFER (AW_VPACE=blit, the original engines') or each tick's end
++// (AW_VPACE=tick, the KN7000 port's) advances the clock by var[0xFF] slices of the model's slice; the module player
++// plays its rows on the same clock, at the model's row period, and writes the sync marks into var 0xF4 before the next
++// thread runs (as an interrupt-driven player would, with an infinitely fast CPU). AW_VMARKS="res:nrows:row=v,row=v..;"
++// lists each module's marks (musictiming.py makes it from the module). AW_VOUT: "M tick chan value row ms" per mark
++// written, "T tick ms pause blits" per tick.
++pub mod vclock {
++    use std::cell::RefCell;
++    use std::io::Write;
++    pub struct VClock {
++        pub model: String, pub per_blit: bool, pub now: f64, pub slice: f64,
++        pub playing: bool, pub next: f64, pub row: usize, pub period: f64, pub res: u16,
++        pub mods: Vec<(u16, usize, Vec<(usize, i16)>)>, pub out: Option<std::fs::File>, pub blits: u32,
++    }
++    thread_local! { pub static VC: RefCell<Option<VClock>> = RefCell::new(None); }
++    pub fn row_ms(model: &str, delay: u16) -> f64 {
++        let d = delay as f64;
++        match model {
++            "amiga_pal" => 6.0 * d / 709379.0 * 1000.0,           // CIA-A timer A latch = delay, a row every 6th underflow
++            "amiga_ntsc" => 6.0 * d / 715909.0 * 1000.0,
++            "dos" => { let t = (delay as u32 * 600 / 7050 + 1) as f64; t / (1193182.0 / 119.0) * 1000.0 }
++            "rawgl" => { let ms = delay as u32 * 60 * 1000 / 7159092; (44100 * ms / 1000) as f64 / 44100.0 * 1000.0 }
++            "sanglard" | "rustyworld" => (delay as u32 * 60 / 7050) as f64,
++            "ours" => (delay as u32 * 2146 / 1000) as f64 / 256.0,
++            "ours_pal" => ((delay as u32 * 35476) >> 14) as f64 / 256.0,   // the port since music-timing: Amiga PAL
++            _ => panic!("AW_VMODEL {}", model),
++        }
++    }
++    pub fn slice_ms(model: &str) -> f64 {
++        if let Ok(s) = std::env::var("AW_VSLICE") { return s.parse().expect("AW_VSLICE"); }
++        match model { "dos" => 200.0 / (1193182.0 / 119.0) * 1000.0, _ => 20.0 }
++    }
++    pub fn init() {
++        let model = match std::env::var("AW_VMODEL") { Ok(m) => m, Err(_) => return };
++        let mut mods = vec![];
++        for m in std::env::var("AW_VMARKS").unwrap_or_default().split(';').filter(|x| !x.is_empty()) {
++            let mut it = m.split(':');
++            let res = u16::from_str_radix(it.next().unwrap(), 16).unwrap();
++            let nrows: usize = it.next().unwrap().parse().unwrap();
++            let marks = it.next().unwrap_or("").split(',').filter(|x| !x.is_empty()).map(|kv| {
++                let (r, v) = kv.split_once('=').unwrap(); (r.parse().unwrap(), v.parse().unwrap()) }).collect();
++            mods.push((res, nrows, marks));
++        }
++        let per_blit = std::env::var("AW_VPACE").map(|v| v != "tick").unwrap_or(true);
++        let out = std::env::var("AW_VOUT").ok().map(|p| std::fs::File::create(p).unwrap());
++        let slice = slice_ms(&model);
++        VC.with(|v| *v.borrow_mut() = Some(VClock { model, per_blit, now: 0.0, slice, playing: false, next: 0.0, row: 0,
++            period: 0.0, res: 0, mods, out, blits: 0 }));
++    }
++    pub fn on() -> bool { VC.with(|v| v.borrow().is_some()) }
++    pub fn play(res: u16, delay: u16, pos: u8) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            let (tick, now) = (crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed), c.now);
++            if let Some(f) = c.out.as_mut() { writeln!(f, "P {} {:#06x} {} {} {:.3}", tick, res, delay, pos, now).unwrap(); }
++            if res != 0 {
++                if let Some(m) = c.mods.iter().find(|m| m.0 == res) { let _ = m;
++                    c.playing = true; c.res = res; c.row = pos as usize * 64;
++                    c.period = row_ms(&c.model, delay);
++                    // the DOS player's ISR plays the first row a period after the start; the others at once
++                    c.next = c.now + if c.model == "dos" { c.period } else { 0.0 };
++                } else { c.playing = false; }
++            } else if delay != 0 { c.period = row_ms(&c.model, delay); }
++            else { c.playing = false; }
++        })
++    }
++    pub fn stop() { VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() { c.playing = false; }) }
++    pub fn blit(pause: i16) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() { c.blits += 1; if c.per_blit { c.now += pause as f64 * c.slice; } })
++    }
++    pub fn tick_end(tick: u32, pause: i16) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            if !c.per_blit { c.now += pause as f64 * c.slice; }
++            let (now, b) = (c.now, c.blits); c.blits = 0;
++            if let Some(f) = c.out.as_mut() { writeln!(f, "T {} {:.3} {} {}", tick, now, pause, b).unwrap(); }
++        })
++    }
++    // the rows due by now; the marks among them into var 0xF4
++    pub fn apply(tick: u32, chan: usize, vars: &mut [i16; 256]) {
++        VC.with(|v| if let Some(c) = v.borrow_mut().as_mut() {
++            while c.playing && c.now >= c.next {
++                let (nrows, mark) = { let m = c.mods.iter().find(|m| m.0 == c.res).unwrap();
++                    (m.1, m.2.iter().find(|x| x.0 == c.row).map(|x| x.1)) };
++                if let Some(val) = mark {
++                    vars[0xF4] = val;
++                    let (row, t) = (c.row, c.next);
++                    if let Some(f) = c.out.as_mut() { writeln!(f, "M {} {} {} {} {:.3}", tick, chan, val, row, t).unwrap(); }
++                }
++                c.row += 1; c.next += c.period;
++                if c.row >= nrows { c.playing = false; }
++            }
++        })
++    }
++}
++#[derive(Debug, Default)]
++
++pub struct AwrLog {
++    pub start_part: u16,
++    pub inputs: Vec<(u32, bool, u16)>,
++    pub reqs: std::collections::HashMap<u32, u16>,
++    pub marks: Vec<(u32, u8, i16)>,
+ }
+ 
+ #[derive(Debug)]
+@@ -78,7 +185,7 @@ enum SingleChanReq {
+ 
+ impl Chan {
+     fn stop(&mut self) {
+-        self.status = ChanStatus::Paused(0);
++        self.status = ChanStatus::Stopped;
+     }
+ 
+     fn exec_at(&mut self, pc: PcOffset) {
+@@ -104,17 +211,18 @@ impl Chan {
+     }
+ 
+     fn pause(&mut self) {
+-        self.status = ChanStatus::Paused(self.pc())
++        if let ChanStatus::Running(pc) = self.status { self.status = ChanStatus::Paused(pc) }
+     }
+ 
+     fn resume(&mut self) {
+-        self.status = ChanStatus::Running(self.pc())
++        if let ChanStatus::Paused(pc) = self.status { self.status = ChanStatus::Running(pc) }
+     }
+ 
+     fn pc(&self) -> PcOffset {
+         match self.status {
+             ChanStatus::Running(pc) => pc,
+             ChanStatus::Paused(pc) => pc,
++            ChanStatus::Stopped => 0,
+         }
+     }
+ }
+@@ -311,7 +419,7 @@ enum Segment {
+     Video2,
+ }
+ 
+-#[derive(Debug)]
++#[derive(Debug, Clone, Copy)]
+ enum Addressing {
+     Immediate(i16),
+     Register(usize),
+@@ -346,7 +454,9 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+         };
+ 
+         vm.state.vars[0x54] = 0x81;
+-        vm.state.vars[VM_VAR_RANDOM_SEED] = 0;
++        // Match the KN7000 port's GameReset: random seed var[0x3C] = 0x1234
++        // (so any RNG-driven scene is deterministic and identical on both sides).
++        vm.state.vars[VM_VAR_RANDOM_SEED] = 0x1234;
+ 
+         // bypass protection
+         vm.state.vars[0xBC] = 0x10;
+@@ -359,6 +469,7 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+     }
+ 
+     fn setup_part(&mut self, part_id: u16) {
++        vclock::stop(); // rawgl restartAt: the module player stops at a part switch
+         self.peripherals.music.stop();
+         self.peripherals.audio.stop();
+         self.state.vars[0xE4] = 0x14;
+@@ -371,7 +482,11 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+         }
+         for res_id in &part.video2_id {
+             self.peripherals.resman.load_memory_entry(*res_id as u8);
+-            self.peripherals.video.load_bg(&self.peripherals.resman.resource(*res_id as u8).unwrap());
++            // KN7000 port: the original engine (rawgl Resource::load) copies only BITMAP resources to
++            // page 0, never video2; AW_NO_VIDEO2_BG=1 skips this upstream extra for part comparisons.
++            if std::env::var("AW_NO_VIDEO2_BG").is_err() {
++                self.peripherals.video.load_bg(&self.peripherals.resman.resource(*res_id as u8).unwrap());
++            }
+         }
+         self.active_part = Part {
+             id: part_id,
+@@ -429,19 +544,255 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+     }
+ 
+ 
++    /// Headless intro driver for frame-by-frame checksum comparison against the
++    /// KN7000 port. Runs the intro (GAME_PART2 = 0x3E81), no real-time throttle.
++    /// After each scheduler pass (one VM "tick"/frame, matching the KN7000's
++    /// FRAME_NO), calls `tick_cb(tick)`; stops when `tick_cb` returns false or when
++    /// the bytecode requests a part switch (0x3E8x), i.e. the end of the intro.
++    /// The caller reads the presented front buffer through its own VideoAdapter.
++    pub fn run_headless<F: FnMut(u32) -> bool>(&mut self, mut tick_cb: F) {
++        if std::env::var("AW_SPLASH").is_ok() {
++            // KN7000 port's splash start (src/interp.s GameReset): part 0x3E80 with thread 0 at the
++            // logo/credits sequence 0x007B, the display loop on thread 60 at 0x10A3, var[0xFF] = 2
++            // -- what the part's own entry 0x0000 sets up, minus the code wheel (thread 20).
++            self.setup_part(0x3E80);
++            self.chans[0].exec_at(0x007B);
++            self.chans[60].exec_at(0x10A3);
++            self.state.vars[0xFF] = 2;
++        } else {
++            self.setup_part(GAME_PART2);
++        }
++        let mut tick: u32 = 0;
++        loop {
++            crate::dbg::CUR_TICK.store(tick as i64, std::sync::atomic::Ordering::Relaxed);
++            if tick as i64 == crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) {
++                let vs: Vec<String> = self.state.vars.iter().enumerate().filter(|(_,x)| **x != 0).map(|(i,x)| format!("{:02x}={}", i, x)).collect();
++                eprintln!("VARS {}", vs.join(" "));
++            }
++            self.process_input(self.peripherals.input_device.read_input());
++
++            let mut chan_reqs = vec![];
++            for (chan_id, chan) in self.chans.iter_mut().enumerate() {
++                if let ChanStatus::Running(_) = chan.status {
++                    Vm::execute(&mut self.state, self.speed_up, chan, chan_id, &self.active_part, self.peripherals.borrow_mut(), &mut chan_reqs);
++                }
++            }
++
++            // The front buffer now holds this tick's final presented frame.
++            let keep_going = tick_cb(tick);
++            tick += 1;
++
++            let mut part_switch = false;
++            let mut next_part: Option<u16> = None;
++            for req in chan_reqs {
++                match req {
++                    ChanReq::Part(p) => { part_switch = true; next_part = Some(p); }
++                    ChanReq::SingleChanReq(chan_id, subreq) => {
++                        let chan = &mut self.chans[chan_id];
++                        match subreq {
++                            SingleChanReq::Exec(offset) => chan.exec_at(offset),
++                            SingleChanReq::Stop => chan.stop(),
++                            SingleChanReq::Pause => chan.pause(),
++                            SingleChanReq::Resume => chan.resume(),
++                        }
++                    }
++                }
++            }
++            if !keep_going { break; }
++            // KN7000 port: START_PART=0x3E8n switches to that part at the end of tick 0, exactly
++            // where the KN7000 probe (awcksum.lua AW_START_PART) makes the port switch.
++            if tick == 1 {
++                if let Ok(p) = std::env::var("START_PART") {
++                    let p = u16::from_str_radix(p.trim_start_matches("0x"), 16).expect("START_PART hex");
++                    eprintln!("START_PART -> {:#x} at tick {}", p, tick);
++                    self.setup_part(p);
++                    continue;
++                }
++            }
++            if part_switch {
++                if std::env::var("AW_PARTS").is_ok() {
++                    if let Some(p) = next_part { eprintln!("PARTSWITCH -> {:#x} at tick {}", p, tick); self.setup_part(p); }
++                } else { break; }
++            }
++        }
++    }
++
++    /// Differential-replay driver. Like run_headless, but instead of reading an input device
++    /// each tick it OVERRIDES the six hero-input variables with the values recorded from a
++    /// KN7000 play session (probes/awmonitor.lua -> aw-inputs.csv), keyed by VM tick/frame
++    /// (default 0 = no input for any tick absent from the map, e.g. early intro frames).
++    /// It always continues through part switches, so the same intro->water path runs. Feeding
++    /// both VMs the identical applied inputs isolates any divergence to VM logic / rendering.
++    pub fn run_replay<F: FnMut(u32) -> bool>(&mut self, inputs: &std::collections::HashMap<u32,[i16;6]>, mut tick_cb: F) {
++        self.setup_part(GAME_PART2);
++        let mut tick: u32 = 0;
++        let dump_from: i64 = std::env::var("DUMP_FROM").ok().and_then(|s| s.parse().ok()).unwrap_or(-1);
++        let dump_to: i64   = std::env::var("DUMP_TO").ok().and_then(|s| s.parse().ok()).unwrap_or(-1);
++        loop {
++            crate::dbg::CUR_TICK.store(tick as i64, std::sync::atomic::Ordering::Relaxed); // enables the PCT opcode trace at DUMP_TICK
++            if (tick as i64) >= dump_from && (tick as i64) <= dump_to {
++                // state at the START of this tick (after the previous tick's execution)
++                let vs: Vec<String> = self.state.vars.iter().enumerate().filter(|(_,x)| **x != 0).map(|(i,x)| format!("{:02x}={}", i, x)).collect();
++                eprintln!("VARS t={} {}", tick, vs.join(" "));
++            }
++            let r = inputs.get(&tick).copied().unwrap_or([0i16;6]);
++            self.state.vars[VM_VAR_HERO_POS_LEFT_RIGHT] = r[0];
++            self.state.vars[VM_VAR_HERO_POS_UP_DOWN]    = r[1];
++            self.state.vars[VM_VAR_HERO_POS_JUMP]       = r[2];
++            self.state.vars[VM_VAR_HERO_POS_MASK]       = r[3];
++            self.state.vars[VM_VAR_HERO_ACTION]         = r[4];
++            self.state.vars[VM_VAR_HERO_ACTION_MASK]    = r[5];
++
++            let mut chan_reqs = vec![];
++            for (chan_id, chan) in self.chans.iter_mut().enumerate() {
++                if let ChanStatus::Running(_) = chan.status {
++                    Vm::execute(&mut self.state, self.speed_up, chan, chan_id, &self.active_part, self.peripherals.borrow_mut(), &mut chan_reqs);
++                }
++            }
++            let keep_going = tick_cb(tick);
++            tick += 1;
++
++            let mut next_part: Option<u16> = None;
++            for req in chan_reqs {
++                match req {
++                    ChanReq::Part(p) => { next_part = Some(p); }
++                    ChanReq::SingleChanReq(chan_id, subreq) => {
++                        let chan = &mut self.chans[chan_id];
++                        match subreq {
++                            SingleChanReq::Exec(offset) => chan.exec_at(offset),
++                            SingleChanReq::Stop => chan.stop(),
++                            SingleChanReq::Pause => chan.pause(),
++                            SingleChanReq::Resume => chan.resume(),
++                        }
++                    }
++                }
++            }
++            if !keep_going { break; }
++            // KN7000 port: START_PART as in run_headless (kn7000/probes/awreplay.lua AW_START_PART)
++            if tick == 1 {
++                if let Ok(sp) = std::env::var("START_PART") {
++                    let sp = u16::from_str_radix(sp.trim_start_matches("0x"), 16).expect("START_PART hex");
++                    eprintln!("START_PART -> {:#x} at tick {}", sp, tick);
++                    self.setup_part(sp);
++                    continue;
++                }
++            }
++            if let Some(p) = next_part { self.setup_part(p); }
++        }
++    }
++
++    /// KN7000 port: replay a session from the game's input log (kn7000 src/inplog.s; tools/aw_inplog.py's text,
++    /// parsed into AwrLog by bin/replayawr.rs). Starts as the port does: the splash (part 0x3E80 from its logo
++    /// sequence, as run_headless AW_SPLASH) when the log's first part is 0x3E80, else that part. Tick t is the
++    /// port's frame t (FRAME_NO while its threads run). At the start of each tick t >= 1, where the port's
++    /// ReadInput runs, the input the log says was applied at frame t: var 0xFA and 0xFE in the intro's mode, the six
++    /// hero variables from the mask otherwise, exactly as the port's ReadInput writes them; then an R record's part
++    /// switch (the port's InitForPart after ReadInput). Each M record's sync mark goes into var 0xF4 before the first
++    /// thread at or after its thread runs in its tick (no module player).
++    pub fn run_awr<F: FnMut(u32, &[i16; 256]) -> bool>(&mut self, log: &AwrLog, mut tick_cb: F) {
++        if log.start_part == 0x3E80 {
++            self.setup_part(0x3E80);
++            self.chans[0].exec_at(0x007B);
++            self.chans[60].exec_at(0x10A3);
++            self.state.vars[0xFF] = 2;
++        } else {
++            self.setup_part(log.start_part);
++            // AW_SETVARS="00=30,06=200" (hex var = decimal value): what the password part (0x3E88) sets before its
++            // UPDATE_MEMLIST, so a session can start at any checkpoint of a part. Unset: nothing changes.
++            if let Ok(sv) = std::env::var("AW_SETVARS") {
++                for kv in sv.split(',').filter(|x| !x.is_empty()) {
++                    let (k, v) = kv.split_once('=').expect("AW_SETVARS var=value");
++                    self.state.vars[usize::from_str_radix(k, 16).expect("var")] = v.parse().expect("value");
++                }
++            }
++        }
++        // AW_POKE="40:67=78:01=340,90:06=500" (decimal tick, then hex var = decimal value): sets the vars at the start
++        // of that tick, before its threads run (to teleport the hero for a probe). Unset: nothing changes.
++        let pokes: Vec<(u32, Vec<(usize, i16)>)> = std::env::var("AW_POKE").map(|s| s.split(',').filter(|x| !x.is_empty()).map(|e| {
++            let mut it = e.split(':');
++            let t: u32 = it.next().unwrap().parse().expect("AW_POKE tick");
++            (t, it.map(|kv| { let (k, v) = kv.split_once('=').expect("AW_POKE var=value");
++                (usize::from_str_radix(k, 16).expect("var"), v.parse().expect("value")) }).collect())
++        }).collect()).unwrap_or_default();
++        vclock::init();
++        let (mut tick, mut ii, mut mi): (u32, usize, usize) = (0, 0, 0);
++        loop {
++            crate::dbg::CUR_TICK.store(tick as i64, std::sync::atomic::Ordering::Relaxed);
++            for (t, kvs) in &pokes { if *t == tick { for &(k, v) in kvs { self.state.vars[k] = v; } } }
++            if tick >= 1 {
++                while ii + 1 < log.inputs.len() && log.inputs[ii + 1].0 <= tick { ii += 1; }
++                let (intro, m) = match log.inputs.get(ii) { Some(&(f, i, m)) if f <= tick => (i, m), _ => (false, 0) };
++                self.state.vars[VM_VAR_HERO_ACTION] = if m & 0x80 != 0 { 1 } else { 0 };
++                self.state.vars[VM_VAR_HERO_ACTION_MASK] = m as i16;
++                if !intro {
++                    let lr = if m & 1 != 0 { 1 } else if m & 2 != 0 { -1 } else { 0 };
++                    let ud = if m & 4 != 0 { 1 } else if m & 8 != 0 { -1 } else { 0 };
++                    self.state.vars[VM_VAR_HERO_POS_LEFT_RIGHT] = lr;
++                    self.state.vars[VM_VAR_HERO_POS_UP_DOWN] = ud;
++                    self.state.vars[VM_VAR_HERO_POS_JUMP] = ud;
++                    self.state.vars[VM_VAR_HERO_POS_MASK] = m as i16;
++                }
++                if let Some(&p) = log.reqs.get(&tick) { eprintln!("R -> {:#x} at tick {}", p, tick); self.setup_part(p); }
++            }
++            let mut chan_reqs = vec![];
++            for (chan_id, chan) in self.chans.iter_mut().enumerate() {
++                vclock::apply(tick, chan_id, &mut self.state.vars);
++                while mi < log.marks.len() && (log.marks[mi].0 < tick || (log.marks[mi].0 == tick && log.marks[mi].1 as usize <= chan_id)) {
++                    self.state.vars[VM_VAR_MUS_MARK] = log.marks[mi].2;
++                    mi += 1;
++                }
++                if let ChanStatus::Running(_) = chan.status {
++                    Vm::execute(&mut self.state, self.speed_up, chan, chan_id, &self.active_part, self.peripherals.borrow_mut(), &mut chan_reqs);
++                }
++            }
++            // the frame's end: the rest of its marks (thread 64: after its last thread), and the next frame's
++            // thread-0 ones (they appeared in the end-of-frame yield), as the MAME replay writes them
++            while mi < log.marks.len() && (log.marks[mi].0 <= tick || (log.marks[mi].0 == tick + 1 && log.marks[mi].1 == 0)) {
++                self.state.vars[VM_VAR_MUS_MARK] = log.marks[mi].2;
++                mi += 1;
++            }
++            vclock::tick_end(tick, self.state.vars[VM_VAR_PAUSE_SLICES]);
++            vclock::apply(tick, 64, &mut self.state.vars);
++            let keep_going = tick_cb(tick, &self.state.vars);
++            tick += 1;
++            let mut next_part: Option<u16> = None;
++            for req in chan_reqs {
++                match req {
++                    ChanReq::Part(p) => { next_part = Some(p); }
++                    ChanReq::SingleChanReq(chan_id, subreq) => {
++                        let chan = &mut self.chans[chan_id];
++                        match subreq {
++                            SingleChanReq::Exec(offset) => chan.exec_at(offset),
++                            SingleChanReq::Stop => chan.stop(),
++                            SingleChanReq::Pause => chan.pause(),
++                            SingleChanReq::Resume => chan.resume(),
++                        }
++                    }
++                }
++            }
++            if !keep_going { break; }
++            if let Some(p) = next_part { eprintln!("PARTSWITCH -> {:#x} at tick {}", p, tick); self.setup_part(p); }
++        }
++    }
++
+     fn execute(state: &mut VmState, speed_up: usize, chan: &mut Chan, _chan_id: usize, part: &Part, peripherals: &mut Peripherals<V, R, I>, chan_reqs: &mut Vec<ChanReq>) {
+         if let Some(val) = peripherals.music.latest_mark() {
+             state.vars[VM_VAR_MUS_MARK] = val;
+         }
+         loop {
++            let _pc_before = chan.pc();
++            if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) {
++                { let w = std::env::var("WATCH_VAR").ok().and_then(|x| usize::from_str_radix(&x, 16).ok()).unwrap_or(0); eprintln!("PCT ch={} pc={} op={:#x} v{:02x}={}", _chan_id, _pc_before, part.code[_pc_before as usize], w, state.vars[w]); }
++            }
+             let instr = <Vm<V, R, I>>::decode(chan, &part.code);
+-            eprintln!("Chan {} instr {:?}", _chan_id, instr);
+             match instr {
+                 Instr::Move { reg, src } => {
+-                    state.vars[reg] = src.resolve(&state.vars)
++                    state.vars[reg] = src.resolve(&state.vars);
++                    if crate::dbg::ev_var_on(reg) { crate::dbg::ev(_chan_id, _pc_before, format_args!("VAR v{:02x}={} mov", reg, state.vars[reg])); }
+                 }
+                 Instr::Add { reg, rhs } => {
+-                    state.vars[reg] = state.vars[reg].overflowing_add(rhs.resolve(&state.vars)).0
++                    state.vars[reg] = state.vars[reg].overflowing_add(rhs.resolve(&state.vars)).0;
++                    if crate::dbg::ev_var_on(reg) { crate::dbg::ev(_chan_id, _pc_before, format_args!("VAR v{:02x}={} add", reg, state.vars[reg])); }
+                 }
+                 Instr::Call { target } => {
+                     chan.stack.push(chan.pc());
+@@ -477,6 +828,7 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+                     }
+                 }
+                 Instr::SetPalette { id } => {
++                    if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("PAL {:#04x}", id)); }
+                     if id < 0x20 { // Sometimes we get palette 0x21
+                         let palettes = &part.palette;
+                         let palette = &palettes[(id * 32)..((id + 1) * 32)];
+@@ -513,15 +865,17 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+                         std::thread::sleep((expected_delay - elapsed).min(Duration::from_millis(5)));
+                     }
+ 
++                    vclock::blit(state.vars[VM_VAR_PAUSE_SLICES]);
+                     state.last_ts += expected_delay;
+                     state.vars[0xF7] = 0; // identify what this is used for
+                     peripherals.video.update_display(src)
+                 }
+                 Instr::Kill => {
+-                    chan.status = ChanStatus::Paused(0);
++                    chan.status = ChanStatus::Stopped;
+                     break;
+                 }
+                 Instr::DrawStr { id, x, y, color } => {
++                    if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("STR {:#06x} x={} y={} c={}", id, x, y, color)); }
+                     peripherals.video.draw_string(id, Point::new(x as i16, y as i16), color)
+                 }
+                 Instr::Sub { reg, rhs } => {
+@@ -540,11 +894,14 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+                     state.vars[reg] = ((state.vars[reg] as u16) >> rhs.resolve(&state.vars) as u16) as i16;
+                 }
+                 Instr::PlaySound { id, channel, freq, vol } => {
++                    if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("SND {:#04x} freq={} vol={} chan={}{}", id, freq, vol, channel, crate::dbg::snd_vars(&state.vars))); }
+                     if let Some(content) = peripherals.resman.resource(id as u8) {
+                         peripherals.audio.play_sound(&content, freq, vol, channel);
+                     }
+                 }
+                 Instr::UpdateMemList { id } => {
++                    if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("MEM {:#06x}", id)); }
++                    eprintln!("UMLOG id={:#x}", id); // UMLOG
+                     if id == 0 {
+                         peripherals.music.stop();
+                         peripherals.audio.stop();
+@@ -557,6 +914,8 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+                     }
+                 }
+                 Instr::PlayMusic { id, delay, pos } => {
++                    vclock::play(id, delay, pos);
++                    if crate::dbg::EV_ON.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("MUS {:#06x} delay={} pos={}", id, delay, pos)); }
+                     if id != 0 {
+                         peripherals.music.start(id, if delay != 0 { Some(delay) } else { None }, pos);
+                     } else if delay != 0 {
+@@ -566,11 +925,15 @@ impl<V: Video, R: ResourceManager, I: InputDevice> Vm<V, R, I> {
+                     }
+                 }
+                 Instr::DrawPolyBg { offset, x, y } => {
++                    if crate::dbg::EV_POLY.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("POLYBG off={:#06x} x={} y={}", offset, x, y)); }
++                    if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) { eprintln!("TOPOP bg offset={}", offset); }
+                     let p = Point::new(x, y);
+                     let cinematic_data = &part.video1;
+                     peripherals.video.draw_polygons(&cinematic_data, &cinematic_data[offset..], DEFAULT_POLY_COLOR, DEFAULT_ZOOM, p);
+                 }
+                 Instr::DrawPolySprite { offset, x, y, segment, zoom } => {
++                    if crate::dbg::EV_POLY.load(std::sync::atomic::Ordering::Relaxed) { crate::dbg::ev(_chan_id, _pc_before, format_args!("POLY {} off={:#06x} x={} y={} z={}", if let Video1 = segment {"v1"} else {"v2"}, offset, x.resolve(&state.vars), y.resolve(&state.vars), zoom.resolve(&state.vars))); }
++                    if crate::dbg::CUR_TICK.load(std::sync::atomic::Ordering::Relaxed)==crate::dbg::DUMP_TICK.load(std::sync::atomic::Ordering::Relaxed) { eprintln!("TOPOP sprite"); }
+                     let p = Point::new(x.resolve(&state.vars), y.resolve(&state.vars));
+                     let poly_data = match segment {
+                         Video1 => &part.video1,
