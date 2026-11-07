@@ -17,9 +17,9 @@ fed the **original MSDOS data** (`~/compartilhado/MSDOS/`, uppercase
 (verified). So both VMs execute the same bytecode/polygons/palette — any frame
 divergence is pure rendering/VM-logic, not data.
 
-Reference harness (in scratch, not committed here — it's a modified clone):
-`~/compartilhado/tmp/kn7000-aw-reference/rustyworld/`. The diff + build/run recipe
-are saved in `~/compartilhado/research-scratch/kn7000-aw-reference/`. Key mods:
+Reference harness: a modified rustyworld clone. Its diffs and the build recipe are committed
+in `tools/rustyworld/` (`build.sh reference`; until 2026-11-07 the clone lived in scratch, in
+`~/compartilhado/tmp/kn7000-aw-reference/`, run from its `run/`). Key mods:
 `src/vm.rs` adds `run_headless()` (drives the intro part 0x3E81, no throttle,
 stops at the 0x3E82 part-switch) and seeds var 0x3C = 0x1234 to match our port;
 `src/bin/refcksum.rs` writes one `"<tick> <crc32hex>"` line per VM tick (CRC-32 of

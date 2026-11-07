@@ -8,14 +8,14 @@
 #   2. rustyworld replays the owner's unit sessions of 2026-11-06 (their marks where the unit had them) for var 0xFF
 #      at every tick, and logs the PLAY_MUSIC calls;
 #   3. probes/musictiming.py report puts them, and the MAME runs' AW_TIMELOGs given, in OUT/summary.md.
-# Env: RW (replayawr built with rustyworld-vclock.diff; default ~/compartilhado/tmp/aw-music/rustyworld/target/release/
-# replayawr), RWRUN (a folder with data/MEMLIST.BIN + data/BANK0*: the MS-DOS release; default
-# ~/compartilhado/tmp/kn7000-aw-reference/run), DATA (the same files for musictiming.py; default ~/compartilhado/MSDOS).
+# Env: RW (replayawr from tools/rustyworld/build.sh vclock; default ~/compartilhado/tmp/rustyworld-vclock/rustyworld/
+# target/release/replayawr), RWRUN (a folder with data/MEMLIST.BIN + data/BANK0*: the MS-DOS release; default
+# ~/compartilhado/tmp/rustyworld-vclock/run), DATA (the same files for musictiming.py; default ~/compartilhado/MSDOS).
 # OUT is scratch (~/compartilhado/tmp/...).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-RW="${RW:-$HOME/compartilhado/tmp/aw-music/rustyworld/target/release/replayawr}"
-RWRUN="${RWRUN:-$HOME/compartilhado/tmp/kn7000-aw-reference/run}"
+RW="${RW:-$HOME/compartilhado/tmp/rustyworld-vclock/rustyworld/target/release/replayawr}"
+RWRUN="${RWRUN:-$HOME/compartilhado/tmp/rustyworld-vclock/run}"
 DATA="${DATA:-$HOME/compartilhado/MSDOS}"
 O="$(mkdir -p "$1" && cd "$1" && pwd)"; shift
 MARKS="$(python3 -I "$HERE/musictiming.py" marks "$DATA")"

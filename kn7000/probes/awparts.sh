@@ -8,15 +8,14 @@
 # 2026-10-17: every part 600/600 identical (FULL-GAME-PLAN.md section 4).
 #
 #   probes/awparts.sh <out dir> [ticks=600]        (from kn7000/, after `make card`)
-# Needs the reference clone with replay-mods/rustyworld-kn7000-all.diff applied and
-# `cargo build --release --no-default-features --bin refcksum` done (RUSTY_RUN below).
+# Needs the reference built by tools/rustyworld/build.sh reference (RUSTY_RUN below).
 # Runs two emulators at a time. -str 299: mame-pr/kn7000 has no -skip_gameinfo patch for the
 # warning screen, and MAME skips that screen only for 0 < -str < 300 -- with -str 900 an instance
 # now and then sat on it (autoboot script never started); 600 ticks need ~85 s emulated.
 set -u
 OUT=${1:?usage: probes/awparts.sh <out dir> [ticks]}
 TICKS=${2:-600}
-RUSTY_RUN=${RUSTY_RUN:-$HOME/compartilhado/tmp/kn7000-aw-reference/run}
+RUSTY_RUN=${RUSTY_RUN:-$HOME/compartilhado/tmp/rustyworld-reference/run}
 MAME=${MAME:-../../mame-pr/kn7000}
 mkdir -p "$OUT"
 PARTS="3E80 3E82 3E83 3E84 3E85 3E86 3E87 3E88 3E89"
