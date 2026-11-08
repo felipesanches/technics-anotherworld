@@ -98,7 +98,7 @@
 .equ AW_PATHNAME,     AW_PATHS+0x30 #   the name AppPath was given
 .equ AW_PATHS_LEN,    0x40
 .equ PREFS_AT,        0x502DF900    # prefs.s: the settings (AWPREFS.CFG's 16 bytes) and the settings page's state, 0x60
-.equ WHEEL_VARS,      0x502DFA00    # wheel.s: the code wheel page's state, 0x100
+.equ WHEEL_VARS,      0x502DFA00    # wheel.s: the code wheel page's state, 0x400
 .equ WH_RXRD,         WHEEL_VARS    # the panel's receive ring's read index (fwfind.s step 8; 0: none), wheel.s
 .equ VM_POLY_BASE,    0x502E0000    # vm.inc: rasterizer scratch, 0x200 bytes
 .equ FWDRAW_AT,       0x502E0400    # fwdraw.s: its variables, then the copy of program 893's view records
