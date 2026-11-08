@@ -405,7 +405,8 @@ against 1,933 in this run; `codewheel_estimate.py`, `estimate.txt`): that puts a
 median for TOP and BOTTOM, about 10 a second, and 137 to 146 ms for MIDDLE, about 7 a second; a picture at rest at
 about 0.72 s. The card's first read is 143,132 bytes, about 1.1 s of reading on the unit at the rate measured there
 (385 KB in 3.05 s), against MAME's 1.7 times faster card. The page itself shows the last of each it drew ("drawn, ms"),
-on the unit as in MAME: those are the figures to send.
+on the unit as in MAME: those are the figures to send. On program 941 every picture takes about twice as long in
+MAME (the firmware's own screen keeps repainting there; probes/cnv/README.md, "The code wheel page zoomed in").
 
 ![The code wheel page, TOP, at rest at number 1 (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_rest_top.png)
 ![MIDDLE (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_middle.png)
