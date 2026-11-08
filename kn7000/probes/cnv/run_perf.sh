@@ -32,7 +32,7 @@ echo "run_perf: KN7APP.BIN $(sha1sum < "$CARDFILES/KN7APP.BIN" | cut -c1-16), bi
   -rompath ./roms -pluginspath ./plugins -skip_gameinfo -window -nothrottle -harddisk "$OUT/sd.img" \
   -flop "$OUT/floppy.img" -nvram_directory "$OUT/nv" -cfg_directory "$OUT/cfg" -snapshot_directory "$OUT/snap" \
   -autoboot_script "$LUA" "$@" ) >> "$OUT/run.log" 2>&1
-for f in AWPERF0.TXT AWPERF1.TXT AWPERF2.TXT AWPREFS.CFG; do
+for f in AWPERF0.TXT AWPERF1.TXT AWPERF2.TXT AWPREFS.CFG AWWHLOG.TXT; do
   python3 -I "$DISASM_REPO/tools/cnv_romdump/fatls.py" "$OUT/sd.img" "C:\\$f" "$OUT/$f" > /dev/null 2>&1 || rm -f -- "$OUT/$f"
 done
 rm -f -- "$OUT/sd.img" "$OUT/floppy.img"

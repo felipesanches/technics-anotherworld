@@ -1,0 +1,28 @@
+run_perf: KN7APP.BIN aafd752ea4566c5e, bios v13, emulator md5 4e4c2390, awcnv_tickgap.lua
+awtg: KN7APP: the question true
+awtg: tick: 440 gaps; the longest per phase: again 120 ms, exit 120 ms, exit2 120 ms, load 144 ms, play 96 ms, region 136 ms, start 10942 ms, turn 120 ms
+awtg:   tick  1: 10942.2 ms from 44.845 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  2: 877.2 ms from 60.810 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  3: 857.2 ms from 55.787 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  4: 845.4 ms from 56.660 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  5: 840.5 ms from 57.505 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  6: 836.2 ms from 59.974 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  7: 815.5 ms from 58.346 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  8: 812.9 ms from 59.161 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick  9: 544.6 ms from 66.177 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick 10: 507.8 ms from 69.183 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick 11: 478.0 ms from 62.807 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   tick 12: 418.6 ms from 64.112 s (start page 1 loadreq 0 on 0 inram 0)
+awtg: calls: 1792 gaps; the longest per phase: again 83 ms, exit 67 ms, exit2 67 ms, load 117 ms, play 33 ms, region 67 ms, start 54250 ms, turn 83 ms
+awtg:   calls  1: 54250.0 ms from 0.017 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  2: 1533.3 ms from 54.267 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  3: 850.0 ms from 56.667 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  4: 850.0 ms from 60.817 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  5: 850.0 ms from 55.800 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  6: 833.3 ms from 59.983 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  7: 833.3 ms from 57.517 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  8: 816.7 ms from 59.167 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls  9: 816.7 ms from 58.350 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls 10: 550.0 ms from 66.183 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls 11: 500.0 ms from 69.200 s (start page 1 loadreq 0 on 0 inram 0)
+awtg:   calls 12: 483.3 ms from 62.400 s (start page 1 loadreq 0 on 0 inram 0)
