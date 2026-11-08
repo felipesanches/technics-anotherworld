@@ -1,0 +1,17 @@
+run_wheelnow: KN7APP.BIN c707af6ee8f2efd2, bios v13, emulator md5 4e4c2390
+awwn: at the start: part 3E80, thread 0 at 0104, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed 25B4, setting 0, game 0, request 0
+awwn: on at splash     PASS  splash before true; then part 3E80, thread 0 at FFFF, thread 20 at 0BB5, var 0xBC 0000, var 0x3C 7456, seed 7456, setting 1, game 1, request 0
+awwn: wheel page       PASS  shown true, region 2, arrow at 2, the question again true; part 3E80, thread 0 at FFFF, thread 20 at 0BB5, var 0xBC 0000, var 0x3C 7456, seed 7456, setting 1, game 1, request 0
+awwn: off at question  PASS  part 3E80, thread 0 at 009F, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed AE5B, setting 0, game 0, request 0
+awwn: on in intro      PASS  intro reached true; then part 3E80, thread 0 at FFFF, thread 20 at 0BB5, var 0xBC 0000, var 0x3C 1BF2, seed 1BF2, setting 1, game 1, request 0
+awwn: off again        PASS  part 3E82, thread 0 at FFFF, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed 37DA, setting 0, game 0, request 0
+awwn: in play          PASS  the row reads "ON, next start" true; part 3E82, thread 0 at FFFF, thread 20 at FFFF, var 0xBC 0010, var 0x3C 1234, seed 37DA, setting 1, game 0, request 0; frames 807 -> 840
+awwn: 6 checks, all pass
+aw_inplog: 1 files, 19 records, frames 0-860, parts 0x3E80 0x3E80 0x3E80 0x3E81 0x3E80 0x3E80 0x3E81 0x3E82; 6 input changes, 0 sync marks, 0 part requests, 4 restarts; none lost
+G 76 1 0x7456
+G 114 0 0xAE5B
+G 422 1 0x1BF2
+G 445 0 0x37DA
+aw_inplog: 1 files, 19 records, frames 0-879, parts 0x3E80 0x3E80 0x3E80 0x3E81 0x3E80 0x3E80 0x3E81 0x3E82; 6 input changes, 0 sync marks, 0 part requests, 4 restarts; none lost
+awcnv_inplog: replaying /home/fsanches/compartilhado/tmp/aw-codewheel-zoom/wheelnow/rec/session.awr: 6 input changes, 0 marks, end at frame 860
+input: the replay's I, P and G records are the replayed ones (18 records)

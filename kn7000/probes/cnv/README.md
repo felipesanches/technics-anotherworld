@@ -1268,3 +1268,91 @@ The finale's restart into the intro comes 3 s of the kernel's clock after the st
 credits' light show keeps its own time after the music: both follow the emulated clock, not the VM, and that moved by two
 frames here (credits: changes an LED 94, 160, 178 against 94, 164, 178; lit sets 179 against 175; the longest still
 960 ms against 976). Every frame the VM computed before that is identical.
+
+## The code wheel page zoomed in (2026-11-08)
+
+Felipe, after playing the page on the unit: the symbols were too small; zoom in, show the top, middle or bottom part
+chosen with the LCD's soft buttons, and scroll the whole wheel when the part changes (README-CNV.md, "The code wheel
+page"). Three probes, the results in `codewheel-results-2026-11-08/`:
+
+| file                    | question it answers                                                                                                                                                      |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `awcnv_lcdkeys.lua`     | where does each of the ten soft buttons show in the panel's receive ring and the firmware's debounced bitmap, and does the firmware act on it on the converter's screen? |
+| `awcnv_areas.lua`       | which display memory and which of ARENA5 / ARENA6 does the firmware write while the game runs?                                                                           |
+| `awcnv_wheel.lua`       | the page: turns, the three regions' scrolls, the pages, closing and showing again (below)                                                                                |
+| `codewheel_check.py`    | is every picture taken from display memory, row by row at the angle each row was drawn at, exactly `render_row()`'s?                                                     |
+| `codewheel_estimate.py` | how long does a picture take on the unit, from MAME's times and the two benchmarks (per region since this change)                                                        |
+
+**The soft buttons** (`lcdkeys-v13.txt`, program 893, the game running in its intro; each button held 0.3 s): each
+puts a frame [segment, switches] into the ring and its release one with the bit clear, and shows in the firmware's
+bitmap: LCDL 1-5 `[C0 02]`, `[C0 08]`, `[C0 20]`, `[C0 01]`, `[C0 04]` (bitmap `0x5006BE7C`), LCDR 1, 2, 5 `[05 10]`,
+`[05 20]`, `[05 01]` (`0x5006BE51`), LCDR 4 `[06 01]` (`0x5006BE52`), LCDR 3 `[07 01]` (`0x5006BE53`). After every one,
+between 1,278 and 1,377 writes by 81 to 97 of the firmware's PCs that came in none of the windows with nothing pressed
+(the view records `0x5002A000`-`0x5002BFFF` by `0x4842301C` and its neighbours, `0x50021FD8`, `0x500D3E68` ...): the
+firmware acts on them there, so the page takes them out of the ring.
+
+    probes/cnv/run_perf.sh ~/compartilhado/tmp/aw-codewheel-zoom/lcdkeys probes/cnv/awcnv_lcdkeys.lua
+
+**Display memory and the arenas** (`areas-v13.txt`, `areas-v16.txt`, run with the build before this change; the converter's own
+writes left out): from STYLE CONVERT to 10 s after the quit, through the help screen's five pages, the TEMPO wheel,
+the ten soft buttons, PAGE DOWN and back, the firmware wrote display memory only below `0x4C000` (its own frame,
+`0x0`-`0x4B4FF`) and never ARENA5 or ARENA6, on program 893 and on 941.
+
+    probes/cnv/run_perf.sh ~/compartilhado/tmp/aw-codewheel-zoom/areas-v13 probes/cnv/awcnv_areas.lua
+    BIOS=v16 probes/cnv/run_perf.sh ~/compartilhado/tmp/aw-codewheel-zoom/areas-v16 probes/cnv/awcnv_areas.lua
+
+**The page** (`run_wheel.txt`, `check.txt`; build `c707af6e...`, program 893): 15 of 15 checks, 17 of 17 pictures
+exactly `render_row()`'s, every row at its own angle (10 at rest, bilinear, at a number's angle, every row the same;
+5 in mid-turn, nearest; 2 after a scroll). The soft buttons are MAME's `cpanel` ports `CPR_SEG5`/`CPR_SEG7` (LCDR 1, 3, 5)
+and `CPL_SEG0` (LCDL 1, 5); the start address is read back from the controller's REG[042h]-[044h], and every write of
+it during a scroll is recorded with the row it was for.
+
+| check       | result                                                                                                                |
+|-------------|-----------------------------------------------------------------------------------------------------------------------|
+| open        | HELP at the question: page 5, the fourteen files read once (2,345 ms), TOP (start `0x4DBFF`), the arrow at 1, at rest |
+| turn p1     | +1: number 2; 4 turning pictures, every one onwards, the last the end's own; then every row bilinear there            |
+| turn p3     | +3, 50 ms apart (they pile up): number 5; 9 turning pictures                                                          |
+| turn m5     | -5: number 20 (through 1); 23 turning pictures                                                                        |
+| region mid  | LCDR 3: TOP to MIDDLE, 67 start addresses onwards, the last `0x571FF` (row 120), 220 ms; 120 rows drawn first         |
+| turn m1     | in MIDDLE, -1: number 19; 3 turning pictures                                                                          |
+| region bot  | LCDR 5: MIDDLE to BOTTOM, 69 start addresses, the last `0x607FF` (row 240); 120 rows drawn first                      |
+| region top  | LCDL 1: BOTTOM to TOP, 107 start addresses, 320 ms; 120 rows drawn first (rows 120-239 were already at the angle)     |
+| turn p2     | in TOP, +2, 50 ms apart: number 1 (through 20); 6 turning pictures                                                    |
+| region bot2 | LCDL 5: TOP to BOTTOM, 107 start addresses; 240 rows drawn first                                                      |
+| pages       | PAGE UP: the settings, the LCD on FB8; pages 4 3 2 1 2 3 4 5; the wheel again at 1, BOTTOM, no read (shown in 308 ms) |
+| close       | EXIT: the VM's four pages put back byte for byte as saved; 0 LCD pixels different from before HELP; still asking      |
+| again       | HELP: the page again from display memory (reads 1, borrows 2), BOTTOM as it was left (1,035 ms)                       |
+| elsewhere   | CODE WHEEL off (the splash at once): HELP opens page 1; PAGE DOWN x4: the code wheel                                  |
+| 320x200     | in the 320x200 mode the page, then the border's pattern for 320 after EXIT                                            |
+
+In every scroll the firmware's debounced bitmap never showed a soft button down; 8 soft button frames taken, none of
+them decoded by the firmware first in this run (2 of 8 in an earlier run of the same code, each then released at once
+by a frame put in after it); 12 wheel frames, 1 decoded first and undone. Times (`estimate.txt`): a turning picture of
+TOP 91.5 ms at the median in MAME (43), MIDDLE 132.4 (3); the five BOTTOM ones are the showings' first pictures, every
+word stored. On the unit, by its LCD store times, TOP and BOTTOM 97-105 ms, MIDDLE 137-146 ms: about 10 and 7 a second.
+`d32_scan.py` finds no register + displacement operand with a top byte other than 0 (2,427 instructions).
+
+    probes/cnv/run_wheel.sh ~/compartilhado/tmp/aw-codewheel-zoom/wheel5
+    python3 -I probes/cnv/codewheel_estimate.py probes/cnv/codewheel-results-2026-11-08
+    python3 -I probes/cnv/d32_scan.py build/kn7app.bin build/kn7app.map ~/compartilhado/mame-sony-video/unidasm
+
+**Regressions on the same build** (`run_wheelnow.txt`, `acceptance-v13.txt`, `acceptance-v16.txt`):
+
+| run                             | result                                                                                                                                                                                                             |
+|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `run_wheelnow.sh`               | 6 of 6, the new "wheel page" (at the question: the page, LCDR 3, a TEMPO detent, LCDR 5, EXIT) among them; the replay's I, P and G records the recorded ones (4 G records)                                         |
+| `run_cnv_tests.sh guard`        | PASS: `ic23_guard.py` clean (12 loads from the loader's table), the self-test's 7, `cnv_layout: ok` (the runner now gives the guard kn7menu's include paths, which `src/chain.s` needs since the quit to the menu) |
+| `run_cnv_tests.sh ic23 v13 ...` | 8 of 8 (session 18 of 18, report, ic23w, same, accepted, pools, area, loader); the area tap, now over ARENA5 and ARENA6 too, saw the firmware write them only at boot                                              |
+| `run_cnv_tests.sh ic23 v16 ...` | 8 of 8, as on 893 (the saved IC23 `bc2305dd...`, the same as before)                                                                                                                                               |
+
+    probes/cnv/run_wheelnow.sh ~/compartilhado/tmp/aw-codewheel-zoom/wheelnow
+    T=~/compartilhado/tmp/aw-codewheel-zoom/accept
+    probes/cnv/run_cnv_tests.sh $T guard blank-v13 blank-v16
+    probes/cnv/run_cnv_tests.sh $T ic23 v13 $T/blank-v13/ic23 blank
+    probes/cnv/run_cnv_tests.sh $T ic23 v16 $T/blank-v16/ic23 blank
+
+**Program 941** (`run_wheel-v16.txt`, `BIOS=v16 probes/cnv/run_wheel.sh ...`): 15 of 15 checks, 16 of 16 pictures exact,
+but every picture takes about twice as long as on 893 (turning 114-205 ms, at rest 1.36-1.83 s; the first read 4.65 s):
+the firmware's own screen keeps repainting on 941, which the game quiets on 893 only (README-CNV.md, "The firmware's
+screen"). 6 of the 12 wheel frames and 1 of the 8 soft button frames were decoded by the firmware first there (the
+bitmap check reads 893's addresses, so it says nothing on 941). The owner's unit runs 893.
