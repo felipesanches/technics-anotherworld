@@ -85,8 +85,9 @@
 .equ WB_VERSION,    2
 .equ WB_PIECE,      0x8000
 .equ WB_PIECES,     14              # A 0-10, B 11-12, C 13
-.equ WB_CACHED_N,   13              # A and B are kept packed in display memory
-.equ WB_SCRATCH,    ARENA6 + 0x2000 # a packed piece read from the card or the cache, to ARENA6's end
+.equ WB_CACHED_N,   11              # A is kept packed in display memory (B is read from the card at each showing)
+.equ WB_SCRATCH,    ARENA6 + 0x1000 # a packed piece read from the card or the cache (to 0x5017EFFF: 4 KB short of
+                                    #   the user pools at 0x50180000, should a read write a sector past its count)
 .equ WB_SCRATCH_MAX, 0x9000
 .equ WT_BOTROW,     WRAM + 0x58000  # 480 x u32: where each row of the lower disk's spans is
 .equ WT_SHROW,      WRAM + 0x58800  # 480 x u32: where each row's copy of the tall frame's spans is (ARENA5, ARENA6)
@@ -97,8 +98,8 @@
 .equ WD_TF_OFS,     0x76000         # the tall frame: 640 x 480, to 0xC1000
 .equ WD_TF,         FB + WD_TF_OFS
 .equ WD_SAVE,       FB + 0xC1000    # the VM's four pages while borrowed, to 0x11B000
-.equ WD_CACHE,      FB + 0x11B000   # A and B's packed pieces, one after the other, to the end of display memory
-.equ WD_CACHE_END,  FB + 0x140000
+.equ WD_CACHE,      FB + 0x11B000   # A's packed pieces, one after the other, to 0x136000: below the ink layer's
+.equ WD_CACHE_END,  FB + 0x136000   #   memory there (n = 5, the 8 KB pages the firmware's ink and Pinball's use)
 # ---- the page ----
 .equ WHEEL_X0,      80              # the wheel's 480 columns in the tall frame
 .equ WHEEL_W,       480
@@ -188,6 +189,13 @@
 .equ WH_NDRAWN,     WHEEL_VARS + 0x18C  # WheelDraw: rows drawn
 .equ WH_NAME,       WHEEL_VARS + 0x190  # 16 bytes: "AWWHn.AW"
 .equ WH_TEXT,       WHEEL_VARS + 0x1A0  # 64 bytes: a line being made
+.equ WH_MARKS,      WHEEL_VARS + 0x3C0  # steps marked (WheelMark)
+.equ WH_MTEXT,      WHEEL_VARS + 0x3C4  # 16 bytes: WheelMark's line
+# ---- the trail of steps (WheelMark), kept across a restart of the instrument: in the input log's room, which the loader
+#      does not zero; InpLogInit zeroes it at the next start, after WheelCrumbLog has written it to the card ----
+.equ WH_CRUMB,      INPLOG_AT + 0xC0    # "WAWB", steps so far, the ms of the last, then 13 x (step << 24 | arg)
+.equ WH_CRUMB_MAGIC, 0x42574157
+.equ WH_CRUMB_N,    13
 .equ WH_LUTC,       WHEEL_VARS + 0x1E0  # 240 x u16: entries 16-255 (WB_LUT's), for a showing before the blob is in RAM
                                         #   (to +0x3C0)
 
@@ -632,6 +640,10 @@ wrp_digit:
     exth    d0
     cmp     0, d0
     blt     wrp_back
+    mov     0x40, d0                # (step: the file opened)
+    mov     (WH_LOADREQ), d1
+    add     -1, d1
+    call    WheelMark, 0, 0
     mov     4, d0                   # (the probes' taps: an SD read into the scratch in ARENA6)
     mov     d0, (LD_IN_READ)
     mov     WB_SCRATCH, a3          # a3: where the next piece goes
@@ -655,8 +667,14 @@ wrp_piece:
 wrp_end:
     clr     d0
     mov     d0, (LD_IN_READ)
+    mov     0x41, d0                # (step: read, the bytes)
+    mov     d3, d1
+    call    WheelMark, 0, 0
     mov     (FW_CLOSE), a3
     calls   (a3)
+    mov     0x42, d0                # (step: closed)
+    clr     d1
+    call    WheelMark, 0, 0
     mov     (FW_RESETEXT), a3
     calls   (a3)
     mov     d3, (WH_LOADRES)
@@ -670,6 +688,163 @@ wrp_done:
     clr     d0
     mov     d0, (WH_LOADREQ)
     ret     [d2,d3,a2,a3], 0x30
+
+# WheelMark(d0 = step, d1 = its argument): the page's progress (on either task), for a unit that restarts while the
+# page loads (2026-11-08): into the trail WH_CRUMB (WheelCrumbLog writes it to the card at the next start) and, while
+# the LCD shows the tall frame, as "Sss aaaaaa" (hex) at the left margin's foot in yellow. Steps: 01 the page asked
+# for, 02 the LCD on the frame, 03 the VM's pages saved, 10 a piece asked of the main task (its number), 11 read (its
+# bytes), 12 kept in the cache, 13 unpacked, 18 a piece from the cache, 20 the blob checked, 21 the frame drawn, 22 the
+# rows laid out, 23 the first picture drawn, 24 the page shown, 2F hidden, 30 closing, 3F the VM's pages back; the main
+# task's 40 a file opened (the piece), 41 read (bytes so far), 42 closed.
+WheelMark:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     d0, d2
+    mov     d1, d3
+    mov     WH_CRUMB_MAGIC, d0
+    mov     d0, (WH_CRUMB)
+    mov     (WH_CRUMB + 4), d0      # the entry: count mod 13
+    mov     WH_CRUMB_N, d1
+    call    Div, 0, 0
+    asl     2, d1
+    mov     WH_CRUMB + 12, a2
+    add     d1, a2
+    mov     d2, d0
+    asl     24, d0
+    mov     d3, d1
+    and     0xFFFFFF, d1
+    or      d1, d0
+    mov     d0, (a2)
+    mov     (WH_CRUMB + 4), d0
+    inc     d0
+    mov     d0, (WH_CRUMB + 4)
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d0
+    mov     d0, (WH_CRUMB + 8)
+    mov     (WH_MARKS), d0
+    inc     d0
+    mov     d0, (WH_MARKS)
+    mov     (WH_SHOWN), d0
+    cmp     0, d0
+    beq     wmk_ret
+    mov     WH_MTEXT, a0            # "Sss aaaaaa"
+    mov     0x53, d0
+    movbu   d0, (a0)
+    inc     a0
+    mov     d2, d0
+    mov     2, d1
+    call    FmtHex, 0, 0
+    mov     0x20, d0
+    movbu   d0, (a0)
+    inc     a0
+    mov     d3, d0
+    mov     6, d1
+    call    FmtHex, 0, 0
+    clr     d0
+    movbu   d0, (a0)
+    mov     WH_MTEXT, a0
+    clr     d0
+    mov     228, d1
+    mov     3, d2
+    call    WText, 0, 0
+wmk_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# WheelCrumbLog: at the game's start (the main task, inplog.s InpLogInit, before it zeroes the input log's room): when
+# the trail of a session before is there, C:\AWWHLOG.TXT gets it, oldest step first, one a line ("ss aaaaaa"), after a
+# line with the steps' count and the last one's ms; written as IlWriteFile writes AWINnn.BIN.
+WheelCrumbLog:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     (WH_CRUMB), d0
+    mov     WH_CRUMB_MAGIC, d1
+    cmp     d1, d0
+    bne     wcl_ret
+    mov     (FW_WRITE), d0
+    cmp     0, d0
+    beq     wcl_ret
+    mov     REPORT_BUF, a0
+    mov     wh_t_crumb, a1
+    call    StrPut, 0, 0
+    mov     (WH_CRUMB + 4), d0
+    mov     8, d1
+    call    FmtHex, 0, 0
+    mov     0x20, d0
+    movbu   d0, (a0)
+    inc     a0
+    mov     (WH_CRUMB + 8), d0
+    mov     8, d1
+    call    FmtHex, 0, 0
+    call    wcl_eol, 0, 0
+    mov     a0, a3                  # a3 = where the next line goes
+    mov     (WH_CRUMB + 4), d2      # the entries, oldest first: from count - min(count, 13)
+    mov     d2, d3
+    cmp     WH_CRUMB_N, d3
+    bls     wcl_n
+    mov     WH_CRUMB_N, d3
+wcl_n:
+    sub     d3, d2                  # d2 = the first entry's number, d3 = entries
+    cmp     0, d3
+    beq     wcl_write
+wcl_entry:
+    mov     d2, d0
+    mov     WH_CRUMB_N, d1
+    call    Div, 0, 0
+    asl     2, d1
+    mov     WH_CRUMB + 12, a0
+    add     d1, a0
+    mov     (a0), d0
+    mov     d0, a2                  # (the entry)
+    lsr     24, d0
+    mov     a3, a0
+    mov     2, d1
+    call    FmtHex, 0, 0
+    mov     0x20, d0
+    movbu   d0, (a0)
+    inc     a0
+    mov     a2, d0
+    and     0xFFFFFF, d0
+    mov     6, d1
+    call    FmtHex, 0, 0
+    call    wcl_eol, 0, 0
+    mov     a0, a3
+    inc     d2
+    add     -1, d3
+    bne     wcl_entry
+wcl_write:
+    mov     a3, d2                  # d2 = bytes
+    mov     REPORT_BUF, d0
+    sub     d0, d2
+    mov     1, d0                   # the file layer to the SD card
+    mov     (FW_SETEXT), a3
+    calls   (a3)
+    mov     wh_t_crumbname, a0
+    mov     mode_wb, a1
+    mov     (FW_OPEN), a3
+    calls   (a3)
+    exth    d0
+    cmp     0, d0
+    blt     wcl_back
+    mov     REPORT_BUF, a0
+    mov     d2, d0
+    mov     (FW_WRITE), a3
+    calls   (a3)
+    mov     (FW_CLOSE), a3
+    calls   (a3)
+wcl_back:
+    mov     (FW_RESETEXT), a3
+    calls   (a3)
+wcl_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# wcl_eol(a0 = where) -> a0 past "\r\n". Leaf.
+wcl_eol:
+    mov     0x0D, d0
+    movbu   d0, (a0)
+    mov     0x0A, d0
+    movbu   d0, (1, a0)
+    add     2, a0
+    rets
 
 # =================================================================================
 # The game task (help.s).
@@ -702,6 +877,9 @@ WheelShow:
     mov     (a0), d0
     mov     d0, (0x14, sp)          # (WH_SHOWMS)
     call    PalCheck, 0, 0          # entries 0-15: the help screen's colours (the text)
+    mov     0x01, d0                # (step: the page asked for)
+    clr     d1
+    call    WheelMark, 0, 0
     mov     (WH_REGION), d0
     cmp     3, d0
     bcs     wsh_reg
@@ -735,6 +913,9 @@ wsh_lcd:
     call    WheelLcdSet, 0, 0
     mov     1, d0
     mov     d0, (WH_SHOWN)
+    mov     0x02, d0                # (step: the LCD on the frame)
+    mov     (WH_SC_ROW), d1
+    call    WheelMark, 0, 0
     mov     1, d0
     mov     d0, (PF_DAMAGE)         # (FB8's window in full at the next page or blit; WheelHide makes sure)
     mov     (WH_STEPS), d0          # detents and presses from before the page: not for it; from now on they are
@@ -802,8 +983,15 @@ wsh_pos:
     add     d0, a0
     movhu   (a0), d0
     call    WheelPicture, 0, 0      # at once, nearest; then at rest, a few rows a poll (WheelPoll)
+    mov     0x23, d0                # (step: the first picture drawn)
+    mov     (WH_TLAST), d1
+    call    WheelMark, 0, 0
     clr     d0
     mov     d0, (WH_SROW)
+    call    WheelTexts, 0, 0
+    mov     0x24, d0                # (step: shown; then the text's last line again over the step's)
+    clr     d1
+    call    WheelMark, 0, 0
     call    WheelTexts, 0, 0
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
@@ -862,12 +1050,18 @@ WheelRestore:
     mov     (WH_BORROW), d0
     cmp     0, d0
     beq     wrs_ret
+    mov     0x30, d0                # (step: closing)
+    clr     d1
+    call    WheelMark, 0, 0
     mov     WD_SAVE, a0
     mov     WRAM, a1
     call    WheelCopyPages, 0, 0
     clr     d0
     mov     d0, (WH_BORROW)
     mov     d0, (WH_INRAM)
+    mov     0x3F, d0                # (step: the VM's pages back)
+    clr     d1
+    call    WheelMark, 0, 0
 wrs_ret:
     ret     [d2,d3,a2,a3], 0x20
 
@@ -972,8 +1166,9 @@ WheelUnpack:
     ret     [d2,d3,a2,a3], 0x20
 
 # WheelEnsure -> d0 = 0 when A and B hold the checked blob and WT_BOTROW, WT_SHROW are made (WheelLayout), else 1
-# (WH_FAIL says why). The VM's pages are saved first. From the cache (WD_CACHE) when it has the pieces, else from the
-# card: all fourteen, C drawn into the tall frame (WheelFrameInit), A and B's packed pieces kept in the cache.
+# (WH_FAIL says why). The VM's pages are saved first. A from the cache (WD_CACHE) when it has it, else every piece
+# from the card (the first time: C drawn into the tall frame, WheelFrameInit; A's packed pieces kept in the cache); B
+# from the card whenever it is not in RAM (the other help pages draw where it is).
 WheelEnsure:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x20, sp
@@ -990,22 +1185,21 @@ WheelEnsure:
     mov     (WH_SAVES), d0
     inc     d0
     mov     d0, (WH_SAVES)
+    mov     0x03, d0                # (step: the VM's pages saved)
+    clr     d1
+    call    WheelMark, 0, 0
 wen_have:
     mov     (WH_INRAM), d0
     cmp     0, d0
-    beq     wen_all
-    mov     (WH_INB), d0
-    cmp     0, d0
-    bne     wen_layout
-    mov     11, d2                  # B only
-    bra     wen_cache
-wen_all:
-    clr     d2                      # d2 = the first piece to unpack
-wen_cache:
+    bne     wen_b
     mov     (WH_CACHED), d0
     cmp     0, d0
     beq     wen_card
+    clr     d2                      # A from the cache
 wen_cpiece:
+    mov     0x18, d0                # (step: a piece from the cache)
+    mov     d2, d1
+    call    WheelMark, 0, 0
     mov     d2, d0                  # the packed piece from display memory to the scratch, unpacked in its place
     asl     2, d0
     mov     WH_PC_AT, a0
@@ -1028,89 +1222,30 @@ wen_cpiece:
     inc     d2
     cmp     WB_CACHED_N, d2
     bne     wen_cpiece
-    call    WheelValid, 0, 0
-    cmp     0, d0
-    beq     wen_inram
+    mov     1, d0
+    mov     d0, (WH_INRAM)
+    bra     wen_b
 wen_recard:
     clr     d0                      # (not as it was left: from the card again)
     mov     d0, (WH_CACHED)
     mov     d0, (WH_TFOK)
-    clr     d2
 wen_card:
-    clr     d2                      # every piece, from the card
-    mov     wh_t_loading, a0
+    mov     wh_t_loading, a0        # every piece, from the card
     mov     WHEEL_X0 + 172, d0
     mov     116, d1
     mov     1, d2
     call    WText, 0, 0
-    clr     d2
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
     mov     d0, (0x14, sp)          # the load's start
     mov     WD_CACHE, d0
     mov     d0, (WH_CNEXT)
+    clr     d2
 wen_piece:
     mov     d2, d0
-    inc     d0
-    mov     d0, (WH_LOADREQ)        # the main task reads it (WheelService)
-    mov     (FWV_KERNEL_MS), a0
-    mov     (a0), d3
-wen_wait:
-    call    HelpSleep, 0, 0
-    mov     (WH_LOADREQ), d0
+    call    WheelCardPiece, 0, 0
     cmp     0, d0
-    beq     wen_read
-    mov     (FWV_KERNEL_MS), a0
-    mov     (a0), d0
-    sub     d3, d0
-    cmp     WH_LOAD_MS, d0
-    bcs     wen_wait
-    clr     d0
-    mov     d0, (WH_LOADREQ)
-    bra     wen_rfail
-wen_read:
-    mov     (WH_LOADRES), d0
-    cmp     8, d0
-    bgt     wen_keep
-wen_rfail:
-    mov     0x10, d0
-    bra     wen_fail
-wen_keep:
-    cmp     WB_CACHED_N, d2         # A and B's packed pieces into the cache, while they fit
-    bcc     wen_unpack
-    mov     d2, d1
-    asl     2, d1
-    mov     WH_PC_LEN, a0
-    add     d1, a0
-    mov     d0, (a0)
-    mov     (WH_CNEXT), a1          # a1 = where it goes
-    mov     WH_PC_AT, a0
-    add     d1, a0
-    mov     a1, (a0)
-    add     3, d0
-    and     0xFFFFFFFC, d0
-    mov     a1, d1
-    add     d0, d1                  # d1 = its end
-    mov     WD_CACHE_END, a0
-    cmp     a0, d1
-    bls     wen_fits
-    mov     WD_CACHE_END + 4, d1    # (it does not fit: the cache stays off, WH_CACHED 0)
-    mov     d1, (WH_CNEXT)
-    bra     wen_unpack
-wen_fits:
-    mov     d1, (WH_CNEXT)
-    lsr     2, d0
-    mov     WB_SCRATCH, a0
-    call    WheelCopy, 0, 0
-wen_unpack:
-    mov     d2, d0
-    mov     (WH_LOADRES), d1
-    call    WheelUnpack, 0, 0
-    cmp     0, d0
-    beq     wen_next
-    mov     0x20, d0
-    bra     wen_fail
-wen_next:
+    bne     wen_fail
     inc     d2
     cmp     WB_PIECES, d2
     bne     wen_piece
@@ -1128,6 +1263,9 @@ wen_bad:
     clr     d2
     bra     wen_fail
 wen_good:
+    mov     0x20, d0                # (step: the blob checked)
+    clr     d1
+    call    WheelMark, 0, 0
     mov     (FWV_KERNEL_MS), a0
     mov     (a0), d0
     mov     (0x14, sp), d1
@@ -1137,9 +1275,12 @@ wen_good:
     inc     d0
     mov     d0, (WH_LOADS)
     call    WheelFrameInit, 0, 0    # C into the tall frame, once
+    mov     0x21, d0                # (step: the frame drawn)
+    clr     d1
+    call    WheelMark, 0, 0
     mov     1, d0
     mov     d0, (WH_TFOK)
-    mov     (WH_CNEXT), d0          # every packed piece of A and B kept: the next showings unpack them from there
+    mov     (WH_CNEXT), d0          # every packed piece of A kept: the next showings unpack them from there
     mov     WD_CACHE_END, a0
     cmp     a0, d0
     bhi     wen_lutc
@@ -1150,17 +1291,40 @@ wen_lutc:
     mov     WH_LUTC, a1
     mov     2 * 240 / 4, d0
     call    WheelCopy, 0, 0
-wen_inram:
     mov     1, d0
     mov     d0, (WH_INRAM)
+    mov     d0, (WH_INB)
+wen_b:
+    mov     (WH_INB), d0            # B, from the card
+    cmp     0, d0
+    bne     wen_layout
+    mov     11, d2
+wen_bpiece:
+    mov     d2, d0
+    call    WheelCardPiece, 0, 0
+    cmp     0, d0
+    bne     wen_fail
+    inc     d2
+    cmp     13, d2
+    bne     wen_bpiece
+    call    WheelValid, 0, 0
+    cmp     0, d0
+    bne     wen_bad
+    mov     1, d0
     mov     d0, (WH_INB)
 wen_layout:
     call    WheelLayout, 0, 0
     cmp     0, d0
-    beq     wen_ret
+    beq     wen_lay
     mov     0x40, d0
     clr     d2
     bra     wen_fail
+wen_lay:
+    mov     0x22, d0                # (step: the rows laid out)
+    clr     d1
+    call    WheelMark, 0, 0
+    clr     d0
+    bra     wen_ret
 wen_fail:
     add     d2, d0
     mov     d0, (WH_FAIL)
@@ -1170,6 +1334,92 @@ wen_fail:
     mov     1, d0
 wen_ret:
     ret     [d2,d3,a2,a3], 0x30
+
+# WheelCardPiece(d0 = piece) -> d0 = 0 when it was read from the card (the main task, WheelService) and unpacked in
+# its place, A's packed pieces kept in the cache while they fit; else 0x10 + piece (not read) or 0x20 + piece (not
+# unpacked).
+WheelCardPiece:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     d0, d2
+    mov     0x10, d0                # (step: a piece asked for)
+    mov     d2, d1
+    call    WheelMark, 0, 0
+    mov     d2, d0
+    inc     d0
+    mov     d0, (WH_LOADREQ)        # the main task reads it (WheelService)
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d3
+wcp_wait:
+    call    HelpSleep, 0, 0
+    mov     (WH_LOADREQ), d0
+    cmp     0, d0
+    beq     wcp_read
+    mov     (FWV_KERNEL_MS), a0
+    mov     (a0), d0
+    sub     d3, d0
+    cmp     WH_LOAD_MS, d0
+    bcs     wcp_wait
+    clr     d0
+    mov     d0, (WH_LOADREQ)
+    bra     wcp_rfail
+wcp_read:
+    mov     0x11, d0                # (step: a piece read, its size)
+    mov     (WH_LOADRES), d1
+    call    WheelMark, 0, 0
+    mov     (WH_LOADRES), d0
+    cmp     8, d0
+    bgt     wcp_keep
+wcp_rfail:
+    mov     0x10, d0
+    add     d2, d0
+    bra     wcp_ret
+wcp_keep:
+    cmp     WB_CACHED_N, d2         # A's packed pieces into the cache, while they fit
+    bcc     wcp_unpack
+    mov     d2, d1
+    asl     2, d1
+    mov     WH_PC_LEN, a0
+    add     d1, a0
+    mov     d0, (a0)
+    mov     (WH_CNEXT), a1          # a1 = where it goes
+    mov     WH_PC_AT, a0
+    add     d1, a0
+    mov     a1, (a0)
+    add     3, d0
+    and     0xFFFFFFFC, d0
+    mov     a1, d1
+    add     d0, d1                  # d1 = its end
+    mov     WD_CACHE_END, a0
+    cmp     a0, d1
+    bls     wcp_fits
+    mov     WD_CACHE_END + 4, d1    # (it does not fit: the cache stays off, WH_CACHED 0)
+    mov     d1, (WH_CNEXT)
+    bra     wcp_unpack
+wcp_fits:
+    mov     d1, (WH_CNEXT)
+    lsr     2, d0
+    mov     WB_SCRATCH, a0
+    call    WheelCopy, 0, 0
+    mov     0x12, d0                # (step: kept in the cache)
+    mov     d2, d1
+    call    WheelMark, 0, 0
+wcp_unpack:
+    mov     d2, d0
+    mov     (WH_LOADRES), d1
+    call    WheelUnpack, 0, 0
+    cmp     0, d0
+    beq     wcp_ok
+    mov     0x20, d0
+    add     d2, d0
+    bra     wcp_ret
+wcp_ok:
+    mov     0x13, d0                # (step: unpacked)
+    mov     d2, d1
+    call    WheelMark, 0, 0
+    clr     d0
+wcp_ret:
+    ret     [d2,d3,a2,a3], 0x20
 
 # WheelValid -> d0 = 0 when A and B hold a blob of this build's kind: "AWWH", version, the three sizes, A and B's words
 # summing to 0.
@@ -2553,7 +2803,7 @@ wh_t_pages2:    .asciz  "the others"
 wh_t_back:      .asciz  "EXIT, HELP"
 wh_t_back2:     .asciz  "or a key:"
 wh_t_back3:     .asciz  "the game"
-wh_t_page:      .asciz  "Page 5/5"
+wh_t_page:      .asciz  "Page 5/5  "
 wh_t_top:       .asciz  "TOP >"
 wh_t_middle:    .asciz  "MIDDLE >"
 wh_t_bottom:    .asciz  "BOTTOM >"
@@ -2565,4 +2815,6 @@ wh_t_loading:   .asciz  "Loading the wheel"
 wh_t_missing:   .asciz  "WHEEL FILES MISSING"
 wh_t_code:      .asciz  "OR BAD, CODE "
 wh_t_nowheel:   .asciz  "NO WHEEL"
+wh_t_crumb:     .asciz  "AWWHLOG steps, last ms: "
+wh_t_crumbname: .asciz  "AWWHLOG.TXT"
     .align  4

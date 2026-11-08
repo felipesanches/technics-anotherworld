@@ -36,6 +36,7 @@
 InpLogInit:
     movm    [d2,d3,a2,a3], (sp)
     add     -0x10, sp
+    call    WheelCrumbLog, 0, 0     # the code wheel page's trail from a session before, to the card (wheel.s)
     mov     INPLOG_AT, a0
     mov     0x40, d1
     clr     d0
