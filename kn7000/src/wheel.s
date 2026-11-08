@@ -191,6 +191,12 @@
 .equ WH_TEXT,       WHEEL_VARS + 0x1A0  # 64 bytes: a line being made
 .equ WH_MARKS,      WHEEL_VARS + 0x3C0  # steps marked (WheelMark)
 .equ WH_MTEXT,      WHEEL_VARS + 0x3C4  # 16 bytes: WheelMark's line
+.equ WH_NMIARMED,   WHEEL_VARS + 0x3D4  # 1 while the NMI stub points at WheelNmi
+.equ WH_NMIFW,      WHEEL_VARS + 0x3D8  # the firmware's NMI handler (the stub's jump)
+.equ WH_NMISAVE,    WHEEL_VARS + 0x3DC  # 3 x u16: the stub as the firmware had it
+.equ WH_NMITEXT,    WHEEL_VARS + 0x3E4  # 24 bytes: the NMI screen's line (to +0x3FC)
+.equ NMI_STUB,      0x90000006      # the NMI stub at 0x50000006 (nop; jmp d32), through the +0x40000000 view
+.equ NMICR,         0x34000100      # bit 2: a system error (probe PFT10, Pinball notes/session-2026-10-26)
 # ---- the trail of steps (WheelMark), kept across a restart of the instrument: in the input log's room, which the loader
 #      does not zero; InpLogInit zeroes it at the next start, after WheelCrumbLog has written it to the card ----
 .equ WH_CRUMB,      INPLOG_AT + 0xC0    # "WAWB", steps so far, the ms of the last, then 13 x (step << 24 | arg)
@@ -846,6 +852,109 @@ wcl_eol:
     add     2, a0
     rets
 
+# WheelNmiArm: while the page shows, the NMI stub at 0x50000006 jumps to WheelNmi (Pinball Fantasies' crash screen,
+# src/app/crash.c, which caught a system-error NMI on the owner's unit): a system error then shows where it happened
+# instead of the firmware's power-fail routine restarting the instrument. Only when the stub is the "nop; jmp d32" it
+# expects; the caches synchronised after (CacheSync: the stub shares a line with the interrupt stub at 0x50000000).
+WheelNmiArm:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     (WH_NMIARMED), d0
+    cmp     0, d0
+    bne     wna_ret
+    mov     NMI_STUB, a2
+    movhu   (a2), d0
+    cmp     0xDCCB, d0
+    bne     wna_ret
+    movhu   d0, (WH_NMISAVE)
+    movhu   (2, a2), d1
+    movhu   d1, (WH_NMISAVE + 2)
+    movhu   (4, a2), d2
+    movhu   d2, (WH_NMISAVE + 4)
+    asl     16, d2                  # the firmware's handler: 0x50000007 + the jump's displacement
+    or      d1, d2
+    add     0x50000007, d2
+    mov     d2, (WH_NMIFW)
+    mov     WheelNmi, d2            # ours
+    add     -0x50000007, d2
+    movhu   d2, (2, a2)
+    lsr     16, d2
+    movhu   d2, (4, a2)
+    call    CacheSync, 0, 0
+    mov     1, d0
+    mov     d0, (WH_NMIARMED)
+wna_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# WheelNmiDisarm: the firmware's stub back.
+WheelNmiDisarm:
+    movm    [d2,d3,a2,a3], (sp)
+    add     -0x10, sp
+    mov     (WH_NMIARMED), d0
+    cmp     0, d0
+    beq     wnd_ret
+    mov     NMI_STUB, a2
+    movhu   (WH_NMISAVE + 2), d0
+    movhu   d0, (2, a2)
+    movhu   (WH_NMISAVE + 4), d0
+    movhu   d0, (4, a2)
+    call    CacheSync, 0, 0
+    clr     d0
+    mov     d0, (WH_NMIARMED)
+wnd_ret:
+    ret     [d2,d3,a2,a3], 0x20
+
+# WheelNmi: the NMI, through the stub. Not a system error (POWER OFF): on to the firmware's handler. A system error:
+# the PC and PSW the CPU pushed into the trail (step EE, then EF: the PC's low 24 bits and the PSW's) and onto the
+# frame the LCD shows, "NMI PC pppppppp" and "PSW ssssssss" in yellow at the left margin, then it holds there.
+WheelNmi:
+    movhu   (NMICR), d0
+    btst    0x04, d0
+    bne     wnm_sys
+    mov     (WH_NMIFW), a0
+    jmp     (a0)
+wnm_sys:
+    mov     sp, a0
+    mov     (4, a0), d0
+    mov     d0, (WH_NMITEXT + 16)   # (the PC, the PSW kept)
+    mov     (a0), d0
+    mov     d0, (WH_NMITEXT + 20)
+    add     -0x40, sp
+    mov     0xEE, d0
+    mov     (WH_NMITEXT + 16), d1
+    call    WheelMark, 0, 0
+    mov     0xEF, d0
+    mov     (WH_NMITEXT + 20), d1
+    call    WheelMark, 0, 0
+    mov     WH_NMITEXT, a0
+    mov     wh_t_nmipc, a1
+    call    StrPut, 0, 0
+    mov     (WH_NMITEXT + 16), d0
+    mov     8, d1
+    call    FmtHex, 0, 0
+    clr     d0
+    movbu   d0, (a0)
+    mov     WH_NMITEXT, a0
+    clr     d0
+    mov     176, d1
+    mov     3, d2
+    call    WText, 0, 0
+    mov     WH_NMITEXT, a0
+    mov     wh_t_nmipsw, a1
+    call    StrPut, 0, 0
+    mov     (WH_NMITEXT + 20), d0
+    mov     8, d1
+    call    FmtHex, 0, 0
+    clr     d0
+    movbu   d0, (a0)
+    mov     WH_NMITEXT, a0
+    clr     d0
+    mov     188, d1
+    mov     3, d2
+    call    WText, 0, 0
+wnm_hold:
+    bra     wnm_hold
+
 # =================================================================================
 # The game task (help.s).
 # WheelAtQuestion -> d0 = 1 while the game shows the code wheel's question (part 0x3E80, var 0xBC without the 0x10 a
@@ -916,6 +1025,11 @@ wsh_lcd:
     mov     0x02, d0                # (step: the LCD on the frame)
     mov     (WH_SC_ROW), d1
     call    WheelMark, 0, 0
+    call    WheelNmiArm, 0, 0       # a system error shows where (WheelNmi)
+.ifdef WHEEL_NMI_SELFTEST
+    mov     0, a0                   # (make the self-test: a load the unit faults on, as Pinball's PFT7)
+    movbu   (WheelNmi, a0), d0
+.endif
     mov     1, d0
     mov     d0, (PF_DAMAGE)         # (FB8's window in full at the next page or blit; WheelHide makes sure)
     mov     (WH_STEPS), d0          # detents and presses from before the page: not for it; from now on they are
@@ -1035,6 +1149,7 @@ whd_set:
     inc     d2
     cmp     256, d2
     bne     whd_lut
+    call    WheelNmiDisarm, 0, 0    # the firmware's NMI stub back
     call    LcdSet, 0, 0            # the LCD on FB8 (lcd8.s)
     mov     1, d0
     mov     d0, (PF_DAMAGE)
@@ -2323,7 +2438,8 @@ wss_ret:
 #   nearest: the span in pieces of WH_SEG pixels; at a piece's start U and V to 9.7, rounded, in one word, V << 16 |
 #     U, and so the step along the row, (dV << 16) + dU with dU = (2c + 256) >> 9, dV = (-2s + 256) >> 9: one add a
 #     pixel; the texel's row is bits 23-31, its column bits 7-15: TOPV + (word >> 23 << 9 | word << 16 >> 23);
-#     four pixels gathered in a3, compared with the copy (a2) and stored to the LCD at (row's LCD - row's copy, a2)
+#     four pixels gathered in a3, compared with the copy (a2) and stored to the LCD at a2 + (row's LCD - row's copy),
+#     computed in a3 (an index register with a top byte not 0 is not used: the unit's restart, 2026-11-08)
 #   bilinear: 16.16, U and V each a stack variable, a pixel a turn into WT_LINE, then its words stored as above
 # Locals: 0x14 dU (16.16), 0x18 dV, 0x1C the span's end (the lower disk's row), 0x20 y, 0x24 c, 0x28 s, 0x2C the
 # mode, 0x30 smooth, 0x34 x0, 0x38 x1, 0x3C U, 0x40 V, 0x44 8 - fx, 0x48 fx, 0x4C 8 - fy, 0x50 fy, 0x54 the first
@@ -2581,8 +2697,10 @@ wn_ok3:
     beq     wn_same
 wn_st:
     mov     d0, (a2)
-    mov     (0x64, sp), d1
-    mov     d0, (d1, a2)
+    mov     (0x64, sp), d1          # the LCD's word: the copy's address + (the LCD less the copy), added in a3 (free
+    mov     a2, a3                  #   here: the word is in d0), never as an index register: (d1, a2) with d1's top
+    add     d1, a3                  #   byte not 0 (0x4C...) is the suspect of the restart on the owner's unit
+    mov     d0, (a3)                #   (c707af6e, 2026-11-08), as a d32 displacement's top byte is
     mov     (WH_NSTORE), d1
     inc     d1
     mov     d1, (WH_NSTORE)
@@ -2701,8 +2819,10 @@ wb_st:
     beq     wb_same
 wb_store:
     mov     d0, (a2)
-    mov     (0x64, sp), d1
-    mov     d0, (d1, a2)
+    mov     (0x64, sp), d1          # (the LCD's word, as above: through a3, free here)
+    mov     a2, a3
+    add     d1, a3
+    mov     d0, (a3)
     mov     (WH_NSTORE), d1
     inc     d1
     mov     d1, (WH_NSTORE)
@@ -2816,5 +2936,7 @@ wh_t_missing:   .asciz  "WHEEL FILES MISSING"
 wh_t_code:      .asciz  "OR BAD, CODE "
 wh_t_nowheel:   .asciz  "NO WHEEL"
 wh_t_crumb:     .asciz  "AWWHLOG steps, last ms: "
+wh_t_nmipc:     .asciz  "NMI PC "
+wh_t_nmipsw:    .asciz  "PSW    "
 wh_t_crumbname: .asciz  "AWWHLOG.TXT"
     .align  4

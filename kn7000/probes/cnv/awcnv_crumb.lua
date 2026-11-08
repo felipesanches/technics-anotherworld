@@ -1,10 +1,11 @@
 -- (c) 2026 Felipe Correa da Silva Sanches <juca@members.fsf.org>; GPL v3+
 --
 -- awcnv_crumb.lua -- does the code wheel page's trail of steps (src/wheel.s WheelMark, WH_CRUMB in the input log's
--- room) survive a restart of the instrument in the middle of the page's load, and does the next start write it to the
--- card as AWWHLOG.TXT (WheelCrumbLog)? HELP at the code wheel's question, then, once the main task has been asked for
--- piece AWTC_PIECE (default 6), MAME's soft reset (the firmware boots again; the DRAM is not cleared by MAME); then
--- DISK MENU, STYLE CONVERT, OK again, the game's start, EXIT held. run_crumb.sh reads AWWHLOG.TXT off the card.
+-- room) stay through a quit and a new start of the game, and does that start write it to the card as AWWHLOG.TXT
+-- (WheelCrumbLog)? HELP at the code wheel's question (the page's first load), EXIT, EXIT held (quit), "Continue Next?"
+-- YES (the loader reads KN7APP.BIN again, the game starts), then EXIT held. run_crumb.sh reads AWWHLOG.TXT off the card.
+-- (Whether the owner's DRAM keeps the trail through the instrument's restart is the unit's to tell: MAME's soft reset
+-- runs this script again from its start and its driver clears the RAM, so it cannot.)
 -- Prints "awtc: ..." lines: the trail before the reset and as found after it.
 local M = manager.machine
 local sp = M.devices[":maincpu"].spaces["program"]
@@ -13,7 +14,6 @@ local CV_ENDED = CV + 0x30
 local PART = VI + 0x102A
 local WV = 0x502DFA00
 local CRUMB = 0x5031C000 + 0xC0
-local PIECE = tonumber(os.getenv("AWTC_PIECE") or "6")
 local function wv(o) return sp:read_u32(WV + o) end
 local function log(s) print("awtc: " .. s) end
 local function now() return M.time:as_double() end
@@ -41,19 +41,21 @@ local co = coroutine.create(function()
   start()
   log("the question " .. tostring(wait_until(asking, 240)))
   wait(3)
-  press("CPC_SEG5", 0x02)             -- HELP
-  local at = wait_until(function() return wv(0x54) == PIECE + 1 end, 60)
-  log(string.format("piece %d asked for: %s; the trail: %s", PIECE, tostring(at), trail()))
-  local before = trail()
-  M:soft_reset()
-  wait(1)
-  log("after the reset: " .. trail())
-  wait_until(function() return now() > 30 end, 60)
-  wait(25)
-  start()
+  press("CPC_SEG5", 0x02)             -- HELP: the page loads (its steps into the trail)
+  wait_until(function() return wv(0x04) == 1 and wv(0x8C) >= 1 and wv(0xB4) >= 240 and wv(0xB0) == 0 end, 60)
+  log("the page shown; the trail: " .. trail())
+  press("CPC_SEG11", 0x80); wait(2)   -- EXIT: the help screen closes (steps 30, 3F)
+  log("the help screen closed; the trail: " .. trail())
+  local kept = trail()
+  press("CPC_SEG11", 0x80, 2.0)       -- EXIT held: quit
+  wait_until(function() return sp:read_u32(CV_ENDED) == 1 end, 30)
+  wait(2)
+  log("quit; the trail: " .. trail() .. " (" .. (trail() == kept and "kept" or "CHANGED") .. ")")
+  press("CPC_SEG11", 0x80); wait(4)   -- EXIT: the message, then "Continue Next?"
+  press("CPR_SEG7", 0x01)             -- YES: KN7APP.BIN read again, the game starts: WheelCrumbLog, InpLogInit
   local run = wait_until(function() return sp:read_u32(CV) == 3 end, 120)
+  wait(3)
   log(string.format("the game started again %s; the trail now (InpLogInit zeroed it after writing it): %s", tostring(run), trail()))
-  wait(5)
   press("CPC_SEG11", 0x80, 2.0)       -- EXIT held: quit
   wait_until(function() return sp:read_u32(CV_ENDED) == 1 end, 30)
   wait(2)
