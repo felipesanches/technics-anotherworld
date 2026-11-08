@@ -1,0 +1,11 @@
+run_cnv_tests: floppy b7a67de602694fd2 (/home/fsanches/compartilhado/technics-anotherworld/kn7000/../../technics-roms-disasm/kn7000/tools/cnv_romdump/releases/2026-10-19/floppy/kn7load_floppy.img); KN7APP.BIN c707af6ee8f2efd2; emulator md5 4e4c2390
+run_cnv_tests: blank-v16  size=262144 nonzero=153226 stored=6e1e9dd0 computed=6e1e9dd0 match=True
+run_cnv_tests: floppy b7a67de602694fd2 (/home/fsanches/compartilhado/technics-anotherworld/kn7000/../../technics-roms-disasm/kn7000/tools/cnv_romdump/releases/2026-10-19/floppy/kn7load_floppy.img); KN7APP.BIN c707af6ee8f2efd2; emulator md5 4e4c2390
+run_cnv_tests: v16/blank session   PASS  18 checks passed, 0 failed (/home/fsanches/compartilhado/tmp/aw-codewheel-zoom/accept/v16-blank/session.txt)
+run_cnv_tests: v16/blank report    PASS  on the card: AWPERF0.TXT 2310 bytes (first quit), AWPERF1.TXT 1776 bytes (second quit), the text the game built; none from the control run
+run_cnv_tests: v16/blank ic23w     PASS  game: IC23 verdict: CLEAN (writes 526391, from 0x502B8000-0x502E7FFF: 0, past 256 KB: 0)
+run_cnv_tests: v16/blank same      PASS  control vs game: identical; game: size=262144 nonzero=153226 stored=6e1e9dd0 computed=6e1e9dd0 match=True; sha1 bc2305ddc4a899a8
+run_cnv_tests: v16/blank accepted  PASS  control: verdict byte 00, PANEL MEMORY store kept; game: verdict byte 00, PANEL MEMORY store kept;
+run_cnv_tests: v16/blank pools     PASS  control vs game at POWER OFF: identical (sha1 dde3dd9c1428c5c4); POOLS verdict: CLEAN
+run_cnv_tests: v16/blank area      PASS  AWAREA verdict: CLEAN (the firmware's and the loader's loads 390384, SD reads for the game 930204; SP seen in the game's code at 0x5038DD2C-0x503AD844)
+run_cnv_tests: v16/blank loader    PASS  LOADER verdict: CLEAN (the loader's own writes 247105, the firmware loading it 14256, the game's 0, foreign 0)

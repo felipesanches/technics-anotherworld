@@ -1,0 +1,18 @@
+open       rows   0-239, rest   : angle 52368 (287.67 deg, number 1), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p1_mid     rows   0-239, turning: angle 54876 (301.44 deg, between numbers), nearest , one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p1         rows   0-239, rest   : angle 55644 (305.66 deg, number 2), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p3_mid     rows   0-239, turning: angle 60874 (334.39 deg, between numbers), nearest , one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p3         rows   0-239, rest   : angle    57 (  0.31 deg, number 5), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+m5_mid     rows   0-239, turning: angle 60156 (330.45 deg, between numbers), nearest , one state for every row True: 0 of 115200 entries differ from render_row()  ok
+m5         rows   0-239, rest   : angle 49138 (269.92 deg, number 20), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+mid        rows 120-359, rest   : angle 49138 (269.92 deg, number 20), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+m1_mid     rows 120-359, turning: angle 46332 (254.51 deg, between numbers), nearest , one state for every row True: 0 of 115200 entries differ from render_row()  ok
+m1         rows 120-359, rest   : angle 45900 (252.14 deg, number 19), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+bot        rows 240-479, rest   : angle 45900 (252.14 deg, number 19), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+top        rows   0-239, rest   : angle 45900 (252.14 deg, number 19), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p2_mid     rows   0-239, turning: angle 50356 (276.61 deg, between numbers), nearest , one state for every row True: 0 of 115200 entries differ from render_row()  ok
+p2         rows   0-239, rest   : angle 52368 (287.67 deg, number 1), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+bot2       rows 240-479, rest   : angle 52368 (287.67 deg, number 1), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+back       rows 240-479, rest   : angle 52368 (287.67 deg, number 1), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+again      rows 240-479, rest   : angle 52368 (287.67 deg, number 1), bilinear, one state for every row True: 0 of 115200 entries differ from render_row()  ok
+codewheel_check: 17 pictures, 17 exactly render_row()'s, 0 not

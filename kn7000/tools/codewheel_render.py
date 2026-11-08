@@ -22,34 +22,47 @@
 # Upper disk at angle D (clockwise, the drawing's own position being 0): the arrow points at number k when
 # D = number(k) - arrow. The KN7000 turns the upper disk about the lower disk's centre (the pin).
 #
-# Rendered with librsvg (the Python GObject binding) at 240/679.13 pixels a unit, the lower disk's centre at pixel
-# (128.0, 120.0) of a 256 x 240 picture (the page shows it at x 192 of the LCD: the pin in the LCD's middle):
-#   * BOT, 256 x 240: the lower disk alone, a byte a pixel (look-up table entries 16-255; 0 black, outside it);
-#   * TOP, 256 x 256: the upper disk alone, its centre at (128.0, 128.0), unrotated: entries 16-255 where it covers
-#     (alpha >= 0.5), else 0-15, the shadow the drawing gives it (a blurred dark copy of its outline under it) at
-#     that point, in 15 levels (0 none);
+# Zoomed in (2026-11-08, Felipe: the symbols too small on the unit): rendered with librsvg (the Python GObject
+# binding) at 480/679.13 pixels a unit, twice the LCD's height, the lower disk's centre at pixel (240.0, 240.0) of
+# a 480 x 480 picture; the page shows 240 of its rows at a time (src/wheel.s: TOP, MIDDLE, BOTTOM). The scans in the
+# drawing are 1.56 (lower) and 1.0 (upper) pixels a unit, so 0.71 still draws from real detail.
+#   * BOT, 480 x 480: the lower disk alone, a byte a pixel (look-up table entries 16-255; 0 black, outside it);
+#   * TOP, 512 x 512: the upper disk alone, its centre at (256.0, 256.0), unturned: entries 16-255 where it covers
+#     (alpha >= 0.5), else 0-15, the shadow the drawing gives it at that point, in 15 levels (0 none); only its rows
+#     TR0 .. TR1 - 1 are kept (the rest are never read: the spans keep every texel within R_ROT + 1 of its centre);
 #   * SHADE, 16 x 256: entry e under shadow level s -> the nearest entry to e's colour darkened as the drawing does;
 #   * LUT: entries 16-255, 4 bits a channel (0x0RGB), the 240 colours (weighted k-means over every colour of both
 #     disks and of the shadowed lower one, in the LCD's own 4-bit depth);
 #   * SPANS: for each row, the columns [x0, x1) (multiples of 4) the upper disk can reach at any angle (radius R_ROT
 #     from the pin, its edge): only those are drawn again when the disk turns. Its shadow outside the edge is the same
 #     all round, so it is in BOT, and TOP has no shadow level beyond the edge;
+#   * BOTC: BOT inside the spans only, row after row (BOTOFF: each row's offset), what the device keeps in RAM;
+#   * RING: BOT outside the spans, each row's [xl, xr) (the lower disk's extent, multiples of 4) less the span: drawn
+#     into the page's frame once (it never changes);
 #   * SIN: 4096 x s16, sin(2 pi i / 4096) x 32767; ANGLES: the 20 rest angles, in 1/65536 of a turn;
 #   * LANES: each entry's colour as R << 20 | G << 10 | B (4-bit channels), for the blend; INV: 4096 entries, the
 #     entry nearest each 4-bit colour R << 8 | G << 4 | B.
-# The device draws a pixel (x, y) of the spans at angle A (wheel.s, render() here):
-#   c = SIN[(A/16 + 1024) % 4096], s = SIN[A/16];  dx2 = 2x + 1 - 256, dy2 = 2y + 1 - 240
-#   U = (128 << 16) + c*dx2 + s*dy2,  V = (128 << 16) - s*dx2 + c*dy2   (16.16; the pixel's centre turned back by A)
+# The device draws a pixel (x, y) of the spans at angle A (wheel.s WheelDraw, render() here):
+#   c = SIN[(A/16 + 1024) % 4096], s = SIN[A/16];  dx2 = 2x + 1 - 480, dy2 = 2y + 1 - 480
+#   U = (256 << 16) + c*dx2 + s*dy2,  V = (256 << 16) - s*dx2 + c*dy2   (16.16; the pixel's centre turned back by A)
 #   texel(i, j) = TOP[j][i] if >= 16, else SHADE[TOP[j][i]][BOT[y][x]]
-#   while the disk turns (nearest, 8.8):  U8 = (U(x0) + 128) >> 8 + k ((2c + 128) >> 8), V8 = (V(x0) + 128) >> 8
-#     + k ((-2s + 128) >> 8) at the span's k-th pixel;  pixel = texel(U8 >> 8, V8 >> 8)
+#   while the disk turns (nearest, 9.7): the span in pieces of up to 128 pixels; at a piece's first pixel xs,
+#     U7 = (U(xs) + 256) >> 9, V7 = (V(xs) + 256) >> 9, and at its k-th U7 + k ((2c + 256) >> 9), V7 + k ((-2s + 256)
+#     >> 9) (one word V7 << 16 | U7 on the device: one add a pixel);  pixel = texel(U7 >> 7, V7 >> 7)
 #   at rest (bilinear, in RGB):  U' = U - 0x8000, V' = V - 0x8000, i = U' >> 16, j = V' >> 16, fx = (U' >> 13) & 7,
 #     fy likewise; sum = LANES[texel(i, j)] (8-fx)(8-fy) + LANES[texel(i+1, j)] fx(8-fy) + LANES[texel(i, j+1)]
 #     (8-fx)fy + LANES[texel(i+1, j+1)] fx fy  (each lane at most 15 x 64);  pixel = INV[rounded lanes / 64]
 #
-# Output (OUT, e.g. build/wheel): AWWH0.AW .. AWWH4.AW, the blob below cut in 32 KB pieces, each ByteKiller-packed
-# (aw_hires.pack, checked with aw_extract.unpack; the game reads each to the scratch after the blob and BkUnpack puts
-# it in its place); sdfiles.lst; wheel.bin (the blob); wheel.txt
+# The blob (src/wheel.s WB_*: the same offsets) is three segments, each for its own place in the KN7000's RAM:
+#   A, SEGA bytes (the VM's four pages): TOP's rows, SHADE (right after them: wheel.s finds it from TOP), SIN, LANES,
+#      INV, LUT, SPANS, ANGLES, BOTOFF, the header, then BOTC's first rows;
+#   B, SEGB bytes (SHADOW's room): BOTC's other rows (a row never straddles A's end);
+#   C, SEGC bytes (ARENA5): RING's table (480 x u16 xl, u16 xr) and its bytes.
+# The header: "AWWH", VERSION, SEGA, SEGB, SEGC, a word making A and B's words sum to 0, and C's words' sum.
+#
+# Output (OUT, e.g. build/wheel): AWWH0.AW .. AWWHD.AW (hex), the blob cut in 32 KB pieces (A in 11, B in 2, C in
+# 1), each ByteKiller-packed (aw_hires.pack, checked with aw_extract.unpack; the game reads each to the scratch in
+# ARENA6 and BkUnpack puts it in its place); sdfiles.lst; wheel.bin (the blob, A B C one after the other); wheel.txt
 # (the measurements); and, with --previews DIR, PNGs of the device's picture at rest and between two numbers.
 #   python3 -I tools/codewheel_render.py ../../AnotherWorld_VMTools/aw_codewheel.svg build/wheel [--previews DIR]
 import argparse
@@ -65,15 +78,31 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ---- the blob (src/wheel.s WB_* : the same offsets) ----
-W_TOP, W_BOT, W_SIN, W_SHADE, W_LUT, W_SPANS, W_ANGLES, W_LANES, W_INV, W_HDR, W_SIZE = (
-    0x00000, 0x10000, 0x1F000, 0x21000, 0x22000, 0x22200, 0x22600, 0x22700, 0x22B00, 0x23B00, 0x23C00)
+TS = 512                          # TOP's row stride (9-bit texel coordinates)
+TR0, TR1 = 24, 488                # TOP's rows kept
+W_TOP = 0x00000                   # (TR1 - TR0) x 512
+W_SHADE = W_TOP + (TR1 - TR0) * TS  # 16 x 256, right after TOP's last row (wheel.s: TOP's row 0 + TR1 x 512)
+W_SIN = 0x3B000                   # 4096 x s16
+W_LANES = 0x3D000                 # 256 x u32
+W_INV = 0x3D400                   # 4096
+W_LUT = 0x3E400                   # 256 x u16
+W_SPANS = 0x3E600                 # 480 x (u16 x0, u16 x1)
+W_ANGLES = 0x3EE00                # 20 x u16
+W_BOTOFF = 0x3EE80                # 480 x u32: BOTC's rows, offsets in the blob (A then B)
+W_HDR = 0x3F600                   # "AWWH", version, SEGA, SEGB, SEGC, the sum's word
+W_BOTC = 0x3F700                  # BOTC's first rows, to SEGA
+SEGA, SEGB, SEGC = 0x58000, 0xF000, 0x8000
+W_RING = SEGA + SEGB              # in the blob: C (480 x (u16 xl, u16 xr), then the bytes)
+W_SIZE = SEGA + SEGB + SEGC
 PIECE = 0x8000
-W_SCRATCH, SCRATCH_MAX = 0x24000, 0x9000   # where a packed piece is read to (the borrowed RAM is 0x2D000 bytes)
-MAGIC, VERSION = b"AWWH", 1
-BW, BH = 256, 240                 # BOT (and the page's wheel area)
-PX, PY = 128.0, 120.0             # the pin, in BOT's pixels
-TC = 128.0                        # the upper disk's centre in TOP
-DIAM = 240                        # the lower disk's drawn diameter, in pixels (the LCD's height)
+SCRATCH_MAX = 0x9000              # a packed piece's room (wheel.s WB_SCRATCH, in ARENA6)
+MAGIC, VERSION = b"AWWH", 2
+BW, BH = 480, 480                 # BOT (and the page's wheel area)
+PX, PY = 240.0, 240.0             # the pin, in BOT's pixels
+TC = 256.0                        # the upper disk's centre in TOP
+DIAM = 480                        # the lower disk's drawn diameter, in pixels (twice the LCD's height)
+SEG_PX = 128                      # nearest: a span drawn in pieces of up to this many pixels, each from U, V exact
+SHADOW_ROOM = ((0x50123000, 0x50148000), (0x50175000, 0x50180000))   # ARENA5, ARENA6: the LCD's copy (wheel.s)
 SVG_SIZE = 679.13239
 NUMBERS = 20
 LEVELS = 16                       # shadow levels (0 none)
@@ -254,7 +283,7 @@ def upper_layers(upper, shade, g):
     """TOP's two pictures: the upper disk (RGBA) and its shadow (alpha), the disk's centre at (TC, TC)."""
     s = DIAM / SVG_SIZE
     vx, vy = TC - g["upper_centre"][0] * s, TC - g["upper_centre"][1] * s
-    return rsvg_render(upper, 256, 256, vx, vy, s), rsvg_render(shade, 256, 256, vx, vy, s)
+    return rsvg_render(upper, TS, TS, vx, vy, s), rsvg_render(shade, TS, TS, vx, vy, s)
 
 
 def kmeans(cols, weights, k, iters=30):
@@ -279,6 +308,38 @@ def nearest_entry(rgb, pal):
     """rgb (n x 3, 0..15 floats) -> index into pal (k x 3)."""
     d = ((rgb[:, None, :] - pal[None, :, :]) ** 2).sum(-1)
     return d.argmin(1)
+
+
+def spans_for(r_rot):
+    """Each row's [x0, x1) (multiples of 4) within r_rot of the pin; (0, 0) when none."""
+    spans = []
+    for y in range(BH):
+        dy = y + 0.5 - PY
+        if abs(dy) >= r_rot:
+            spans.append((0, 0))
+            continue
+        h = math.sqrt(r_rot * r_rot - dy * dy)
+        x0 = max(0, int(math.floor(PX - h)) // 4 * 4)
+        x1 = min(BW, (int(math.ceil(PX + h)) + 3) // 4 * 4)
+        spans.append((x0, x1))
+    return spans
+
+
+def shadow_rows(spans):
+    """Where wheel.s WheelLayout puts each row's copy of the LCD (its spans' bytes): ARENA5 first, then ARENA6, a row
+    never straddling; -> the addresses (None when it does not fit)."""
+    out, room = [], 0
+    p = SHADOW_ROOM[0][0]
+    for x0, x1 in spans:
+        n = max(0, x1 - x0)
+        if p + n > SHADOW_ROOM[room][1]:
+            room += 1
+            if room == len(SHADOW_ROOM):
+                return None
+            p = SHADOW_ROOM[room][0]
+        out.append(p)
+        p += n
+    return out
 
 
 def build(svg):
@@ -331,39 +392,35 @@ def build(svg):
         a = alpha_of[l]
         SHADE[l, :16] = 0                                               # (black stays black)
         SHADE[l, 16:] = 16 + nearest_entry(pal * (1 - a) + shadow_rgb * 15 * a, pal)
-    # the shadow outside the upper disk's edge is the same all round (its blur of a circle: the 15 levels' mean at a
-    # radius differs by under 0.05 between the four quarters), so it does not turn: it goes into BOT once, and TOP
-    # keeps the levels inside the edge only. The spans then reach the edge alone: what turns.
+    # the shadow outside the upper disk's edge is the same all round (its blur of a circle), so it does not turn: it
+    # goes into BOT once, and TOP keeps the levels inside the edge only. The spans then reach the edge alone.
     ty, tx = np.nonzero(covered)
     r_rot = math.sqrt(((tx + 0.5 - TC) ** 2 + (ty + 0.5 - TC) ** 2).max()) + 1.0
-    yy, xx = np.mgrid[0:256, 0:256]
+    yy, xx = np.mgrid[0:TS, 0:TS]
     TOP[(np.hypot(xx + 0.5 - TC, yy + 0.5 - TC) > r_rot) & ~covered] = 0
     by, bx = np.mgrid[0:BH, 0:BW]
     ring = (np.hypot(bx + 0.5 - PX, by + 0.5 - PY) > r_rot) & disk
     lv = level[(by + int(TC - PY))[ring], bx[ring]]             # the level there in TOP, unturned (the same all round)
     BOT[ring] = SHADE[lv, BOT[ring]]
-    if r_rot > 123:
-        sys.exit(f"codewheel_render: the upper disk reaches {r_rot:.1f} px from its centre, past TOP's room")
-    spans = []
-    for y in range(BH):
-        dy = y + 0.5 - PY
-        if abs(dy) >= r_rot:
-            spans.append((0, 0))
-            continue
-        h = math.sqrt(r_rot * r_rot - dy * dy)
-        x0 = max(0, int(math.floor(PX - h)) // 4 * 4)
-        x1 = min(BW, (int(math.ceil(PX + h)) + 3) // 4 * 4)
-        spans.append((x0, x1))
+    if TC - (r_rot + 2) < TR0 or TC + r_rot + 2 >= TR1:
+        sys.exit(f"codewheel_render: the upper disk reaches {r_rot:.1f} px from its centre, past TOP's rows {TR0}-{TR1 - 1}")
+    if (TOP[:TR0] != 0).any() or (TOP[TR1:] != 0).any():
+        sys.exit("codewheel_render: TOP has pixels outside the rows kept")
+    spans = spans_for(r_rot)
+    # every texel a pixel of the spans reads, at any angle (the bilinear's i + 1, j + 1 too), within TOP's rows kept
+    reach = max(math.hypot(x + 0.5 - PX, y + 0.5 - PY) for y, (x0, x1) in enumerate(spans) for x in (x0, x1 - 1) if x1 > x0)
+    if TC - (reach + 2) < TR0 or TC + reach + 2 >= TR1:
+        sys.exit(f"codewheel_render: the spans read texels {reach:.1f} px from TOP's centre, past its rows {TR0}-{TR1 - 1}")
+    g["reach"] = reach
     sin = [int(round(32767 * math.sin(2 * math.pi * i / 4096))) for i in range(4096)]
     angles = []
     for k in range(NUMBERS):
         d = (g["numbers"][k] - g["arrow"]) % 360
         angles.append(int(round(d / 360 * 65536)) & 0xFFFF)
     blob = bytearray(W_SIZE)
-    blob[W_TOP:W_TOP + 65536] = TOP.tobytes()
-    blob[W_BOT:W_BOT + BW * BH] = BOT.tobytes()
-    blob[W_SIN:W_SIN + 8192] = struct.pack("<4096h", *sin)
+    blob[W_TOP:W_TOP + (TR1 - TR0) * TS] = TOP[TR0:TR1].tobytes()
     blob[W_SHADE:W_SHADE + LEVELS * 256] = SHADE.tobytes()
+    blob[W_SIN:W_SIN + 8192] = struct.pack("<4096h", *sin)
     lut = [(int(c[0]) << 8) | (int(c[1]) << 4) | int(c[2]) for c in lut_rgb]
     blob[W_LUT:W_LUT + 512] = struct.pack("<256H", *lut)
     blob[W_SPANS:W_SPANS + 4 * BH] = b"".join(struct.pack("<HH", a, b) for a, b in spans)
@@ -373,55 +430,120 @@ def build(svg):
     keys = np.arange(4096)
     krgb = np.stack([keys >> 8, (keys >> 4) & 15, keys & 15], 1)
     blob[W_INV:W_INV + 4096] = (16 + nearest_entry(krgb, pal)).astype(np.uint8).tobytes()
-    hdr = MAGIC + struct.pack("<II", VERSION, W_SIZE)
+    # BOTC: A from W_BOTC, then B; a row never straddles A's end
+    off, offs = W_BOTC, []
+    for y, (x0, x1) in enumerate(spans):
+        n = max(0, x1 - x0)
+        if off < SEGA and off + n > SEGA:
+            off = SEGA
+        offs.append(off)
+        blob[off:off + n] = BOT[y, x0:x0 + n].tobytes()
+        off += n
+    if off > SEGA + SEGB:
+        sys.exit(f"codewheel_render: BOTC ends at 0x{off:X}, past A and B (0x{SEGA + SEGB:X})")
+    botc_end = off
+    blob[W_BOTOFF:W_BOTOFF + 4 * BH] = struct.pack(f"<{BH}I", *offs)
+    # RING: each row's lower disk outside its span
+    off = W_RING + 4 * BH
+    ring_rows = []
+    for y, (x0, x1) in enumerate(spans):
+        nz = np.nonzero(BOT[y])[0]
+        if len(nz) == 0:
+            xl = xr = 0
+        else:
+            xl, xr = int(nz[0]) // 4 * 4, (int(nz[-1]) + 4) // 4 * 4
+        if x0 < x1 and not (xl <= x0 and x1 <= xr):
+            sys.exit(f"codewheel_render: row {y}: the span {x0}-{x1} outside the lower disk {xl}-{xr}")
+        ring_rows.append((xl, xr))
+        for a, b in ((xl, x0), (x1, xr)) if x0 < x1 else ((xl, xr),):
+            if b > a:
+                blob[off:off + b - a] = BOT[y, a:b].tobytes()
+                off += b - a
+    if off > W_SIZE:
+        sys.exit(f"codewheel_render: RING ends at 0x{off:X}, past C (0x{W_SIZE:X})")
+    blob[W_RING:W_RING + 4 * BH] = b"".join(struct.pack("<HH", a, b) for a, b in ring_rows)
+    ring_end = off
+    if shadow_rows(spans) is None:
+        sys.exit("codewheel_render: the LCD's copy of the spans does not fit in ARENA5 and ARENA6")
+    hdr = MAGIC + struct.pack("<IIII", VERSION, SEGA, SEGB, SEGC)
     blob[W_HDR:W_HDR + len(hdr)] = hdr
-    total = sum(struct.unpack_from(f"<{W_SIZE // 4 - 1}I", blob, 0)) & 0xFFFFFFFF
-    struct.pack_into("<I", blob, W_SIZE - 4, (-total) & 0xFFFFFFFF)          # the words sum to 0
-    g.update(r_rot=r_rot, angles=angles, lut=lut, colours=len(uk), shadow_max=smax,
-             sin=sin, spans=spans, TOP=TOP, BOT=BOT, SHADE=SHADE)
+    csum = sum(struct.unpack_from(f"<{SEGC // 4}I", blob, W_RING)) & 0xFFFFFFFF
+    struct.pack_into("<I", blob, W_HDR + 24, csum)                            # C's words' sum
+    total = sum(struct.unpack_from(f"<{(SEGA + SEGB) // 4}I", blob, 0)) & 0xFFFFFFFF
+    struct.pack_into("<I", blob, W_HDR + 20, (-total) & 0xFFFFFFFF)          # A and B's words sum to 0
+    g.update(r_rot=r_rot, angles=angles, lut=lut, colours=len(uk), shadow_max=smax, botc_end=botc_end,
+             ring_end=ring_end, sin=sin, spans=spans, TOP=TOP, BOT=BOT, SHADE=SHADE)
     return bytes(blob), g
 
 
-def render(blob, angle, smooth=False):
-    """The device's picture of the wheel area (256 x 240 entries) at angle `angle` (1/65536 turn): BOT, the spans
-    drawn as wheel.s draws them, nearest (the disk turning) or bilinear (smooth: at rest)."""
-    TOP = np.frombuffer(blob, np.uint8, 65536, W_TOP).reshape(256, 256)
-    BOT = np.frombuffer(blob, np.uint8, BW * BH, W_BOT).reshape(BH, BW)
-    SIN = np.frombuffer(blob, "<i2", 4096, W_SIN).astype(np.int64)
-    SHADE = np.frombuffer(blob, np.uint8, LEVELS * 256, W_SHADE).reshape(LEVELS, 256)
-    LANES = np.frombuffer(blob, "<u4", 256, W_LANES).astype(np.int64)
-    INV = np.frombuffer(blob, np.uint8, 4096, W_INV)
-    spans = struct.unpack_from(f"<{2 * BH}H", blob, W_SPANS)
+def tables(blob):
+    """The blob's pictures and tables, as numpy arrays: TOP (512 x 512, zero outside TR0..TR1), BOT (480 x 480: BOTC
+    and RING put together), SIN, SHADE, LANES, INV, SPANS."""
+    TOP = np.zeros((TS, TS), np.uint8)
+    TOP[TR0:TR1] = np.frombuffer(blob, np.uint8, (TR1 - TR0) * TS, W_TOP).reshape(TR1 - TR0, TS)
+    spans = [struct.unpack_from("<HH", blob, W_SPANS + 4 * y) for y in range(BH)]
+    offs = struct.unpack_from(f"<{BH}I", blob, W_BOTOFF)
+    BOT = np.zeros((BH, BW), np.uint8)
+    off = W_RING + 4 * BH
+    for y, (x0, x1) in enumerate(spans):
+        if x1 > x0:
+            BOT[y, x0:x1] = np.frombuffer(blob, np.uint8, x1 - x0, offs[y])
+        xl, xr = struct.unpack_from("<HH", blob, W_RING + 4 * y)
+        for a, b in ((xl, x0), (x1, xr)) if x0 < x1 else ((xl, xr),):
+            if b > a:
+                BOT[y, a:b] = np.frombuffer(blob, np.uint8, b - a, off)
+                off += b - a
+    return dict(TOP=TOP, BOT=BOT, SIN=np.frombuffer(blob, "<i2", 4096, W_SIN).astype(np.int64),
+                SHADE=np.frombuffer(blob, np.uint8, LEVELS * 256, W_SHADE).reshape(LEVELS, 256),
+                LANES=np.frombuffer(blob, "<u4", 256, W_LANES).astype(np.int64),
+                INV=np.frombuffer(blob, np.uint8, 4096, W_INV), spans=spans)
+
+
+def render_row(t, y, angle, smooth=False):
+    """Row y of the wheel area (480 entries) as the device draws it at angle `angle` (1/65536 turn): BOT, the span
+    drawn as wheel.s draws it, nearest (the disk turning) or bilinear (smooth: at rest)."""
+    TOP, BOT, SIN, SHADE, LANES, INV = t["TOP"], t["BOT"], t["SIN"], t["SHADE"], t["LANES"], t["INV"]
+    out = BOT[y].copy()
+    x0, x1 = t["spans"][y]
+    if x0 >= x1:
+        return out
     i = (angle >> 4) & 4095
     c, s = int(SIN[(i + 1024) & 4095]), int(SIN[i])
-    out = BOT.copy()
-    for y in range(BH):
-        x0, x1 = spans[2 * y], spans[2 * y + 1]
-        if x0 >= x1:
-            continue
-        xs = np.arange(x0, x1, dtype=np.int64)
-        dx2 = 2 * xs + 1 - 256
-        dy2 = 2 * y + 1 - 240
-        U = (128 << 16) + c * dx2 + s * dy2
-        V = (128 << 16) - s * dx2 + c * dy2
-        b = BOT[y, x0:x1]
+    xs = np.arange(x0, x1, dtype=np.int64)
+    dx2 = 2 * xs + 1 - BW
+    dy2 = 2 * y + 1 - BH
+    U = (int(TC) << 16) + c * dx2 + s * dy2
+    V = (int(TC) << 16) - s * dx2 + c * dy2
+    b = BOT[y, x0:x1]
 
-        def texel(i, j):
-            t = TOP[j & 255, i & 255]
-            return np.where(t >= 16, t, SHADE[np.minimum(t, 15), b])
-        if not smooth:                 # 8.8, packed in one word on the device: one add a pixel
-            k = xs - x0
-            U8 = ((U[0] + 128) >> 8) + k * ((2 * c + 128) >> 8)
-            V8 = ((V[0] + 128) >> 8) + k * ((-2 * s + 128) >> 8)
-            out[y, x0:x1] = texel(U8 >> 8, V8 >> 8)
-            continue
-        U, V = U - 0x8000, V - 0x8000
-        i, j, fx, fy = U >> 16, V >> 16, (U >> 13) & 7, (V >> 13) & 7
-        acc = (LANES[texel(i, j)] * ((8 - fx) * (8 - fy)) + LANES[texel(i + 1, j)] * (fx * (8 - fy))
-               + LANES[texel(i, j + 1)] * ((8 - fx) * fy) + LANES[texel(i + 1, j + 1)] * (fx * fy))
-        acc += (32 << 20) | (32 << 10) | 32
-        out[y, x0:x1] = INV[(((acc >> 26) & 15) << 8) | (((acc >> 16) & 15) << 4) | ((acc >> 6) & 15)]
+    def texel(i, j):
+        if (j < TR0).any() or (j >= TR1).any() or (i < 0).any() or (i >= TS).any():
+            raise ValueError(f"row {y}: a texel outside TOP's rows kept")
+        tt = TOP[j, i]
+        return np.where(tt >= 16, tt, SHADE[np.minimum(tt, 15), b])
+    if not smooth:                     # 9.7, packed in one word on the device: one add a pixel, from each piece's start
+        k = (xs - x0) % SEG_PX
+        p0 = xs - k                    # the piece's first pixel
+        idx = p0 - x0
+        U7 = ((U[idx] + 256) >> 9) + k * ((2 * c + 256) >> 9)
+        V7 = ((V[idx] + 256) >> 9) + k * ((-2 * s + 256) >> 9)
+        if (U7 < 0).any() or (U7 >= 65536).any() or (V7 < 0).any() or (V7 >= 65536).any():
+            raise ValueError(f"row {y}: a 9.7 coordinate out of its lane")
+        out[x0:x1] = texel(U7 >> 7, V7 >> 7)
+        return out
+    U, V = U - 0x8000, V - 0x8000
+    i, j, fx, fy = U >> 16, V >> 16, (U >> 13) & 7, (V >> 13) & 7
+    acc = (LANES[texel(i, j)] * ((8 - fx) * (8 - fy)) + LANES[texel(i + 1, j)] * (fx * (8 - fy))
+           + LANES[texel(i, j + 1)] * ((8 - fx) * fy) + LANES[texel(i + 1, j + 1)] * (fx * fy))
+    acc += (32 << 20) | (32 << 10) | 32
+    out[x0:x1] = INV[(((acc >> 26) & 15) << 8) | (((acc >> 16) & 15) << 4) | ((acc >> 6) & 15)]
     return out
+
+
+def render(blob, angle, smooth=False, rows=range(BH), t=None):
+    """The wheel area's rows `rows` (480 entries each) as the device draws them at that angle."""
+    t = t or tables(blob)
+    return np.stack([render_row(t, y, angle, smooth) for y in rows])
 
 
 def to_png(img, blob, path, scale=1):
@@ -441,18 +563,19 @@ def to_png(img, blob, path, scale=1):
 
 def pieces(blob):
     """The blob cut in PIECE-byte pieces, each ByteKiller-packed (checked with aw_extract.unpack, as BkUnpack unpacks
-    it: from the scratch after the blob, W_SCRATCH, to its place)."""
+    it: from the scratch in ARENA6 to its place). A in 11, B in 2 (the second 0x7000 bytes), C in 1."""
     import aw_extract
     import aw_hires
     out = []
-    for k in range(0, len(blob), PIECE):
-        raw = blob[k:k + PIECE]
-        packed = aw_hires.pack(raw)
-        if aw_extract.unpack(packed, len(raw)) != raw:
-            sys.exit("codewheel_render: a piece does not unpack")
-        if len(packed) > SCRATCH_MAX:
-            sys.exit(f"codewheel_render: a packed piece of {len(packed)} bytes, past the scratch's {SCRATCH_MAX}")
-        out.append((raw, packed))
+    for base, size in ((0, SEGA), (SEGA, SEGB), (SEGA + SEGB, SEGC)):
+        for k in range(base, base + size, PIECE):
+            raw = blob[k:min(k + PIECE, base + size)]
+            packed = aw_hires.pack(raw)
+            if aw_extract.unpack(packed, len(raw)) != raw:
+                sys.exit("codewheel_render: a piece does not unpack")
+            if len(packed) > SCRATCH_MAX:
+                sys.exit(f"codewheel_render: a packed piece of {len(packed)} bytes, past the scratch's {SCRATCH_MAX}")
+            out.append((k, raw, packed))
     return out
 
 
@@ -464,15 +587,19 @@ def main():
     a = ap.parse_args()
     blob, g = build(a.svg)
     os.makedirs(os.path.join(a.out, "sdfiles"), exist_ok=True)
-    names, lines = [], []
-    for k, (raw, packed) in enumerate(pieces(blob)):
-        name = f"AWWH{k}.AW"
+    names, lines, packed_total, cached = [], [], 0, 0
+    for k, (at, raw, packed) in enumerate(pieces(blob)):
+        name = f"AWWH{k:X}.AW"
         open(os.path.join(a.out, "sdfiles", name), "wb").write(packed)
         names.append(name)
-        lines.append(f"{name}: blob 0x{k * PIECE:05X}, {len(raw)} bytes, packed {len(packed)}")
+        packed_total += len(packed)
+        if at < SEGA + SEGB:
+            cached += (len(packed) + 3) // 4 * 4
+        lines.append(f"{name}: blob 0x{at:05X}, {len(raw)} bytes, packed {len(packed)}")
     open(os.path.join(a.out, "sdfiles.lst"), "w").write("\n".join(names) + "\n")
     open(os.path.join(a.out, "wheel.bin"), "wb").write(blob)
     cb, ct = g["lower_centre"], g["upper_centre"]
+    sp = g["spans"]
     rep = [f"drawing: {a.svg} sha1 {__import__('hashlib').sha1(open(a.svg, 'rb').read()).hexdigest()}",
            f"lower disk centre (tick marks' convergence): ({cb[0]:.3f}, {cb[1]:.3f}) units",
            f"lower disk's pin hole in the scan (its dark pixels): ({g['hole'][0]:.3f}, {g['hole'][1]:.3f}) units",
@@ -484,20 +611,25 @@ def main():
            f"arrow (deg, where its axis meets the numbers' circle): {g['arrow']:.3f} ({g['arrow_px']} px at 4x)",
            "rest angles of the upper disk (1/65536 turn): " + " ".join(str(x) for x in g["angles"]),
            f"rest angles (deg): " + " ".join(f"{x * 360 / 65536:.2f}" for x in g["angles"]),
-           f"rotating radius: {g['r_rot']:.2f} px; shadow opacity max {g['shadow_max']:.3f}",
-           f"pixels drawn a picture (the spans): {sum(b - a for a, b in g['spans'])}, LCD stores (32 bits) "
-           f"{sum(b - a for a, b in g['spans']) // 4}; the whole page: FB8 cleared ({640 * 240 // 4} stores), the lower "
-           f"disk ({BW * BH // 4})",
+           f"scale: {DIAM}/{SVG_SIZE} pixels a unit; rotating radius: {g['r_rot']:.2f} px; shadow opacity max "
+           f"{g['shadow_max']:.3f}; the spans reach {g['reach']:.2f} px (TOP's rows kept {TR0}-{TR1 - 1})",
+           f"pixels the spans cover: {sum(b - x for x, b in sp)} (all 480 rows); in the rows TOP 0-239 shows: "
+           f"{sum(b - x for x, b in sp[0:240])}, MIDDLE 120-359: {sum(b - x for x, b in sp[120:360])}, BOTTOM 240-479: "
+           f"{sum(b - x for x, b in sp[240:480])} (a turning picture's, its 32-bit stores a quarter of it at most)",
+           f"BOTC ends at blob 0x{g['botc_end']:X} (A is 0x{SEGA:X}, B to 0x{SEGA + SEGB:X}); RING ends at 0x{g['ring_end']:X} "
+           f"(C to 0x{W_SIZE:X})",
            f"colours (4-bit) in the pictures: {g['colours']}, as {COLOURS} entries",
-           f"blob: {len(blob)} bytes"] + lines
+           f"blob: {len(blob)} bytes; packed: {packed_total} bytes in {len(names)} files; A and B packed (what the LCD's "
+           f"memory keeps): {cached}"] + lines
     open(os.path.join(a.out, "wheel.txt"), "w").write("\n".join(rep) + "\n")
     print("\n".join(rep))
     if a.previews:
         os.makedirs(a.previews, exist_ok=True)
         ang = g["angles"]
-        to_png(render(blob, ang[0], True), blob, os.path.join(a.previews, "rest_1.png"), 2)
+        t = tables(blob)
+        to_png(render(blob, ang[0], True, t=t), blob, os.path.join(a.previews, "rest_1.png"))
         mid = (ang[0] + ((ang[1] - ang[0]) & 0xFFFF) // 2) & 0xFFFF
-        to_png(render(blob, mid), blob, os.path.join(a.previews, "mid_1_2.png"), 2)
+        to_png(render(blob, mid, t=t), blob, os.path.join(a.previews, "mid_1_2.png"))
 
 
 if __name__ == "__main__":

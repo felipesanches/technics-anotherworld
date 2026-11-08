@@ -37,11 +37,11 @@ settle](#what-mame-cannot-settle) · [Limits](#limits) · [History](#history-the
 write-protect tab at PROTECTED. Every MAME test below runs this very image.
 
 **The SD card: everything in `build/sdcard/`, copied to the card's root folder.** `make sdcard`
-writes exactly these 79 files there and nothing else (their sizes and SHA-1s: `build/sdcard.txt`):
+writes exactly these 88 files there and nothing else (their sizes and SHA-1s: `build/sdcard.txt`):
 
 | file(s)                              | bytes   | what                                                                                                                                   |
 |--------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `KN7APP.BIN`                         | 51,768  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs, code wheel page |
+| `KN7APP.BIN`                         | 53,880  | the game: application header, platform layer, firmware search, VM, unpacker, speed measurement, sound, settings, LEDs, code wheel page |
 | `AWFONT.AW`                          | 768     | the 8x8 font (the KN5000 port's)                                                                                                       |
 | `AWSTRIDX.AW`, `AWSTRDAT.AW`         | 6,144   | the string tables (the KN5000 port's)                                                                                                  |
 | `AWSND.AW`                           | 584     | each sound's KN7000 program, note and length, for the tone generator mode ("Sound"; `tools/aw_sound_map.py`)                           |
@@ -49,9 +49,9 @@ writes exactly these 79 files there and nothing else (their sizes and SHA-1s: `b
 | `AWR07.AW` ... `AWR91.AW` (42 files) | 566,944 | each resource the game draws, runs or plays as music, as `MEMLIST.BIN` finds it in `BANKxx`                                            |
 | `AWSB0.AW` ... `AWSBD.AW` (14 files) | 431,724 | the DSP's sample bank, the 93 sounds the game plays, Rice-coded for the DSP to decode (`tools/dsp_bank.py`)                            |
 | `AWH12.AW` ... `AWH91.AW` (12 files) | 118,256 | the twelve bitmaps at 384x240, ByteKiller-packed, for the high-resolution mode ("The screen"; `tools/aw_hires.py`)                     |
-| `AWWH0.AW` ... `AWWH4.AW` (5 files)  | 55,624  | the code wheel page's pictures and tables, ByteKiller-packed ("The code wheel page"; `tools/codewheel_render.py`)                      |
+| `AWWH0.AW` ... `AWWHD.AW` (14 files) | 143,132 | the code wheel page's pictures and tables, ByteKiller-packed ("The code wheel page"; `tools/codewheel_render.py`)                      |
 
-1,234,764 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
+1,324,384 bytes in all (`build/sdcard.txt` lists every name, size and SHA-1), well within the 126.5 MB free on
 the owner's card.
 Each `AWRxx.AW` holds the exact bytes the original MS-DOS release's `MEMLIST.BIN` points at in its
 `BANKxx` file, ByteKiller-packed or stored, for every palette, bytecode, polygon set and bitmap and the
@@ -63,8 +63,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`2887b170827986b5308d3568b49ade478619c365` (the code wheel page, "The code wheel page"; `build/sdcard.txt` lists it
-with the rest). Before it: `7c2d2c06...` (the build the owner played on 2026-11-06), `964e245a...` (the LCD at 8 bits a
+`c707af6ee8f2efd2e6417711e13e74bf4a208568` (the code wheel page zoomed in, "The code wheel page"; `build/sdcard.txt`
+lists it with the rest). Before it: `aafd752e...` (staged on 2026-11-06: the code wheel page at its first size, the
+music at the Amiga original's tempo), `2887b170...` (the code wheel page's first build), `7c2d2c06...` (the build the owner played on 2026-11-06), `964e245a...` (the LCD at 8 bits a
 pixel through its look-up table, the ambilight around the window: "The screen"), `ccf024e4...` (384x240 pages
 drawn at that resolution by default, PAGE DOWN 320x200, PAGE UP 384x240), `9a2f2db4...` (the 320x200
 picture enlarged to 384x240 by repeating pixels; the overlay and the old blit gone), `cddfe76b...` (the screen
@@ -183,16 +184,16 @@ If anything looks wrong, write the card image from step 1 back and restore the p
 
    The panel's buttons are the port's own controls:
 
-| what         | panel                                                                                                                 |
-|--------------|-----------------------------------------------------------------------------------------------------------------------|
-| codes        | OTHER PART & FR: the level code screen                                                                                |
-| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns; OTHER PART & FR the code screen                  |
-| settings     | HELP, then PAGE DOWN three times ("Settings", below)                                                                  |
-| code wheel   | HELP at the code wheel's question, else HELP and PAGE DOWN four times; TEMPO/PROGRAM turns it ("The code wheel page") |
-| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too)                                               |
-| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off                                                |
-| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200                                                   |
-| quit         | hold EXIT for 1.5 s                                                                                                   |
+| what         | panel                                                                                                                                                                              |
+|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| codes        | OTHER PART & FR: the level code screen                                                                                                                                             |
+| help         | HELP; PAGE UP / PAGE DOWN turn pages; EXIT, HELP or any key returns; OTHER PART & FR the code screen                                                                               |
+| settings     | HELP, then PAGE DOWN three times ("Settings", below)                                                                                                                               |
+| code wheel   | HELP at the code wheel's question, else HELP and PAGE DOWN four times; TEMPO/PROGRAM turns it; the LCD's soft buttons 1, 3, 5 show its top, middle, bottom ("The code wheel page") |
+| sound        | PART SELECT RIGHT 2: the game's sound, DSP / TG / off (in the help too)                                                                                                            |
+| keybed sound | PART SELECT RIGHT 1: the instrument's own notes for your keys on / off                                                                                                             |
+| screen       | PAGE UP: 384x240, high resolution (the default); PAGE DOWN: 320x200                                                                                                                |
+| quit         | hold EXIT for 1.5 s                                                                                                                                                                |
 
    **The screen.** The game starts in its high-resolution mode: it draws at 384x240, the LCD's whole height,
    centred with black strips at the sides, in the original's proportions (6/5 of 320x200 both ways). The
@@ -300,67 +301,117 @@ number a click. While the game asks the code wheel's question (part 0x3E80, befo
 page; anywhere else HELP opens page 1 as before and the code wheel is page 5 (PAGE DOWN four times). PAGE UP / PAGE
 DOWN reach the other pages from it; EXIT, HELP or any key of the keybed goes back to the game, as on the other pages.
 
-| what              | how                                                                                                   |
-|-------------------|-------------------------------------------------------------------------------------------------------|
-| turn the disk     | TEMPO/PROGRAM: clockwise, the arrow to the next number; anticlockwise, the one before (20 after 1)    |
-| several clicks    | they add up while the disk is still turning; it turns on to the last number asked for                 |
-| where it stops    | always on a number; "ARROW AT n" beside the wheel names it; the next showing starts where it was left |
-| how long it takes | drawn in: turning / at rest, the last picture's time in ms (the unit's figures: "How fast", below)    |
+**Zoomed in (2026-11-08).** On the unit the symbols were too small to read (Felipe: "we'll have to zoom into the
+wheel"), so the wheel is now drawn twice as large, 480 pixels across, and the LCD shows half of its height at a time:
+the top half, the middle or the bottom half, chosen with the LCD's soft buttons. A change scrolls the whole page up or
+down to the new part.
 
-The page takes the whole LCD: the wheel 240 pixels across (the LCD's height) in its middle, the text either side. The
-LCD shows only 4 bits a channel through its look-up table, so the drawing is reduced to 240 colours (the 581 4-bit
-colours it has, by a weighted k-means) in entries 16-255, the ambilight's while the game runs; the page puts the
-ambilight's colours, the border's pattern and the window back when it is left. The tempo itself does not move: the
-wheel's clicks are taken from the panel's receive ring before the firmware decodes them, and the few it decodes
-first are undone with a click the other way.
+| what              | how                                                                                                                               |
+|-------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| turn the disk     | TEMPO/PROGRAM: clockwise, the arrow to the next number; anticlockwise, the one before (20 after 1)                                |
+| several clicks    | they add up while the disk is still turning; it turns on to the last number asked for                                             |
+| where it stops    | always on a number; "ARROW AT" names it; the next showing starts where it was left                                                |
+| the part shown    | the soft buttons beside the LCD, either side: 1 TOP, 3 MIDDLE, 5 BOTTOM (labelled on the right, the one shown in yellow)          |
+| the scroll        | 220 ms between neighbouring parts, 320 ms between TOP and BOTTOM, easing out; the part is kept while the game runs (TOP at first) |
+| how long it takes | "drawn, ms": the last turning picture and the last picture at rest (the unit's figures: "How fast", below)                        |
+
+The page takes the whole LCD: the wheel in its middle 480 columns, the text in the 80 columns either side (ten
+characters a line of the game's 8x8 font). The LCD shows only 4 bits a channel through its look-up table, so the drawing
+is reduced to 240 colours (the 796 4-bit colours it has at this size, by a weighted k-means) in entries 16-255, the
+ambilight's while the game runs; the page puts the ambilight's colours back when it is left, and the LCD shows the
+game's frame again, which the page never touches. The tempo itself does not move: the wheel's clicks are taken from the
+panel's receive ring before the firmware decodes them, and the few it decodes first are undone with a click the other
+way.
+
+**The soft buttons.** On the converter's screen the firmware acts on the LCD's soft buttons: a press of any of the ten
+while the game runs is followed by about 1,300 writes of the firmware's own (its view records at `0x5002A000`-
+`0x5002BFFF` among them) that do not come without one (`probes/cnv/awcnv_lcdkeys.lua`, `lcdkeys-v13.txt`). So while
+the page shows, their frames are taken out of the panel's receive ring as the wheel's are: each comes as a frame
+[segment, its switches] (LCDL 1-5: segment `0xC0`, bits `0x02 0x08 0x20 0x01 0x04`; LCDR 1, 2, 5: segment `0x05`, bits
+`0x10 0x20 0x01`; LCDR 4: `0x06` bit `0x01`; LCDR 3: `0x07` bit `0x01`), and their bits are cleared before the
+firmware decodes the frame. A frame the firmware has decoded first gets a frame without them put in after it, so that
+it sees the button released at once; it has then acted on that press (2 of the 8 presses in the MAME run below, as the
+wheel's own clicks are sometimes late too). Elsewhere in the game the soft buttons reach the firmware as before.
 
 **How it is drawn** (`tools/codewheel_render.py`, `src/wheel.s`). The pictures are made at build time with librsvg,
-at 240/679.13 pixels a unit of the drawing: the lower disk alone (256 x 240) and the upper one alone, unturned, with
-the shadow the drawing gives it (256 x 256, its own centre at the middle). From the drawing the script measures (its
-`wheel.txt`): the lower disk's centre, where its 20 tick marks converge (342.34, 336.89 units; the pin hole in the
-scan is 1.6 units off, at 343.59, 337.97); the upper disk's, from its outline (342.83, 334.75); the numbers, half way
-between ticks (their spacing goes from 17.51 to 18.35 degrees: a hand-made wheel); the arrow, where its axis meets
-the numbers' circle (59.37 degrees in the drawing as it is, number 5's place being 59.68). The upper disk turns about
-the lower one's centre, and comes to rest at each number's own measured angle.
+at 480/679.13 pixels a unit of the drawing (the scans in it are 1.56 and 1.0 pixels a unit, so this still draws from
+real detail): the lower disk alone (480 x 480) and the upper one alone, unturned, with the shadow the drawing gives it
+(512 x 512, its own centre at the middle). From the drawing the script measures (its `wheel.txt`): the lower disk's
+centre, where its 20 tick marks converge (342.34, 336.89 units; the pin hole in the scan is 1.6 units off, at 343.59,
+337.97); the upper disk's, from its outline (342.83, 334.75); the numbers, half way between ticks (their spacing goes
+from 17.51 to 18.35 degrees: a hand-made wheel); the arrow, where its axis meets the numbers' circle (59.37 degrees in
+the drawing as it is, number 5's place being 59.68). The upper disk turns about the lower one's centre, and comes to
+rest at each number's own measured angle.
 
-The upper disk is turned at run time, every picture, from its one picture: each pixel of the 40,800 it can cover is
-the upper disk's texel at that pixel's place turned back, or, in a window, the lower disk's pixel under the texel's
-shadow level (15 levels). **While it turns**, nearest texel, the two texture coordinates packed in one word so that
-a pixel costs one add; **at rest**, bilinear, in RGB, and back to the nearest of the 240 colours through a 4096-entry
-table, made 24 rows at a time between looks at the wheel (a click meanwhile stops it). Only the 32-bit words of the
-LCD that change are stored (a copy of what it holds is kept in RAM). The shadow outside the disk's edge is the same
-all round, so it is drawn into the lower disk once. Real time was chosen over frames made in advance: 20 numbers
-with several pictures between each, 40,800 bytes each, would be megabytes to read from a card that gave 385 KB in
-3.05 s on the unit (kn7000_mame `notes/sd-card-emulation-plan.md`); turned at run time, the files are 55,624 bytes,
-read once a game.
+The upper disk is turned at run time, every picture, from its one picture: each pixel it can cover (159,680 of the
+wheel; 79,840 in the rows TOP or BOTTOM show, 103,184 in MIDDLE's) is the upper disk's texel at that pixel's place
+turned back, or, in a window, the lower disk's pixel under the texel's shadow level (15 levels). **While it turns**,
+nearest texel, only the rows shown: the two texture coordinates, 9 bits and 7 of fraction each, packed in one word so
+that a pixel costs one add, recomputed every 128 pixels; **at rest**, bilinear, in RGB, and back to the nearest of the
+240 colours through a 4096-entry table, made 12 rows at a time between looks at the wheel (a click meanwhile stops
+it). Only the 32-bit words of the LCD that change are stored (a copy of what it holds is kept in RAM). The shadow
+outside the disk's edge is the same all round, so it is drawn into the lower disk once.
 
-**Files and memory.** The tables and pictures (146,432 bytes: `codewheel_render.py`'s layout, `src/wheel.s` WB_*)
-are `AWWH0.AW` ... `AWWH4.AW` on the card, 32 KB each ByteKiller-packed, 55,624 bytes in all. The first time the page
-shows in a game they are read, a file a converter call ("Loading the wheel" while they come: 1.04 s in MAME, whose
-card reads are about 1.7 times as fast as the unit's: kn7000_mame `notes/sd-card-emulation-plan.md`), then kept in the
-LCD's display memory, which nothing shows, for the next times.
-While the page shows, the RAM they are used in is the VM's pages 2 and 3 (the game is paused): those are copied to
-display memory first and back when the help screen closes (or before a setting that changes the pages applies). The
-display memory used, past FB8 (which ends at `0x757FF`) and within what Pinball Fantasies uses on the owner's unit:
+The page is a frame of 640 x 480 in the LCD's display memory (the tall frame), and the LCD shows 240 of its rows: TOP
+rows 0-239, MIDDLE 120-359, BOTTOM 240-479. A scroll moves the LCD controller's start address (the bottom-right
+pixel's word: the KN7000's panel is mounted turned, 180-degree SwivelView) a frame at a time, easing out; nothing is
+copied. Before it starts, the rows about to come into view that were not drawn at the disk's angle (the disk turned
+while they were out of view: each row's angle is kept) are drawn, nearest, and the text moves to the new part's rows;
+after it, the new part is made bilinear. The frame stays in display memory between showings, so a showing points the
+LCD at it at once, as it was left, and draws it again once the pictures are in RAM.
 
-| display memory | what                                                                                   |
-|----------------|----------------------------------------------------------------------------------------|
-| `0x90000`      | the VM's pages 2 and 3 while the page shows (184,320 bytes)                            |
-| `0xC0000`      | the wheel's tables and pictures once read (146,432 bytes)                              |
-| `0xE4000`      | FB8 as it was before the page (153,600 bytes: the border's dither pattern exactly)     |
+**Files and memory.** The tables and pictures (454,656 bytes in three segments: `codewheel_render.py`'s layout,
+`src/wheel.s` WB_*) are `AWWH0.AW` ... `AWWHD.AW` on the card, 32 KB each ByteKiller-packed, 143,132 bytes in all. The
+first time the page shows in a game they are read, a file a converter call ("Loading the wheel" while they come), the
+packed pieces of the first two segments kept in the LCD's display memory, and later showings unpack them from there.
+While the page shows, the game is paused and its RAM is borrowed:
+
+| RAM                       | while the page shows                                                                               |
+|---------------------------|----------------------------------------------------------------------------------------------------|
+| `0x50320000`-`0x50377FFF` | the VM's four pages: the upper disk (464 rows of 512), the tables, the lower disk's first rows (A) |
+| `0x50378000`-`0x50379FFF` | the rest of page 3: where each row is, each row's angle, a row being made bilinear                 |
+| `0x502C8000`-`0x502D6FFF` | SHADOW's room: the lower disk's other rows (B; the other help pages draw there, so B comes again)  |
+| `0x50123000`-`0x50147FFF` | ARENA5: the copy of what the LCD holds in the spans; once, the lower disk outside them (C)         |
+| `0x50175000`-`0x5017FFFF` | ARENA6: the rest of that copy, and the scratch a packed piece is read or copied to                 |
+
+The VM's pages are copied to display memory first and back when the help screen closes (or before a setting that
+changes the pages applies). ARENA5 and ARENA6 are the firmware's RAM that it leaves alone while a converter runs on
+programs 893 and 941: Pinball Fantasies keeps its heap there on the owner's unit, its canaries unchanged
+(Pinball `kn7.h`, ARENA1-7); here `probes/cnv/awcnv_areas.lua` found no write of the firmware's in either through a
+whole session in MAME, the help screen, the soft buttons, PAGE DOWN and the quit included, on both programs
+(`areas-v13.txt`, `areas-v16.txt`), and the acceptance tests' area tap now covers them. The display memory used, past
+FB8 (which ends at `0x757FF`); the same probe found the firmware writing none of it, only its own frame
+(`0x0`-`0x4B4FF`):
+
+| display memory        | what                                                             |
+|-----------------------|------------------------------------------------------------------|
+| `0x76000`-`0xC0FFF`   | the tall frame, 640 x 480                                        |
+| `0xC1000`-`0x11AFFF`  | the VM's four pages while the page shows (368,640 bytes)         |
+| `0x11B000`-`0x13FFFF` | the first two segments' packed pieces, once read (131,652 bytes) |
+
+FB8 is no longer saved: the page does not draw in it.
 
 **How fast** (MAME, program 893, `probes/cnv/run_wheel.sh`; the figures, the pictures and the screenshots in
-`probes/cnv/codewheel-results-2026-11-06/`). A turning picture took 24.4 to 68.9 ms of MAME's time, 45.5 at the
-median, over 76 of them, storing a median 4,593 of the 10,200 words (none at all when nothing changed); one at rest,
-356.7 to 365.3 ms, made 24 rows a look so that a click is never kept waiting by it; the five files' first read, 1.06 s.
-A one-number turn lasts 280 ms and showed 6 or 7 pictures, a three-click one 16. On the unit the game's own benchmark
-found the ALU and work RAM as fast as in MAME and the LCD's 32-bit stores slower (2,543 and 3,610 ns against MAME's
-1,968; `codewheel_estimate.py`): that puts a turning picture at about 47 to 52 ms at the median, about 20 a second,
-and a picture at rest at about 366 ms. The page itself shows the last of each it drew ("drawn in"), on the unit as in
-MAME: those are the figures to send.
+`probes/cnv/codewheel-results-2026-11-08/`). A turning picture of TOP or BOTTOM took 57 to 98 ms of MAME's time, 91.5
+at the median over 43 of them, storing a median 8,240 words; MIDDLE's, with its wider rows, 124 to 141 ms, 132.4 at the
+median (12,279 stores); one at rest, made 12 rows a look so that a click is never kept waiting by it, 681 to 724 ms
+(TOP, BOTTOM) and 931 ms (MIDDLE). A one-number turn lasts 280 ms and shows 3 or 4 pictures, a three-click one 9. A
+scroll writes the start address 62 to 69 times (to a neighbouring part) or 104 to 107 times (TOP to BOTTOM), after 120
+or 240 rows drawn first. The fourteen files' first read and the page's first drawing took 2.35 s and 2.74 s; a later
+showing, from display memory, 1.04 s after the help screen had closed (the four pages saved, the thirteen pieces
+unpacked) and 0.31 s back from another help page (B only), the frame showing at once meanwhile. On the unit the game's
+own benchmark found the ALU and work RAM as fast as in MAME and the LCD's 32-bit stores slower (2,543 and 3,610 ns
+against 1,933 in this run; `codewheel_estimate.py`, `estimate.txt`): that puts a turning picture at 97 to 105 ms at the
+median for TOP and BOTTOM, about 10 a second, and 137 to 146 ms for MIDDLE, about 7 a second; a picture at rest at
+about 0.72 s. The card's first read is 143,132 bytes, about 1.1 s of reading on the unit at the rate measured there
+(385 KB in 3.05 s), against MAME's 1.7 times faster card. The page itself shows the last of each it drew ("drawn, ms"),
+on the unit as in MAME: those are the figures to send. On program 941 every picture takes about twice as long in
+MAME (the firmware's own screen keeps repainting there; probes/cnv/README.md, "The code wheel page zoomed in").
 
-![The code wheel page at rest, number 1 (MAME)](probes/cnv/codewheel-results-2026-11-06/codewheel_rest.png)
-![Turning from 1 to 2 (MAME)](probes/cnv/codewheel-results-2026-11-06/codewheel_turning.png)
+![The code wheel page, TOP, at rest at number 1 (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_rest_top.png)
+![MIDDLE (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_middle.png)
+![BOTTOM (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_bottom.png)
+![Scrolling from TOP to BOTTOM (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_scroll_top_bottom.png)
 
 ## The panel's LEDs
 
@@ -998,7 +1049,9 @@ second instead of 13.
 Everything the game writes is in **`0x502BA000`-`0x50379FFF`**: the work RAM STYLE CONVERT leaves to a
 converter, less the loader's resident area below it and the mailbox page; and, on program 893 only, three words
 of the firmware's own ("The firmware's screen"): group 4's records pointer in the view class table
-(`0x5011FAD4`) and the two DrawEnable words (`0x5002A018`, `0x5002A01C`), all put back at the quit. That range was measured
+(`0x5011FAD4`) and the two DrawEnable words (`0x5002A018`, `0x5002A01C`), all put back at the quit; and, while the code
+wheel page shows (since 2026-11-08), ARENA5 `0x50123000`-`0x50147FFF` and ARENA6 `0x50175000`-`0x5017FFFF`, firmware RAM
+it leaves alone while a converter runs ("The code wheel page", "Files and memory"). That range was measured
 untouched by the firmware on program 893 in MAME through boot, idle, DISK MENU and a converter run
 (research-scratch `aw-memory-plan/taps893_ranges.out`), and the acceptance tests below measure it
 again while the game runs through the loader and reads the SD card. `src/platformcnv.inc` holds the
@@ -1089,7 +1142,9 @@ Three checks keep the game inside its range:
 
 The task's stack is the kernel's: `cre_tsk` allocates it and `exd_tsk` frees it.
 
-Outside its RAM the game writes only the mailbox's request, the LCD frame, at each quit one new file in
+Outside its RAM the game writes only the mailbox's request, the LCD's display memory past the firmware's frame (FB8,
+and while the code wheel page shows the tall frame, the VM's pages and the wheel's packed pieces: "The code wheel
+page"), ARENA5 and ARENA6 while that page shows, at each quit one new file in
 the SD card's root (`AWPERF0.TXT` .. `AWPERF9.TXT`, the first name that does not exist: "Speed"), through
 the loader's file routines, and, through the firmware's own host-port routines, the effects DSP's memory
 ("Sound"): its mixer at PM `0x8140`-`0x826E`, its variables, voices, command records, decoder state, two

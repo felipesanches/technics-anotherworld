@@ -12,6 +12,8 @@
 --   4 "off again":      CODE WHEEL off at the question: the splash; then the intro skipped with C4 (part 0x3E82, play)
 --   5 "in play":        CODE WHEEL on: the row reads "ON, next start" (its item points at prv_on_next, AW_MAP), EXIT:
 --                       no restart (the part, GAME_WHEEL 0, RESTART_REQ 0), the VM's frames going on
+--   1b "wheel page":    at the question, HELP (the code wheel's page), LCDR 3 (MIDDLE), a TEMPO detent, LCDR 5
+--                       (BOTTOM), EXIT: the question again (2026-11-08)
 -- Then EXIT held: the game writes its input log (run_wheelnow.sh replays it: the G records reproduce each restart).
 -- Screens (MAME's own PNG snapshots, AWWN_OUT/snap): the question after 1 and 3, the splash after 2, the settings
 -- page in play. Prints "awwn: ..." lines.
@@ -88,6 +90,26 @@ local co = coroutine.create(function()
   result("on at splash", was and ok and sp:read_u32(GAME_WHEEL) == 1 and var(0x3C) == (sp:read_u32(START_SEED) & 0xFFFF),
     string.format("splash before %s; then %s", tostring(was), state()))
   screen:snapshot("wheelnow_1_question.png")
+  -- 1b: the code wheel page at the question, its region buttons and the TEMPO wheel used (2026-11-08): the input log
+  -- must still replay (the page's presses are not the game's)
+  local WV = 0x502DFA00
+  local function wv(o) return sp:read_u32(WV + o) end
+  local nr = wv(0x8C)
+  press("CPC_SEG5", 0x02)             -- HELP: the code wheel's page (its picture at rest: WH_NREST + 1)
+  local shown = wait_until(function() return wv(0x04) == 1 and wv(0x8C) > nr and wv(0xB4) == 240 and wv(0xB0) == 0 end, 30)
+  press("CPR_SEG7", 0x01, 0.3)        -- LCDR 3: MIDDLE
+  wait_until(function() return wv(0xD0) == 1 and wv(0xE0) == 0 and wv(0xB4) == 240 end, 10)
+  local knob
+  for _, f in pairs(M.ioport.ports[":TEMPO_KNOB"].fields) do knob = f end
+  knob.user_value = 51                -- one detent
+  wait_until(function() return wv(0x60) == 1 and wv(0x78) == 0 and wv(0xB4) == 240 end, 10)
+  press("CPR_SEG5", 0x01, 0.3)        -- LCDR 5: BOTTOM
+  local scrolled = wait_until(function() return wv(0xD0) == 2 and wv(0xE0) == 0 and wv(0xB4) == 240 end, 10)
+  close()
+  ok = wait_until(asking, 5)
+  wait(1)
+  result("wheel page", shown and scrolled and wv(0x60) == 1 and ok, string.format("shown %s, region %d, arrow at %d, the question again %s; %s",
+    tostring(shown), wv(0xD0), wv(0x60) + 1, tostring(ok), state()))
   -- 2: off at the question
   settings_toggle(false)
   close()

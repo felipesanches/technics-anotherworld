@@ -1,0 +1,38 @@
+Another World for the KN7000 (KN7APP.BIN): speed report, AWPERFn.TXT
+Times from the KN7000's timer 4 and its millisecond counter (README-CNV.md, Speed).
+
+SPEED  4/4  program  893  now: 320x200 
+ms per frame  last 1 s 384x240  320x200 
+VM frames                   382       65
+frames/s          18.1     14.8     12.9
+frame             49.7     67.2     76.8
+longest           63.0   1247.7   1776.6
+ VM                0.8      0.8      2.6
+ polygons          2.5      1.0      3.3
+ page ops         14.2     21.8     14.6
+ blit             24.7     39.7     51.0
+ border            0.0      0.0      0.0
+ yield             7.4      3.6      5.2
+yield asked        6.2      2.9      4.4
+LCD pixels          19     2795     2808
+load ms  1071 pause 66593 repaints   9
+ns per access
+ALU, LCD w16 w32 r16   24 1070 1933 1874
+RAM w8 w32 r8 r32     183  407  125  258
+RAM uncached r32      269
+bus 20-26 8904 0804 0824 0424
+bus 28-2E 0865 0004 0000 0002
+40 42 CHCTR TM4MD 0287 07D0 008F 0081
+
+per part, ms per frame:
+blit      part  frames   frame      VM polygons pageops    blit  border   yield longest
+384x240   3E80     359    65.7     0.8     0.6    21.9    39.7     0.0     2.6   1247.7
+384x240   3E81      23    89.6     1.1     8.0    21.2    40.6     0.0    18.5    176.0
+320x200   3E81      65    76.8     2.6     3.3    14.6    51.0     0.0     5.2   1776.6
+
+full repaints, by a sentinel, blits written, skipped, palettes, mode switches, windows new / old, run ms new / old:
+       9       0     455     450      52       1      27       5     25668      5032
+benchmark, ns x 10: ALU LCDw16 LCDw32 LCDr16 RAMw8 RAMw32 RAMr8 RAMr32 UNCr32
+    23.5  1070.3  1932.6  1873.5   183.3   406.9   124.5   257.7   268.7
+MEMCTR0-7, 32000040, 32000042, CHCTR, TM4MD, TM4BR, program build (hex):
+ 00008904 00000804 00000824 00000424 00000865 00000004 00000000 00000002 00000287 000007D0 0000008F 00000081 000007D0 0000037D

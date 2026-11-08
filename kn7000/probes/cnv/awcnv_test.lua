@@ -61,6 +61,8 @@
 --                "bankread" (counted with them: the sample bank's AWSBn.AW, LD_IN_READ = 2, into PART_AREA),
 --                "prefread" (counted with them too: AWPREFS.CFG, LD_IN_READ = 3, into PR_BUF),
 --                "wheelread" (counted with them too: the code wheel's AWWHn.AW, LD_IN_READ = 4, into WB_SCRATCH),
+--                and the same for ARENA5 0x50123000-0x50147FFF and ARENA6 0x50175000-0x5017FFFF (the code wheel
+--                page's, since 2026-11-08: WB_SCRATCH is in ARENA6),
 --                and "foreign": anything else during the game. "AWAREA verdict: CLEAN" when there is no
 --                foreign write
 --   loader.txt   every write into the loader's resident area (0x502B8000-0x502B9FFF and its 0x90 view),
@@ -98,7 +100,8 @@ local SV_FOUND, SV_OPEN = SVC + 0x64, SVC + 0x10
 local LD_REC = CV + 0x4C                             -- the record being loaded: +4 destination, +8 bytes
 local PART_AREA, BANK_FILE_MAX = 0x502EE400, 0x10000   -- platformcnv.inc, dsp.inc: where BankRead reads AWSBn.AW
 local PR_BUF, PR_BUF_LEN = 0x502DF940, 0x20             -- vm.inc: where PrefsRead reads AWPREFS.CFG (PREFS_AT + 0x40)
-local WB_SCRATCH, WB_SCRATCH_MAX = 0x5034D000 + 0x24000, 0x9000  -- wheel.s: where WheelReadPiece reads AWWHn.AW
+local WB_SCRATCH, WB_SCRATCH_MAX = 0x50177000, 0x9000  -- wheel.s: where WheelReadPiece reads AWWHn.AW (in ARENA6)
+local ARENAS = { { 0x50123000, 0x50148000 }, { 0x50175000, 0x50180000 } }  -- wheel.s ARENA5, ARENA6 (the code wheel page)
 local AW_LO, AW_HI, MB_LO, MB_HI = 0x502BA000, 0x5037A000, 0x5031B000, 0x5031C000
 
 local RES_DIR = os.getenv("AWT_RES")
@@ -165,9 +168,10 @@ local function pool_tap(base)
     bump(T.pools, string.format("%s pc=%08X page=%08X", phase, p, offset & 0xFFFFF000))
   end)
 end
-local function area_tap(base)
+local function area_tap(base, lo, hi)
   local d = base - 0x50000000
-  return sp:install_write_tap(AW_LO + d, AW_HI - 1 + d, string.format("a%08X", base), function(offset, data, mask)
+  lo, hi = lo or AW_LO, hi or AW_HI
+  return sp:install_write_tap(lo + d, hi - 1 + d, string.format("a%08X_%08X", base, lo), function(offset, data, mask)
     local a = offset - d
     if a >= MB_LO and a < MB_HI then return end           -- the mailbox page is the firmware's
     local p = pc()
@@ -185,7 +189,7 @@ local function area_tap(base)
     elseif sp:read_u32(LD_IN_READ) == 3 and a >= PR_BUF and a < PR_BUF + PR_BUF_LEN then
       kind = "prefread"; T.area_fileread = T.area_fileread + 1  -- cnv_main.s PrefsRead: AWPREFS.CFG into PR_BUF
     elseif sp:read_u32(LD_IN_READ) == 4 and a >= WB_SCRATCH and a < WB_SCRATCH + WB_SCRATCH_MAX then
-      kind = "wheelread"; T.area_fileread = T.area_fileread + 1 -- wheel.s WheelReadPiece: an AWWHn.AW into the borrowed pages
+      kind = "wheelread"; T.area_fileread = T.area_fileread + 1 -- wheel.s WheelReadPiece: an AWWHn.AW into its scratch
     else kind = "foreign"; T.area_foreign = T.area_foreign + 1 end
     bump(T.area, string.format("%-8s pc=%08X page=%08X", kind, p, a & 0xFFFFF000))
   end)
@@ -205,6 +209,10 @@ local function loader_tap(base)
 end
 AWT_TAPS = { ic23_tap(0x44000000), ic23_tap(0x84000000), pool_tap(0x50000000), pool_tap(0x90000000),
              area_tap(0x50000000), area_tap(0x90000000), loader_tap(0x50000000), loader_tap(0x90000000) }
+for _, r in ipairs(ARENAS) do                 -- ARENA5, ARENA6: the code wheel page's, classified as the game's RAM
+  AWT_TAPS[#AWT_TAPS + 1] = area_tap(0x50000000, r[1], r[2])
+  AWT_TAPS[#AWT_TAPS + 1] = area_tap(0x90000000, r[1], r[2])
+end
 
 local function dump_table(f, t)
   local ks = {}

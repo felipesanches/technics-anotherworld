@@ -84,7 +84,7 @@ while [ $# -gt 0 ]; do
   guard)
     G="$OUT/guard"; mkdir -p "$G"
     [ -f "$KN/build/res/awres.inc" ] || make -s -C "$KN" build/res/awres.inc > /dev/null   # the SP7001 build's tables
-    ( cd "$KN" && python3 -I tools/ic23_guard.py "$DISASM_REPO/tools" src/cnv_main.s -I src -I build/res -I "$LOADER_DIR" --loader "$LOADER_DIR/kn7cnv.inc" ) > "$G/app.txt"; a=$?
+    ( cd "$KN" && python3 -I tools/ic23_guard.py "$DISASM_REPO/tools" src/cnv_main.s -I src -I build/res -I "$LOADER_DIR" -I "$DISASM_REPO/tools/kn7menu" -I "$DISASM_REPO/tools/kn7menu/build" --loader "$LOADER_DIR/kn7cnv.inc" ) > "$G/app.txt"; a=$?
     ( cd "$KN" && python3 -I tools/ic23_guard.py "$DISASM_REPO/tools" probes/cnv/guard_loader_selftest.s -I "$LOADER_DIR" --loader "$LOADER_DIR/kn7cnv.inc" ) > "$G/selftest.txt"; s=$?
     ( cd "$KN" && python3 -I tools/ic23_guard.py "$DISASM_REPO/tools" src/main.s -I src -I build/res ) > "$G/sp7001.txt"; b=$?
     ( cd "$KN" && python3 -I tools/cnv_layout.py "$LOADER_DIR/kn7cnv.inc" src/platformcnv.inc src/vm.inc build/kn7app.map build/kn7app.bin "$LOADER_DIR/releases/2026-10-19/floppy/KN7LOAD.CNV" ) > "$G/layout.txt"; c=$?
