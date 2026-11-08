@@ -30,4 +30,12 @@ for sp in spans:
                 print(l)
                 hits += 1
 print(f"d32_scan: {n} instructions in {len(spans)} ranges, {hits} with a register + displacement whose top byte is not 0")
+# The indexed form (Dn, Am) adds a register, whose value a scan cannot know: listed for review. The code wheel page's LCD
+# store through (d1, a2), d1 = 0x4C..., is the suspect of the owner's unit restarting (2026-11-08); every one left must
+# have an index far below 2^24 (the texel, the colour, the lane, the INV entry, the shadow level).
+idx = [l for sp in spans for a, l in lines if (lambda lo, hi: lo <= a < hi)(*(sym[x] for x in sp.split(":")))
+       and re.search(r"\(d[0-3], ?a[0-3]\)", l)]
+print(f"d32_scan: {len(idx)} indexed (Dn, Am) operands in those ranges, for review:")
+for l in idx:
+    print("  " + l)
 sys.exit(1 if hits else 0)
