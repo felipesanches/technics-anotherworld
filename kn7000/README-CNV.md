@@ -63,8 +63,9 @@ your own copy of the game by `make sdcard` (`tools/aw_extract.py --parts`), and 
 `KN7APP.BIN` and `AWBANK.AW` are generated from the same `MEMLIST.BIN`, so the card must carry the files
 the same build wrote.
 `KN7APP.BIN`'s SHA-1 for the build in this repository and the MS-DOS release in `../../MSDOS/`:
-`c707af6ee8f2efd2e6417711e13e74bf4a208568` (the code wheel page zoomed in, "The code wheel page"; `build/sdcard.txt`
-lists it with the rest). Before it: `aafd752e...` (staged on 2026-11-06: the code wheel page at its first size, the
+`76d89aad60ca2303d2a521339fa0e4289691e182` (the code wheel page zoomed in, with the fix and the diagnostics for the
+restart `c707af6e` gave the owner's unit, "The code wheel page"; `build/sdcard.txt` lists it with the rest). Before it:
+`c707af6e...` (the zoomed page, which restarted the unit), `aafd752e...` (staged on 2026-11-06: the code wheel page at its first size, the
 music at the Amiga original's tempo), `2887b170...` (the code wheel page's first build), `7c2d2c06...` (the build the owner played on 2026-11-06), `964e245a...` (the LCD at 8 bits a
 pixel through its look-up table, the ambilight around the window: "The screen"), `ccf024e4...` (384x240 pages
 drawn at that resolution by default, PAGE DOWN 320x200, PAGE UP 384x240), `9a2f2db4...` (the 320x200
