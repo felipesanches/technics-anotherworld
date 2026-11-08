@@ -94,8 +94,9 @@ local co = coroutine.create(function()
   -- must still replay (the page's presses are not the game's)
   local WV = 0x502DFA00
   local function wv(o) return sp:read_u32(WV + o) end
-  press("CPC_SEG5", 0x02)             -- HELP: the code wheel's page
-  local shown = wait_until(function() return wv(0x04) == 1 and wv(0xB4) == 240 and wv(0xB0) == 0 end, 30)
+  local nr = wv(0x8C)
+  press("CPC_SEG5", 0x02)             -- HELP: the code wheel's page (its picture at rest: WH_NREST + 1)
+  local shown = wait_until(function() return wv(0x04) == 1 and wv(0x8C) > nr and wv(0xB4) == 240 and wv(0xB0) == 0 end, 30)
   press("CPR_SEG7", 0x01, 0.3)        -- LCDR 3: MIDDLE
   wait_until(function() return wv(0xD0) == 1 and wv(0xE0) == 0 and wv(0xB4) == 240 end, 10)
   local knob

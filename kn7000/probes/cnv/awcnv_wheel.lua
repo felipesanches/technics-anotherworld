@@ -268,8 +268,9 @@ local co = coroutine.create(function()
   local set_ok = sp:read_u32(HELP_PAGE) == 3 and wv("ON") == 0 and wv("SHOWN") == 0 and (lcd_start() & 0xFFFF) == 0xABFF
   local seen = { sp:read_u32(HELP_PAGE) }
   for _ = 1, 3 do press("CPC_SEG11", 0x10); wait(1.2); seen[#seen + 1] = sp:read_u32(HELP_PAGE) end
+  local nr = wv("NREST")               -- (WH_ON is 1 from the page's first moment: wait for its picture at rest)
   for _ = 1, 4 do press("CPC_SEG11", 0x20); wait(1.2); seen[#seen + 1] = sp:read_u32(HELP_PAGE) end
-  wait_until(function() return wv("ON") == 1 and wv("SROW") == 240 and wv("BUSY") == 0 end, 10)
+  wait_until(function() return wv("ON") == 1 and wv("NREST") > nr and wv("SROW") == 240 and wv("BUSY") == 0 end, 10)
   wait(0.3)
   ang, sm = grab("back", "rest")
   for i, v in ipairs(seen) do seen[i] = tostring(v + 1) end
@@ -287,8 +288,9 @@ local co = coroutine.create(function()
     string.format("the VM's four pages put back as they were saved: %s (%d saved, %d put back); LCD pixels differing from before HELP: %d; the question still asked: %s",
       tostring(same_pages), #saved_pages, #back_pages, dpx, tostring(asking())))
   -- again: from display memory, in the region it was left in
+  nr = wv("NREST")
   press("CPC_SEG5", 0x02)
-  local again = wait_until(function() return wv("ON") == 1 and wv("SAVES") == 2 and wv("SROW") == 240 and wv("BUSY") == 0 end, 15)
+  local again = wait_until(function() return wv("ON") == 1 and wv("SAVES") == 2 and wv("NREST") > nr and wv("SROW") == 240 and wv("BUSY") == 0 end, 15)
   wait(0.5)
   ang, sm = grab("again", "rest")
   result("again", again and wv("LOADS") == 1 and ang == angle_of(0) and wv("REGION") == 2 and lcd_start() == start_of(240),
