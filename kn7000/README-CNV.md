@@ -363,7 +363,7 @@ LCD at it at once, as it was left, and draws it again once the pictures are in R
 **Files and memory.** The tables and pictures (454,656 bytes in three segments: `codewheel_render.py`'s layout,
 `src/wheel.s` WB_*) are `AWWH0.AW` ... `AWWHD.AW` on the card, 32 KB each ByteKiller-packed, 143,132 bytes in all. The
 first time the page shows in a game they are read, a file a converter call ("Loading the wheel" while they come), the
-packed pieces of the first two segments kept in the LCD's display memory, and later showings unpack them from there.
+packed pieces of the first segment kept in the LCD's display memory, and later showings unpack them from there (the second segment's two files are read from the card again at each showing).
 While the page shows, the game is paused and its RAM is borrowed:
 
 | RAM                       | while the page shows                                                                               |
@@ -383,11 +383,11 @@ whole session in MAME, the help screen, the soft buttons, PAGE DOWN and the quit
 FB8 (which ends at `0x757FF`); the same probe found the firmware writing none of it, only its own frame
 (`0x0`-`0x4B4FF`):
 
-| display memory        | what                                                             |
-|-----------------------|------------------------------------------------------------------|
-| `0x76000`-`0xC0FFF`   | the tall frame, 640 x 480                                        |
-| `0xC1000`-`0x11AFFF`  | the VM's four pages while the page shows (368,640 bytes)         |
-| `0x11B000`-`0x13FFFF` | the first two segments' packed pieces, once read (131,652 bytes) |
+| display memory        | what                                                                                                  |
+|-----------------------|-------------------------------------------------------------------------------------------------------|
+| `0x76000`-`0xC0FFF`   | the tall frame, 640 x 480                                                                             |
+| `0xC1000`-`0x11AFFF`  | the VM's four pages while the page shows (368,640 bytes)                                              |
+| `0x11B000`-`0x135FFF` | the first segment's packed pieces, once read (105,116 bytes; B is read from the card at each showing) |
 
 FB8 is no longer saved: the page does not draw in it.
 
@@ -407,6 +407,14 @@ about 0.72 s. The card's first read is 143,132 bytes, about 1.1 s of reading on 
 (385 KB in 3.05 s), against MAME's 1.7 times faster card. The page itself shows the last of each it drew ("drawn, ms"),
 on the unit as in MAME: those are the figures to send. On program 941 every picture takes about twice as long in
 MAME (the firmware's own screen keeps repainting there; probes/cnv/README.md, "The code wheel page zoomed in").
+
+**If the instrument restarts on this page** (build `c707af6e` did, on the owner's unit, after "Loading the wheel";
+probes/cnv/unitfix-results-2026-11-08/README.md): since then the left margin's foot shows each step of the page's load
+in yellow ("Sss aaaaaa": the step and its value in hex: 10 a file asked for, 40 41 42 opened, read, closed, 11 its
+size, 12 kept, 13 unpacked, 20 checked, 21 the frame drawn, 22 laid out, 23 the first picture, 24 shown); a
+system-error NMI while the page shows stops there with "NMI PC pppppppp" and "PSW ssssssss" instead of restarting; and
+the last 13 steps are kept in RAM, which the next start of the game writes to `C:\AWWHLOG.TXT` (when the RAM kept them
+through the restart). The likeliest cause, an LCD store through an index register with a top byte of 0x4C, is gone.
 
 ![The code wheel page, TOP, at rest at number 1 (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_rest_top.png)
 ![MIDDLE (MAME)](probes/cnv/codewheel-results-2026-11-08/codewheel_middle.png)
