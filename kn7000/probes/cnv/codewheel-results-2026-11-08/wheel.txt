@@ -1,0 +1,29 @@
+drawing: ../../AnotherWorld_VMTools/aw_codewheel.svg sha1 91064646088faeb8c2d2ac925f7173ed67dd4c86
+lower disk centre (tick marks' convergence): (342.337, 336.893) units
+lower disk's pin hole in the scan (its dark pixels): (343.594, 337.966) units
+upper disk centre (outline fit): (342.831, 334.746), radius 315.820 units
+tick marks (deg clockwise from up): 14.12 32.34 50.66 68.71 87.06 105.26 122.91 140.42 158.35 176.15 194.19 212.43 230.45 248.42 266.66 284.84 302.56 320.46 338.13 355.95
+spacing between ticks (deg): 18.23 18.31 18.06 18.35 18.19 17.65 17.51 17.93 17.79 18.05 18.24 18.02 17.96 18.25 18.18 17.71 17.90 17.67 17.82 18.17
+numbers 1-20 (deg): 347.04 5.03 23.23 41.50 59.68 77.89 96.16 114.08 131.66 149.39 167.25 185.17 203.31 221.44 239.43 257.54 275.75 293.70 311.51 329.29
+arrow (deg, where its axis meets the numbers' circle): 59.373 (5284 px at 4x)
+rest angles of the upper disk (1/65536 turn): 52368 55644 58957 62282 57 3370 6697 9960 13160 16387 19638 22901 26203 29504 32779 36075 39391 42658 45900 49138
+rest angles (deg): 287.67 305.66 323.86 342.13 0.31 18.51 36.79 54.71 72.29 90.02 107.87 125.80 143.94 162.07 180.06 198.17 216.38 234.33 252.14 269.92
+scale: 480/679.13239 pixels a unit; rotating radius: 224.21 px; shadow opacity max 0.525; the spans reach 227.70 px (TOP's rows kept 24-487)
+pixels the spans cover: 159680 (all 480 rows); in the rows TOP 0-239 shows: 79840, MIDDLE 120-359: 103184, BOTTOM 240-479: 79840 (a turning picture's, its 32-bit stores a quarter of it at most)
+BOTC ends at blob 0x66728 (A is 0x58000, B to 0x67000); RING ends at 0x6D22C (C to 0x6F000)
+colours (4-bit) in the pictures: 796, as 240 entries
+blob: 454656 bytes; packed: 143132 bytes in 14 files; A and B packed (what the LCD's memory keeps): 131652
+AWWH0.AW: blob 0x00000, 32768 bytes, packed 2748
+AWWH1.AW: blob 0x08000, 32768 bytes, packed 3792
+AWWH2.AW: blob 0x10000, 32768 bytes, packed 6384
+AWWH3.AW: blob 0x18000, 32768 bytes, packed 8524
+AWWH4.AW: blob 0x20000, 32768 bytes, packed 6712
+AWWH5.AW: blob 0x28000, 32768 bytes, packed 5080
+AWWH6.AW: blob 0x30000, 32768 bytes, packed 4108
+AWWH7.AW: blob 0x38000, 32768 bytes, packed 18976
+AWWH8.AW: blob 0x40000, 32768 bytes, packed 16512
+AWWH9.AW: blob 0x48000, 32768 bytes, packed 15824
+AWWHA.AW: blob 0x50000, 32768 bytes, packed 14552
+AWWHB.AW: blob 0x58000, 32768 bytes, packed 16000
+AWWHC.AW: blob 0x60000, 28672 bytes, packed 12440
+AWWHD.AW: blob 0x67000, 32768 bytes, packed 11480

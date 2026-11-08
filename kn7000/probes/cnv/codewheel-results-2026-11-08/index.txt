@@ -1,0 +1,17 @@
+open 0 rest
+p1_mid 0 turning
+p1 0 rest
+p3_mid 0 turning
+p3 0 rest
+m5_mid 0 turning
+m5 0 rest
+mid 120 rest
+m1_mid 120 turning
+m1 120 rest
+bot 240 rest
+top 0 rest
+p2_mid 0 turning
+p2 0 rest
+bot2 240 rest
+back 240 rest
+again 240 rest
